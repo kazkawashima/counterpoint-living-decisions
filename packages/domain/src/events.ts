@@ -6,6 +6,7 @@ import type {
   Evidence,
   ExternalEvent,
   Meeting,
+  MonitorCondition,
   Option,
   Participant,
   Premise,
@@ -66,6 +67,68 @@ export interface AiSuggestionMetadata {
   readonly confidence: number;
   readonly reason: NonEmptyText;
 }
+
+export interface PremiseInferenceSuggestionDetails {
+  readonly evidenceReferenceIds: readonly SourceReferenceId[];
+  readonly dependencyScope: readonly NonEmptyText[];
+  readonly monitorCondition?: MonitorCondition;
+}
+
+export interface DissentInferenceSuggestionDetails {
+  readonly participantId: ParticipantId;
+  readonly retained: boolean;
+}
+
+export interface ActionInferenceSuggestionDetails {
+  readonly ownerParticipantId: ParticipantId;
+  readonly scope: readonly NonEmptyText[];
+  readonly affectedPremiseSuggestionIds: readonly SuggestionId[];
+}
+
+export interface DecisionInferenceSuggestionDetails {
+  readonly title: NonEmptyText;
+  readonly outcome: NonEmptyText;
+  readonly monitorCondition: MonitorCondition;
+  readonly premiseSuggestionIds: readonly SuggestionId[];
+  readonly dissentSuggestionIds: readonly SuggestionId[];
+  readonly actionSuggestionIds: readonly SuggestionId[];
+}
+
+export type InferenceSuggestionDetails =
+  | PremiseInferenceSuggestionDetails
+  | DissentInferenceSuggestionDetails
+  | ActionInferenceSuggestionDetails
+  | DecisionInferenceSuggestionDetails;
+
+interface InferenceSuggestedPayloadBase {
+  readonly suggestionId: SuggestionId;
+  readonly statement: NonEmptyText;
+  readonly metadata: AiSuggestionMetadata;
+}
+
+export type InferenceSuggestedPayload = InferenceSuggestedPayloadBase &
+  (
+    | {
+        readonly candidateKind: "proposition";
+        readonly details?: never;
+      }
+    | {
+        readonly candidateKind: "premise";
+        readonly details?: PremiseInferenceSuggestionDetails;
+      }
+    | {
+        readonly candidateKind: "dissent";
+        readonly details?: DissentInferenceSuggestionDetails;
+      }
+    | {
+        readonly candidateKind: "action";
+        readonly details?: ActionInferenceSuggestionDetails;
+      }
+    | {
+        readonly candidateKind: "decision";
+        readonly details?: DecisionInferenceSuggestionDetails;
+      }
+  );
 
 export interface DisclosureOutgoingPayload {
   readonly exactSnippet: NonEmptyText;
@@ -171,13 +234,7 @@ export interface DomainEventPayloads {
   readonly EvidenceShared: {
     readonly evidence: Evidence;
   };
-  readonly InferenceSuggested: {
-    readonly suggestionId: SuggestionId;
-    readonly candidateKind:
-      "proposition" | "premise" | "dissent" | "action" | "decision";
-    readonly statement: NonEmptyText;
-    readonly metadata: AiSuggestionMetadata;
-  };
+  readonly InferenceSuggested: InferenceSuggestedPayload;
   readonly InferenceConfirmed: {
     readonly suggestionId: SuggestionId;
     readonly result: ConfirmedInference;

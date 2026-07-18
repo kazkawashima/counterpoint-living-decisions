@@ -20,6 +20,7 @@ import type {
   DomainEvent,
   DomainEventType,
   EventReference,
+  InferenceSuggestedPayload,
   PrivateDomainEvent,
   SharedDomainEvent,
 } from "./events.js";
@@ -76,6 +77,7 @@ export interface OwnerPrivateProjection {
   readonly utterances: readonly Utterance[];
   readonly disclosures: readonly DisclosureProjection[];
   readonly inferenceSuggestionIds: readonly string[];
+  readonly inferenceSuggestions: readonly InferenceSuggestedPayload[];
 }
 
 interface IdempotencyReceipt {
@@ -257,6 +259,7 @@ function ownerWorkspace(
       utterances: [],
       disclosures: [],
       inferenceSuggestionIds: [],
+      inferenceSuggestions: [],
     }
   );
 }
@@ -288,6 +291,20 @@ function updateDisclosure(
     ? [...disclosures, disclosure]
     : disclosures.map((current, currentIndex) =>
         currentIndex === index ? disclosure : current,
+      );
+}
+
+function upsertInferenceSuggestion(
+  suggestions: readonly InferenceSuggestedPayload[],
+  suggestion: InferenceSuggestedPayload,
+): readonly InferenceSuggestedPayload[] {
+  const index = suggestions.findIndex(
+    ({ suggestionId }) => suggestionId === suggestion.suggestionId,
+  );
+  return index < 0
+    ? [...suggestions, suggestion]
+    : suggestions.map((current, currentIndex) =>
+        currentIndex === index ? suggestion : current,
       );
 }
 
@@ -412,6 +429,10 @@ function reducePrivateWorkspace(
         )
           ? workspace.inferenceSuggestionIds
           : [...workspace.inferenceSuggestionIds, event.payload.suggestionId],
+        inferenceSuggestions: upsertInferenceSuggestion(
+          workspace.inferenceSuggestions,
+          event.payload,
+        ),
       };
       break;
     case "InferenceConfirmed":

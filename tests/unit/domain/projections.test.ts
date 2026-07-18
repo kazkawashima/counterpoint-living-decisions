@@ -11,13 +11,16 @@ import {
   meetingPosition,
   nonEmptyText,
   participantId,
+  promptVersion,
   reduceMeetingProjection,
   replayMeeting,
   replaySharedMeeting,
   resetRequestId,
+  sourceReferenceId,
   suggestionId,
   toSharedMeetingProjection,
   type DomainEvent,
+  type DomainEventPayloads,
   type SharedDomainEvent,
 } from "../../../packages/domain/src/index.js";
 import {
@@ -70,6 +73,78 @@ function flagshipEvents(): readonly DomainEvent[] {
   ];
 }
 
+const synthesisMetadata = {
+  model: nonEmptyText("facilitator-synthesis"),
+  promptVersion: promptVersion("decision-synthesis-v1"),
+  inputReferenceIds: [sourceReferenceId("private-regulatory-reference")],
+  confidence: 0.86,
+  reason: nonEmptyText("Synthesizes a linked decision draft"),
+} as const;
+
+function privateSynthesisCandidates(): readonly DomainEvent[] {
+  const premiseSuggestionId = suggestionId("premise-candidate");
+  const dissentSuggestionId = suggestionId("dissent-candidate");
+  const actionSuggestionId = suggestionId("action-candidate");
+  const payloads = [
+    {
+      suggestionId: premiseSuggestionId,
+      candidateKind: "premise",
+      statement: nonEmptyText("PRIVATE: regulatory approval is required"),
+      metadata: synthesisMetadata,
+      details: {
+        evidenceReferenceIds: [
+          sourceReferenceId("private-regulatory-reference"),
+        ],
+        dependencyScope: [nonEmptyText("Europe rollout")],
+        monitorCondition: {
+          description: nonEmptyText("Monitor regulatory approval"),
+        },
+      },
+    },
+    {
+      suggestionId: dissentSuggestionId,
+      candidateKind: "dissent",
+      statement: nonEmptyText("PRIVATE: retain legal dissent"),
+      metadata: synthesisMetadata,
+      details: {
+        participantId: ids.legal,
+        retained: true,
+      },
+    },
+    {
+      suggestionId: actionSuggestionId,
+      candidateKind: "action",
+      statement: nonEmptyText("PRIVATE: assign legal follow-up"),
+      metadata: synthesisMetadata,
+      details: {
+        ownerParticipantId: ids.facilitator,
+        scope: [nonEmptyText("Europe rollout")],
+        affectedPremiseSuggestionIds: [premiseSuggestionId],
+      },
+    },
+    {
+      suggestionId: suggestionId("decision-draft-candidate"),
+      candidateKind: "decision",
+      statement: nonEmptyText("PRIVATE: draft the conditional decision"),
+      metadata: synthesisMetadata,
+      details: {
+        title: nonEmptyText("Conditional Europe rollout"),
+        outcome: nonEmptyText("Proceed after regulatory approval"),
+        monitorCondition: {
+          description: nonEmptyText("Monitor regulatory approval"),
+        },
+        premiseSuggestionIds: [premiseSuggestionId],
+        dissentSuggestionIds: [dissentSuggestionId],
+        actionSuggestionIds: [actionSuggestionId],
+      },
+    },
+  ] as const satisfies readonly DomainEventPayloads["InferenceSuggested"][];
+
+  return payloads.map((payload, index) =>
+    privateEvent("InferenceSuggested", index + 1, payload, ids.facilitator),
+  );
+}
+
 describe("meeting projection replay", () => {
   it("replays deterministically from the same ordered event stream", () => {
     const events = flagshipEvents();
@@ -109,6 +184,59 @@ describe("meeting projection replay", () => {
     expect(legal.utterances[0]?.text).toContain("PRIVATE:");
     expect(anotherOwner.artifacts).toEqual([]);
     expect(anotherOwner.utterances).toEqual([]);
+  });
+
+  it("durably replays complete facilitator-private synthesis candidates", () => {
+    const events = privateSynthesisCandidates();
+    const projection = replayMeeting(ids.meeting, events);
+    const replayed = replayMeeting(ids.meeting, events);
+    const facilitator = getOwnerPrivateProjection(projection, ids.facilitator);
+
+    expect(replayed).toEqual(projection);
+    expect(facilitator.inferenceSuggestions).toEqual(
+      events.map(({ payload }) => payload),
+    );
+    expect(facilitator.inferenceSuggestionIds).toEqual(
+      facilitator.inferenceSuggestions.map(({ suggestionId }) => suggestionId),
+    );
+    expect(facilitator.inferenceSuggestions).toHaveLength(4);
+    expect(facilitator.inferenceSuggestions[0]).toMatchObject({
+      candidateKind: "premise",
+      details: {
+        evidenceReferenceIds: ["private-regulatory-reference"],
+        dependencyScope: ["Europe rollout"],
+        monitorCondition: {
+          description: "Monitor regulatory approval",
+        },
+      },
+    });
+    expect(facilitator.inferenceSuggestions[3]).toMatchObject({
+      candidateKind: "decision",
+      details: {
+        title: "Conditional Europe rollout",
+        premiseSuggestionIds: ["premise-candidate"],
+        dissentSuggestionIds: ["dissent-candidate"],
+        actionSuggestionIds: ["action-candidate"],
+      },
+    });
+  });
+
+  it("never leaks private synthesis candidates into the shared projection", () => {
+    const projection = replayMeeting(ids.meeting, privateSynthesisCandidates());
+    const shared = toSharedMeetingProjection(projection);
+    const anotherOwner = getOwnerPrivateProjection(
+      projection,
+      participantId("participant-observer"),
+    );
+
+    expect(shared.premises).toEqual([]);
+    expect(shared.dissent).toEqual([]);
+    expect(shared.actions).toEqual([]);
+    expect(shared.decisions).toEqual([]);
+    expect(shared.auditTimeline).toEqual([]);
+    expect(anotherOwner.inferenceSuggestions).toEqual([]);
+    expect(JSON.stringify(shared)).not.toContain("PRIVATE:");
+    expect(JSON.stringify(shared)).not.toContain("decision-draft-candidate");
   });
 
   it("treats same-content retries as no-ops", () => {
