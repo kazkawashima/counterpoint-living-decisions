@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build and tool output
+dist/
+build/
+coverage/
+.vite/
+.wrangler/
+.turbo/
+.cache/
+
+# Runtime data and local persistence
+data/
+.data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+logs/
+*.log
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.pem
+*.key
+credentials/
+secrets/
+
+# Local archives and exported source bundles
+docs/*.zip
+
+# Tests and browser tooling
+playwright-report/
+test-results/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+.specstory/
