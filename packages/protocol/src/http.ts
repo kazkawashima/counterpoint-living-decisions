@@ -4,12 +4,14 @@ import { EventTypeSchema } from "./events.js";
 import {
   ActionIdSchema,
   CorrelationIdSchema,
+  ContentHashSchema,
   DecisionIdSchema,
   DecisionRevisionIdSchema,
   DisclosureCandidateIdSchema,
   DissentIdSchema,
   EvidenceIdSchema,
   EventIdSchema,
+  ExternalEventIdSchema,
   IdempotencyKeySchema,
   MeetingIdSchema,
   MeetingPositionSchema,
@@ -856,6 +858,52 @@ export const StartDecisionMonitoringResponseSchema = z.strictObject({
   decision: DecisionSchema,
   monitorRegistrationId: MonitorRegistrationIdSchema,
 });
+export const RegulatoryChangeWebhookRequestSchema = z.strictObject({
+  description: NonEmptyTextSchema,
+  effectiveAt: UtcIsoTimestampSchema,
+  eventId: ExternalEventIdSchema,
+  eventType: z.literal("regulatory_change"),
+  jurisdiction: NonEmptyTextSchema,
+  meetingId: MeetingIdSchema,
+  monitorRegistrationId: MonitorRegistrationIdSchema,
+  schemaVersion: z.literal(1),
+  source: NonEmptyTextSchema,
+  sourceReference: NonEmptyTextSchema,
+});
+export const ExternalEventReceiptSchema = z.strictObject({
+  description: NonEmptyTextSchema,
+  effectiveAt: UtcIsoTimestampSchema,
+  eventId: ExternalEventIdSchema,
+  eventType: NonEmptyTextSchema,
+  jurisdiction: NonEmptyTextSchema,
+  meetingId: MeetingIdSchema,
+  monitorRegistrationId: MonitorRegistrationIdSchema,
+  payloadHash: ContentHashSchema,
+  receivedAt: UtcIsoTimestampSchema,
+  schemaVersion: z.literal(1),
+  source: NonEmptyTextSchema,
+  sourceReference: NonEmptyTextSchema,
+});
+export const RegulatoryChangeWebhookResponseSchema = z.strictObject({
+  ...RequiredCorrelationShape,
+  evaluationStatus: z.literal("pending"),
+  event: ExternalEventReceiptSchema,
+  position: MeetingPositionSchema,
+  replayed: z.boolean(),
+  receiptStatus: z.literal("received"),
+});
+export const ListSharedExternalEventsResponseSchema = z.strictObject({
+  events: z.array(ExternalEventReceiptSchema),
+  meetingId: MeetingIdSchema,
+  position: MeetingPositionSchema,
+  ...RequiredCorrelationShape,
+});
+export const InjectDemoRegulatoryChangeRequestSchema = z.strictObject({
+  idempotencyKey: IdempotencyKeySchema,
+  ...OptionalCorrelationShape,
+});
+export const InjectDemoRegulatoryChangeResponseSchema =
+  RegulatoryChangeWebhookResponseSchema;
 export const DecisionHistoryQuerySchema = z.strictObject({
   meetingId: MeetingIdSchema,
   decisionId: DecisionIdSchema,
@@ -903,6 +951,22 @@ export type StartDecisionMonitoringRequest = z.infer<
 >;
 export type StartDecisionMonitoringResponse = z.infer<
   typeof StartDecisionMonitoringResponseSchema
+>;
+export type RegulatoryChangeWebhookRequest = z.infer<
+  typeof RegulatoryChangeWebhookRequestSchema
+>;
+export type ExternalEventReceipt = z.infer<typeof ExternalEventReceiptSchema>;
+export type RegulatoryChangeWebhookResponse = z.infer<
+  typeof RegulatoryChangeWebhookResponseSchema
+>;
+export type ListSharedExternalEventsResponse = z.infer<
+  typeof ListSharedExternalEventsResponseSchema
+>;
+export type InjectDemoRegulatoryChangeRequest = z.infer<
+  typeof InjectDemoRegulatoryChangeRequestSchema
+>;
+export type InjectDemoRegulatoryChangeResponse = z.infer<
+  typeof InjectDemoRegulatoryChangeResponseSchema
 >;
 export type DecisionHistoryQuery = z.infer<typeof DecisionHistoryQuerySchema>;
 export type DecisionHistoryResponse = z.infer<

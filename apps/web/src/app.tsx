@@ -5,6 +5,7 @@ import type {
   DecisionAuditResponse,
   DecisionHistoryResponse,
   DispositionSharedDecisionCandidateResponse,
+  ExternalEventReceipt,
   PreviewDisclosureResponse,
   SharedEvidence,
   SharedDecisionSynthesisCandidate,
@@ -18,10 +19,12 @@ import {
   dispositionSharedDecisionCandidate,
   getDecisionAudit,
   getDecisionHistory,
+  injectDemoRegulatoryChange,
   joinMeeting,
   listMeetings,
   listSharedDecisions,
   listSharedEvidence,
+  listSharedExternalEvents,
   loadStoredSession,
   login,
   logout,
@@ -384,7 +387,13 @@ interface DecisionDraftForm {
   readonly title: string;
 }
 
-function SharedDecisionCard({ decision }: { readonly decision: DecisionView }) {
+function SharedDecisionCard({
+  decision,
+  externalEvent,
+}: {
+  readonly decision: DecisionView;
+  readonly externalEvent: ExternalEventReceipt | undefined;
+}) {
   const readinessCount = Object.values(decision.readiness).filter(
     Boolean,
   ).length;
@@ -419,6 +428,13 @@ function SharedDecisionCard({ decision }: { readonly decision: DecisionView }) {
         <strong>Monitor</strong>
         {decision.snapshot.monitorCondition.description}
       </p>
+      {externalEvent === undefined ? null : (
+        <div className="shared-regulatory-event">
+          <span>External event received</span>
+          <strong>{externalEvent.jurisdiction}</strong>
+          <small>Evaluation pending · Decision remains MONITORING</small>
+        </div>
+      )}
     </section>
   );
 }
@@ -426,16 +442,20 @@ function SharedDecisionCard({ decision }: { readonly decision: DecisionView }) {
 function FacilitatorDecisionPanel({
   evidence,
   existingDecision,
+  existingExternalEvent,
   meeting,
   onDecisionChange,
+  onExternalEventChange,
   onPositionChange,
   position,
   session,
 }: {
   readonly evidence: SharedEvidence;
   readonly existingDecision: DecisionView | undefined;
+  readonly existingExternalEvent: ExternalEventReceipt | undefined;
   readonly meeting: AssignedMeeting;
   readonly onDecisionChange: (decision: DecisionView) => void;
+  readonly onExternalEventChange: (event: ExternalEventReceipt) => void;
   readonly onPositionChange: (position: AssignedMeeting["position"]) => void;
   readonly position: AssignedMeeting["position"];
   readonly session: StoredSession;
@@ -476,6 +496,8 @@ function FacilitatorDecisionPanel({
   );
   const [history, setHistory] = useState<DecisionHistoryResponse>();
   const [audit, setAudit] = useState<DecisionAuditResponse>();
+  const [externalEvent, setExternalEvent] = useState(existingExternalEvent);
+  const [receivingExternalEvent, setReceivingExternalEvent] = useState(false);
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<DecisionDraftForm>({
     actionOwnerParticipantId: meeting.participantId,
@@ -494,6 +516,7 @@ function FacilitatorDecisionPanel({
     confirm: crypto.randomUUID(),
     manualCandidate: crypto.randomUUID(),
     monitor: crypto.randomUUID(),
+    regulatoryEvent: crypto.randomUUID(),
     ready: crypto.randomUUID(),
     reject: crypto.randomUUID(),
     save: crypto.randomUUID(),
@@ -816,6 +839,24 @@ function FacilitatorDecisionPanel({
     } catch (cause) {
       setError(messageFor(cause));
       setPhase("committed");
+    }
+  }
+
+  async function injectRegulatoryEvent() {
+    setReceivingExternalEvent(true);
+    setError(undefined);
+    try {
+      const response = await injectDemoRegulatoryChange(session, {
+        idempotencyKey: commandKeys.current.regulatoryEvent,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(response.position);
+      setExternalEvent(response.event);
+      onExternalEventChange(response.event);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setReceivingExternalEvent(false);
     }
   }
 
@@ -1168,6 +1209,35 @@ function FacilitatorDecisionPanel({
               </small>
             </div>
           )}
+          {phase === "monitoring" && externalEvent === undefined ? (
+            <div className="demo-event-control">
+              <span>Staged demo story</span>
+              <p>
+                Injects one synthetic regulatory event. It does not confirm a
+                review or change this Decision automatically.
+              </p>
+              <button
+                disabled={receivingExternalEvent}
+                onClick={() => void injectRegulatoryEvent()}
+                type="button"
+              >
+                {receivingExternalEvent
+                  ? "Receiving event…"
+                  : "Inject staged regulatory event"}
+              </button>
+            </div>
+          ) : null}
+          {externalEvent === undefined ? null : (
+            <div className="regulatory-event-receipt" role="status">
+              <span>Staged demo event · External event received</span>
+              <strong>{externalEvent.jurisdiction}</strong>
+              <p>{externalEvent.description}</p>
+              <small>
+                Evaluation pending · Decision remains MONITORING · Effective{" "}
+                {externalEvent.effectiveAt.slice(0, 10)}
+              </small>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -1207,6 +1277,8 @@ function WorkspaceShell({
   >();
   const [evidence, setEvidence] = useState<SharedEvidence>();
   const [sharedDecision, setSharedDecision] = useState<DecisionView>();
+  const [sharedExternalEvent, setSharedExternalEvent] =
+    useState<ExternalEventReceipt>();
   const [error, setError] = useState<string>();
   const [selectedSnippet, setSelectedSnippet] = useState(
     SYNTHETIC_EXACT_SNIPPET,
@@ -1225,16 +1297,21 @@ function WorkspaceShell({
     void Promise.all([
       listSharedEvidence(session, meeting.meetingId, controller.signal),
       listSharedDecisions(session, meeting.meetingId, controller.signal),
+      listSharedExternalEvents(session, meeting.meetingId, controller.signal),
     ])
-      .then(([evidenceState, decisionState]) => {
+      .then(([evidenceState, decisionState, externalEventState]) => {
         const nextPosition =
-          evidenceState.position >= decisionState.position
+          evidenceState.position >= decisionState.position &&
+          evidenceState.position >= externalEventState.position
             ? evidenceState.position
-            : decisionState.position;
+            : decisionState.position >= externalEventState.position
+              ? decisionState.position
+              : externalEventState.position;
         setPosition(nextPosition);
         onPositionChange(nextPosition);
         setEvidence(evidenceState.evidence.at(-1));
         setSharedDecision(decisionState.decisions.at(-1));
+        setSharedExternalEvent(externalEventState.events.at(-1));
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
@@ -1633,15 +1710,20 @@ function WorkspaceShell({
             <FacilitatorDecisionPanel
               evidence={evidence}
               existingDecision={sharedDecision}
+              existingExternalEvent={sharedExternalEvent}
               meeting={meeting}
               onDecisionChange={setSharedDecision}
+              onExternalEventChange={setSharedExternalEvent}
               onPositionChange={advancePosition}
               position={position}
               session={session}
             />
           ) : sharedDecision?.status === "COMMITTED" ||
             sharedDecision?.status === "MONITORING" ? (
-            <SharedDecisionCard decision={sharedDecision} />
+            <SharedDecisionCard
+              decision={sharedDecision}
+              externalEvent={sharedExternalEvent}
+            />
           ) : (
             <div className="readiness-card">
               <div>

@@ -80,7 +80,14 @@ persist in the `counterpoint-data` named volume across container replacement.
 
 To enable live AI locally, export `OPENAI_API_KEY` only in the invoking shell or
 place it in an untracked `.env`. Do not add it to `compose.yaml`, an image, or
-the repository. Stop the stack without deleting persisted data:
+the repository. Set `REGULATORY_WEBHOOK_SECRET` to enable the signed regulatory
+webhook; leave it empty to keep that unauthenticated external route disabled.
+`REGULATORY_WEBHOOK_MAX_AGE_SECONDS` defaults to `300`. The signature is
+`v1=<hex HMAC-SHA256>` over `<unix-seconds>.<exact raw request bytes>`, supplied
+with `x-counterpoint-webhook-timestamp` and
+`x-counterpoint-webhook-signature`.
+
+Stop the stack without deleting persisted data:
 
 ```bash
 docker compose down

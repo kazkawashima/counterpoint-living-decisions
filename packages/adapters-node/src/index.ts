@@ -22,5 +22,9 @@ export {
   SqliteEventStore,
   SqliteProjectionStore,
 } from "./sqlite.js";
+export {
+  NodeHmacWebhookVerifier,
+  type NodeHmacWebhookVerifierOptions,
+} from "./webhook-verifier.js";
 
 export const adaptersNodePackage = "@counterpoint/adapters-node";

@@ -18,6 +18,8 @@ export interface ServerConfiguration {
   readonly openAiModel: string;
   readonly port: number;
   readonly storagePath: string;
+  readonly regulatoryWebhookMaxAgeSeconds: number;
+  readonly regulatoryWebhookSecret: string | undefined;
 }
 
 const DEFAULT_DEMO_USERS: readonly DemoUserConfiguration[] = [
@@ -59,6 +61,18 @@ function parsePort(value: string | undefined): number {
     throw new Error("PORT must be an integer from 1 to 65535");
   }
   return port;
+}
+
+function parseNonNegativeInteger(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+): number {
+  const parsed = Number(value ?? String(fallback));
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return parsed;
 }
 
 function parseDemoUsers(
@@ -140,6 +154,15 @@ export function readServerConfiguration(
     openAiMode,
     openAiModel: environment.OPENAI_MODEL ?? "gpt-5.6",
     port: parsePort(environment.PORT),
+    regulatoryWebhookMaxAgeSeconds: parseNonNegativeInteger(
+      environment.REGULATORY_WEBHOOK_MAX_AGE_SECONDS,
+      300,
+      "REGULATORY_WEBHOOK_MAX_AGE_SECONDS",
+    ),
+    regulatoryWebhookSecret:
+      (environment.REGULATORY_WEBHOOK_SECRET ?? "").length === 0
+        ? undefined
+        : environment.REGULATORY_WEBHOOK_SECRET,
     storagePath: environment.STORAGE_PATH ?? "./data/artifacts",
   };
 }

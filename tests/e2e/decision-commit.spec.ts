@@ -9,6 +9,9 @@ import {
 
 const screenshotDirectory = resolve("docs/media/screenshots/decision-commit");
 const clipDirectory = resolve("docs/media/clips/decision-commit");
+const regulatoryScreenshotDirectory = resolve(
+  "docs/media/screenshots/regulatory-event",
+);
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -22,6 +25,7 @@ async function signIn(page: Page, identity: string, password: string) {
 test.beforeAll(async () => {
   await mkdir(screenshotDirectory, { recursive: true });
   await mkdir(clipDirectory, { recursive: true });
+  await mkdir(regulatoryScreenshotDirectory, { recursive: true });
 });
 
 test("facilitator commits a grounded Decision that participants can revisit", async ({
@@ -171,6 +175,26 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${screenshotDirectory}/2026-07-19-monitoring-active-desktop.png`,
   });
 
+  await facilitatorPage
+    .getByRole("button", { name: "Inject staged regulatory event" })
+    .click();
+  await expect(
+    facilitatorPage
+      .locator(".regulatory-event-receipt")
+      .getByText("External event received", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    facilitatorPage.getByText(
+      "Evaluation pending · Decision remains MONITORING",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${regulatoryScreenshotDirectory}/2026-07-19-event-received-evaluation-pending-desktop.png`,
+  });
+
   await facilitatorPage.reload();
   const reloadedMeeting = facilitatorPage
     .getByRole("article")
@@ -180,6 +204,9 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     facilitatorPage.getByText("Revision 2 · COMMITTED"),
   ).toBeVisible();
   await expect(facilitatorPage.getByText("Monitoring active")).toBeVisible();
+  await expect(
+    facilitatorPage.locator(".regulatory-event-receipt"),
+  ).toContainText("External event received");
 
   const video = facilitatorPage.video();
   await facilitatorContext.close();
@@ -211,16 +238,31 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     participantPage.getByText("5 / 5 readiness checks"),
   ).toBeVisible();
-  await expect(participantPage.getByText("MONITORING")).toBeVisible();
+  await expect(
+    participantPage.getByText("MONITORING", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    participantPage.locator(".shared-regulatory-event"),
+  ).toContainText("External event received");
   await expect(
     participantPage.getByRole("button", {
       name: "Generate Decision candidate",
+    }),
+  ).not.toBeVisible();
+  await expect(
+    participantPage.getByRole("button", {
+      name: "Inject staged regulatory event",
     }),
   ).not.toBeVisible();
   await participantPage.screenshot({
     animations: "disabled",
     fullPage: true,
     path: `${screenshotDirectory}/2026-07-19-participant-committed-shared.png`,
+  });
+  await participantPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${regulatoryScreenshotDirectory}/2026-07-19-participant-event-received-desktop.png`,
   });
 
   await participantPage.setViewportSize({ height: 844, width: 390 });

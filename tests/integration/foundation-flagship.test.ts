@@ -111,12 +111,18 @@ function completeFlagshipEvents(): readonly DomainEvent[] {
     origin: "system",
     confirmationStatus: "not_applicable",
     revision: revisionNumber(1),
+    description: nonEmptyText(
+      "A synthetic regulation changes the regional launch condition.",
+    ),
     eventType: nonEmptyText("regulatory_change"),
+    monitorRegistrationId: monitorRegistrationId("monitor-eu-regulation"),
     payloadHash: contentHash("sha256:synthetic-regulatory-event"),
     source: nonEmptyText("Synthetic regulator feed"),
+    sourceReference: nonEmptyText("https://example.invalid/regulation/eu"),
     jurisdiction: nonEmptyText("European Union"),
     effectiveAt: timestamp("2026-08-01T00:00:00.000Z"),
     receivedAt: timestamp("2026-07-20T09:00:00.000Z"),
+    schemaVersion: revisionNumber(1),
     signatureResult: "valid",
   });
   const task = newReconsiderationTask({

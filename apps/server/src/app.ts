@@ -10,6 +10,7 @@ import {
   commitDecision,
   createMeeting,
   dispositionDecisionCandidate,
+  injectDemoRegulatoryChange,
   joinMeetingByCode,
   listAssignedMeetings,
   login,
@@ -20,6 +21,7 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  receiveRegulatoryChange,
   resolveMeetingAuthorization,
   saveDecisionDraft,
   startDecisionMonitoring,
@@ -37,6 +39,7 @@ import {
   type Decision as DomainDecision,
   type DecisionRevision as DomainDecisionRevision,
   type DomainEvent,
+  type ExternalEvent as DomainExternalEvent,
 } from "@counterpoint/domain";
 import type {
   IdGenerator,
@@ -60,11 +63,14 @@ import {
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   HealthResponseSchema,
+  InjectDemoRegulatoryChangeRequestSchema,
+  InjectDemoRegulatoryChangeResponseSchema,
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
+  ListSharedExternalEventsResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
@@ -78,6 +84,8 @@ import {
   ReadinessResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  RegulatoryChangeWebhookRequestSchema,
+  RegulatoryChangeWebhookResponseSchema,
   RejectDisclosureRequestSchema,
   RejectDisclosureResponseSchema,
   RoleProjectionQuerySchema,
@@ -432,6 +440,23 @@ function decisionRevisionView(revision: DomainDecisionRevision) {
     revisionId: revision.id,
     snapshot: revision.snapshot,
     version: revision.version,
+  };
+}
+
+function externalEventReceiptView(event: DomainExternalEvent) {
+  return {
+    description: event.description,
+    effectiveAt: event.effectiveAt,
+    eventId: event.id,
+    eventType: event.eventType,
+    jurisdiction: event.jurisdiction,
+    meetingId: event.meetingId,
+    monitorRegistrationId: event.monitorRegistrationId,
+    payloadHash: event.payloadHash,
+    receivedAt: event.receivedAt,
+    schemaVersion: event.schemaVersion,
+    source: event.source,
+    sourceReference: event.sourceReference,
   };
 }
 
@@ -836,6 +861,49 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
             activeRevision?.createdAt ?? decision.createdAt,
           );
         }),
+        meetingId: query.data.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          query.data.meetingId,
+          resolved.authorization.participantId,
+        ),
+      }),
+    );
+  });
+
+  app.get("/api/v1/meetings/:meetingId/external-events", async (context) => {
+    const query = RoleProjectionQuerySchema.safeParse({
+      meetingId: context.req.param("meetingId"),
+    });
+    if (!query.success) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      query.data.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const records = await runtime.externalEvents.events.load(
+      query.data.meetingId,
+    );
+    const projection = replayMeeting(
+      domainMeetingId(query.data.meetingId),
+      records.map(({ event, position }) => ({
+        ...event,
+        position: meetingPosition(position),
+      })),
+    );
+    return context.json(
+      ListSharedExternalEventsResponseSchema.parse({
+        correlationId: context.get("correlationId"),
+        events: projection.shared.externalEvents.map(externalEventReceiptView),
         meetingId: query.data.meetingId,
         position: await participantVisiblePosition(
           runtime,
@@ -1459,6 +1527,178 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       }),
     );
   });
+
+  app.post(
+    "/api/v1/webhooks/regulatory-changes/:meetingId/:monitorRegistrationId",
+    async (context) => {
+      const contentType = context.req.header("content-type") ?? "";
+      const signature =
+        context.req.header("x-counterpoint-webhook-signature") ?? "";
+      const signedAt =
+        context.req.header("x-counterpoint-webhook-timestamp") ?? "";
+      if (
+        !contentType.toLowerCase().startsWith("application/json") ||
+        runtime.webhookVerifier === undefined
+      ) {
+        return errorResponse(context, "WEBHOOK_SIGNATURE_INVALID");
+      }
+      const rawBody = new Uint8Array(await context.req.raw.arrayBuffer());
+      if (rawBody.byteLength === 0 || rawBody.byteLength > 64 * 1024) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const verification = await runtime.webhookVerifier.verify({
+        rawBody,
+        signature,
+        timestamp: signedAt,
+      });
+      if (verification.kind === "invalid") {
+        return errorResponse(context, "WEBHOOK_SIGNATURE_INVALID");
+      }
+      let parsedBody: unknown;
+      try {
+        parsedBody = JSON.parse(new TextDecoder().decode(rawBody));
+      } catch {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const request =
+        RegulatoryChangeWebhookRequestSchema.safeParse(parsedBody);
+      if (
+        !request.success ||
+        String(request.data.meetingId) !== context.req.param("meetingId") ||
+        String(request.data.monitorRegistrationId) !==
+          context.req.param("monitorRegistrationId")
+      ) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const result = await receiveRegulatoryChange(
+        runtime.externalEvents,
+        { kind: "system" },
+        {
+          correlationId: context.get("correlationId"),
+          description: request.data.description,
+          effectiveAt: request.data.effectiveAt,
+          eventId: request.data.eventId,
+          eventType: request.data.eventType,
+          jurisdiction: request.data.jurisdiction,
+          meetingId: request.data.meetingId,
+          monitorRegistrationId: request.data.monitorRegistrationId,
+          payloadHash: verification.payloadHash,
+          source: request.data.source,
+          sourceReference: request.data.sourceReference,
+        },
+      );
+      if (result.kind === "failed") {
+        if (result.code === "MONITOR_REGISTRATION_NOT_FOUND") {
+          return errorResponse(context, "MEETING_NOT_FOUND");
+        }
+        if (result.code === "IDEMPOTENCY_CONFLICT") {
+          return errorResponse(context, "IDEMPOTENCY_CONFLICT");
+        }
+        if (result.code === "CONFLICT") {
+          return errorResponse(context, "CONFLICT");
+        }
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      return context.json(
+        RegulatoryChangeWebhookResponseSchema.parse({
+          correlationId: result.correlationId,
+          evaluationStatus: "pending",
+          event: {
+            description: result.event.description,
+            effectiveAt: result.event.effectiveAt,
+            eventId: result.event.id,
+            eventType: result.event.eventType,
+            jurisdiction: result.event.jurisdiction,
+            meetingId: result.event.meetingId,
+            monitorRegistrationId: result.event.monitorRegistrationId,
+            payloadHash: result.event.payloadHash,
+            receivedAt: result.event.receivedAt,
+            schemaVersion: result.event.schemaVersion,
+            source: result.event.source,
+            sourceReference: result.event.sourceReference,
+          },
+          position: result.position,
+          receiptStatus: "received",
+          replayed: result.replayed,
+        }),
+        202,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/meetings/:meetingId/demo/regulatory-changes",
+    async (context) => {
+      const request = await parseJson(
+        context,
+        InjectDemoRegulatoryChangeRequestSchema,
+      );
+      if (request.kind === "rejected") {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const meetingScope = context.req.param("meetingId");
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        meetingScope,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const result = await injectDemoRegulatoryChange(
+        runtime.externalEvents,
+        resolved.authorization,
+        {
+          correlationId: context.get("correlationId"),
+          idempotencyKey: request.value.idempotencyKey,
+          meetingId: meetingScope,
+        },
+      );
+      if (result.kind === "failed") {
+        if (result.code === "FORBIDDEN") {
+          return errorResponse(context, "FORBIDDEN");
+        }
+        if (result.code === "MONITOR_REGISTRATION_NOT_FOUND") {
+          return errorResponse(context, "INVALID_STATE_TRANSITION");
+        }
+        if (result.code === "IDEMPOTENCY_CONFLICT") {
+          return errorResponse(context, "IDEMPOTENCY_CONFLICT");
+        }
+        if (result.code === "CONFLICT") {
+          return errorResponse(context, "CONFLICT");
+        }
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      return context.json(
+        InjectDemoRegulatoryChangeResponseSchema.parse({
+          correlationId: result.correlationId,
+          evaluationStatus: "pending",
+          event: {
+            description: result.event.description,
+            effectiveAt: result.event.effectiveAt,
+            eventId: result.event.id,
+            eventType: result.event.eventType,
+            jurisdiction: result.event.jurisdiction,
+            meetingId: result.event.meetingId,
+            monitorRegistrationId: result.event.monitorRegistrationId,
+            payloadHash: result.event.payloadHash,
+            receivedAt: result.event.receivedAt,
+            schemaVersion: result.event.schemaVersion,
+            source: result.event.source,
+            sourceReference: result.event.sourceReference,
+          },
+          position: result.position,
+          receiptStatus: "received",
+          replayed: result.replayed,
+        }),
+        202,
+      );
+    },
+  );
 
   app.get(
     "/api/v1/meetings/:meetingId/decisions/:decisionId/history",

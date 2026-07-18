@@ -5,9 +5,11 @@ import {
   DecisionHistoryResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
+  InjectDemoRegulatoryChangeResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListSharedDecisionsResponseSchema,
+  ListSharedExternalEventsResponseSchema,
   ListSharedEvidenceResponseSchema,
   LoginResponseSchema,
   LogoutResponseSchema,
@@ -30,7 +32,9 @@ import {
   type DispositionSharedDecisionCandidateRequest,
   type DispositionSharedDecisionCandidateResponse,
   type LoginResponse,
+  type InjectDemoRegulatoryChangeResponse,
   type ListSharedDecisionsResponse,
+  type ListSharedExternalEventsResponse,
   type ListSharedEvidenceResponse,
   type MarkDecisionReadyRequest,
   type MarkDecisionReadyResponse,
@@ -53,6 +57,7 @@ export type {
   DecisionAuditResponse,
   DecisionHistoryQuery,
   DecisionHistoryResponse,
+  InjectDemoRegulatoryChangeResponse,
   DispositionSharedDecisionCandidateRequest,
   DispositionSharedDecisionCandidateResponse,
   MarkDecisionReadyRequest,
@@ -307,6 +312,19 @@ export async function listSharedDecisions(
   return ListSharedDecisionsResponseSchema.parse(body);
 }
 
+export async function listSharedExternalEvents(
+  session: StoredSession,
+  meetingId: string,
+  signal?: AbortSignal,
+): Promise<ListSharedExternalEventsResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/external-events`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return ListSharedExternalEventsResponseSchema.parse(body);
+}
+
 export async function joinMeeting(
   session: StoredSession,
   code: string,
@@ -543,6 +561,24 @@ export async function startDecisionMonitoring(
     session,
   );
   return StartDecisionMonitoringResponseSchema.parse(body);
+}
+
+export async function injectDemoRegulatoryChange(
+  session: StoredSession,
+  input: {
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+  },
+): Promise<InjectDemoRegulatoryChangeResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/demo/regulatory-changes`,
+    {
+      body: JSON.stringify({ idempotencyKey: input.idempotencyKey }),
+      method: "POST",
+    },
+    session,
+  );
+  return InjectDemoRegulatoryChangeResponseSchema.parse(body);
 }
 
 export async function getDecisionHistory(

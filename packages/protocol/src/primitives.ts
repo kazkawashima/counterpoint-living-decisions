@@ -53,6 +53,13 @@ export const DissentIdSchema = brandedOpaqueId("DissentId");
 export const ActionIdSchema = brandedOpaqueId("ActionId");
 export const InterventionIdSchema = brandedOpaqueId("InterventionId");
 export const ExternalEventIdSchema = brandedOpaqueId("ExternalEventId");
+export const ContentHashSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(512)
+  .regex(/^sha256:[A-Za-z0-9_-]+$/u)
+  .brand<"ContentHash">();
 export const DecisionRevisionIdSchema = brandedOpaqueId("DecisionRevisionId");
 export const ReconsiderationTaskIdSchema = brandedOpaqueId(
   "ReconsiderationTaskId",
@@ -94,6 +101,7 @@ export type DissentId = z.infer<typeof DissentIdSchema>;
 export type ActionId = z.infer<typeof ActionIdSchema>;
 export type InterventionId = z.infer<typeof InterventionIdSchema>;
 export type ExternalEventId = z.infer<typeof ExternalEventIdSchema>;
+export type ContentHash = z.infer<typeof ContentHashSchema>;
 export type DecisionRevisionId = z.infer<typeof DecisionRevisionIdSchema>;
 export type ReconsiderationTaskId = z.infer<typeof ReconsiderationTaskIdSchema>;
 export type RelationId = z.infer<typeof RelationIdSchema>;

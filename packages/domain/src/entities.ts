@@ -283,13 +283,17 @@ export type Intervention = SharedDomainRecord<{
 
 export type ExternalEvent = SharedDomainRecord<{
   readonly id: ExternalEventId;
+  readonly description: NonEmptyText;
   readonly eventType: NonEmptyText;
+  readonly monitorRegistrationId: MonitorRegistrationId;
   readonly payloadHash: ContentHash;
+  readonly schemaVersion: RevisionNumber;
   readonly source: NonEmptyText;
+  readonly sourceReference: NonEmptyText;
   readonly jurisdiction: NonEmptyText;
   readonly effectiveAt: Timestamp;
   readonly receivedAt: Timestamp;
-  readonly signatureResult: "valid" | "invalid";
+  readonly signatureResult: "valid" | "not_applicable";
 }>;
 
 export interface DecisionSnapshot {
@@ -574,9 +578,13 @@ export function createIntervention(input: Intervention): Intervention {
 
 export function createExternalEvent(input: ExternalEvent): ExternalEvent {
   assertCommonRecord(input);
-  if (input.visibility !== "shared" || input.signatureResult !== "valid") {
+  if (
+    input.visibility !== "shared" ||
+    (input.signatureResult !== "valid" &&
+      input.signatureResult !== "not_applicable")
+  ) {
     throw new DomainValueError(
-      "Canonical ExternalEvent must be shared and signature-validated",
+      "Canonical ExternalEvent must be shared and transport-authenticated",
     );
   }
   return input;

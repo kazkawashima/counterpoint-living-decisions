@@ -8,6 +8,7 @@ import {
   HealthRequestSchema,
   HealthResponseSchema,
   HTTP_API_V1_PREFIX,
+  InjectDemoRegulatoryChangeRequestSchema,
   JoinMeetingByCodeRequestSchema,
   ListAssignedMeetingsRequestSchema,
   LoginRequestSchema,
@@ -18,6 +19,8 @@ import {
   ProposeDisclosureRequestSchema,
   ReadinessRequestSchema,
   ReadinessResponseSchema,
+  RegulatoryChangeWebhookRequestSchema,
+  RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RejectDisclosureRequestSchema,
   RoleProjectionQuerySchema,
@@ -267,6 +270,71 @@ describe("strict v1 HTTP protocol", () => {
       StartDecisionMonitoringResponseSchema.safeParse({
         ...response,
         revision: { version: 3 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps signed regulatory payloads strict and server-derived receipts explicit", () => {
+    const request = {
+      description: "A synthetic regulation changes the approval gate.",
+      effectiveAt: "2026-08-01T00:00:00.000Z",
+      eventId: "regulator:event-1",
+      eventType: "regulatory_change",
+      jurisdiction: "European Union",
+      meetingId: "meeting-1",
+      monitorRegistrationId: "monitor-registration-1",
+      schemaVersion: 1,
+      source: "Synthetic regulator feed",
+      sourceReference: "https://example.invalid/regulation/1",
+    };
+    expect(
+      RegulatoryChangeWebhookRequestSchema.safeParse(request).success,
+    ).toBe(true);
+    expect(
+      RegulatoryChangeWebhookRequestSchema.safeParse({
+        ...request,
+        actor: { kind: "system" },
+      }).success,
+    ).toBe(false);
+    expect(
+      RegulatoryChangeWebhookRequestSchema.safeParse({
+        ...request,
+        schemaVersion: 2,
+      }).success,
+    ).toBe(false);
+
+    const receipt = {
+      correlationId: "correlation-1",
+      evaluationStatus: "pending",
+      event: {
+        ...request,
+        payloadHash: "sha256:c3ludGhldGlj",
+        receivedAt: "2026-07-19T12:00:00.000Z",
+      },
+      position: 12,
+      receiptStatus: "received",
+      replayed: false,
+    };
+    expect(
+      RegulatoryChangeWebhookResponseSchema.safeParse(receipt).success,
+    ).toBe(true);
+    expect(
+      RegulatoryChangeWebhookResponseSchema.safeParse({
+        ...receipt,
+        evaluationStatus: "complete",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      InjectDemoRegulatoryChangeRequestSchema.safeParse({
+        idempotencyKey: "demo-event-1",
+      }).success,
+    ).toBe(true);
+    expect(
+      InjectDemoRegulatoryChangeRequestSchema.safeParse({
+        idempotencyKey: "demo-event-1",
+        actor: { kind: "system" },
+        description: request.description,
       }).success,
     ).toBe(false);
   });

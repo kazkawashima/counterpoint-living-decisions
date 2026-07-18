@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHmac } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,11 +22,13 @@ import {
   ListAssignedMeetingsResponseSchema,
   ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
+  ListSharedExternalEventsResponseSchema,
   LoginResponseSchema,
   MarkDecisionReadyResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   ReadinessResponseSchema,
+  RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   SaveDecisionDraftResponseSchema,
   StartDecisionMonitoringResponseSchema,
@@ -35,6 +38,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const temporaryDirectories: string[] = [];
 const runtimes: LocalServerRuntime[] = [];
+const WEBHOOK_SECRET = "synthetic-regulatory-webhook-secret";
+
+function webhookSignature(timestamp: string, rawBody: string): string {
+  return `v1=${createHmac("sha256", WEBHOOK_SECRET)
+    .update(`${timestamp}.`, "utf8")
+    .update(rawBody, "utf8")
+    .digest("hex")}`;
+}
 
 async function fixture(
   environment: Readonly<Record<string, string | undefined>> = {},
@@ -638,6 +649,7 @@ describe("Node HTTP flagship shell", () => {
     const { app, runtime } = await fixture({
       NODE_ENV: "test",
       OPENAI_FAKE_MODE: "deterministic",
+      REGULATORY_WEBHOOK_SECRET: WEBHOOK_SECRET,
     });
     const facilitator = await login(app, "product", "counterpoint-product");
     const participant = await login(app, "safety", "counterpoint-safety");
@@ -1075,6 +1087,178 @@ describe("Node HTTP flagship shell", () => {
       "DecisionCommitted",
       "MonitoringStarted",
     ]);
+
+    const regulatoryPayload = {
+      description:
+        "A staged synthetic regulation changes the regional approval gate.",
+      effectiveAt: "2026-08-01T00:00:00.000Z",
+      eventId: "regulator:synthetic-eu-2026-08",
+      eventType: "regulatory_change",
+      jurisdiction: "European Union",
+      meetingId,
+      monitorRegistrationId: monitoring.monitorRegistrationId,
+      schemaVersion: 1,
+      source: "Synthetic regulator feed",
+      sourceReference: "https://example.invalid/regulations/eu-2026-08",
+    };
+    const regulatoryRawBody = JSON.stringify(regulatoryPayload);
+    const webhookTimestamp = String(Math.floor(Date.now() / 1_000));
+    const webhookUrl =
+      `/api/v1/webhooks/regulatory-changes/${meetingId}/` +
+      monitoring.monitorRegistrationId;
+    const invalidWebhook = await app.request(webhookUrl, {
+      body: regulatoryRawBody,
+      headers: {
+        "content-type": "application/json",
+        "x-counterpoint-webhook-signature": "v1=".padEnd(67, "0"),
+        "x-counterpoint-webhook-timestamp": webhookTimestamp,
+      },
+      method: "POST",
+    });
+    expect(invalidWebhook.status).toBe(403);
+
+    const webhookHeaders = {
+      "content-type": "application/json",
+      "x-counterpoint-webhook-signature": webhookSignature(
+        webhookTimestamp,
+        regulatoryRawBody,
+      ),
+      "x-counterpoint-webhook-timestamp": webhookTimestamp,
+    };
+    const webhookResponse = await app.request(webhookUrl, {
+      body: regulatoryRawBody,
+      headers: webhookHeaders,
+      method: "POST",
+    });
+    expect(webhookResponse.status).toBe(202);
+    const receipt = RegulatoryChangeWebhookResponseSchema.parse(
+      await webhookResponse.json(),
+    );
+    expect(receipt).toMatchObject({
+      evaluationStatus: "pending",
+      event: {
+        eventId: regulatoryPayload.eventId,
+        monitorRegistrationId: monitoring.monitorRegistrationId,
+      },
+      receiptStatus: "received",
+      replayed: false,
+    });
+
+    const replayedWebhook = await app.request(webhookUrl, {
+      body: regulatoryRawBody,
+      headers: webhookHeaders,
+      method: "POST",
+    });
+    expect(replayedWebhook.status).toBe(202);
+    expect(
+      RegulatoryChangeWebhookResponseSchema.parse(await replayedWebhook.json()),
+    ).toMatchObject({
+      event: receipt.event,
+      position: receipt.position,
+      replayed: true,
+    });
+    expect(
+      (await runtime.externalEvents.events.load(meetingId)).filter(
+        ({ event }) => event.eventType === "ExternalEventReceived",
+      ),
+    ).toHaveLength(1);
+
+    const conflictingRegulatoryRawBody = JSON.stringify({
+      ...regulatoryPayload,
+      description:
+        "A changed payload must not overwrite the durable original receipt.",
+    });
+    const conflictingWebhook = await app.request(webhookUrl, {
+      body: conflictingRegulatoryRawBody,
+      headers: {
+        "content-type": "application/json",
+        "x-counterpoint-webhook-signature": webhookSignature(
+          webhookTimestamp,
+          conflictingRegulatoryRawBody,
+        ),
+        "x-counterpoint-webhook-timestamp": webhookTimestamp,
+      },
+      method: "POST",
+    });
+    expect(conflictingWebhook.status).toBe(409);
+    expect(
+      (await runtime.externalEvents.events.load(meetingId)).filter(
+        ({ event }) => event.eventType === "ExternalEventReceived",
+      ),
+    ).toHaveLength(1);
+
+    const participantDemoResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/demo/regulatory-changes`,
+      {
+        body: JSON.stringify({ idempotencyKey: "participant-demo-event" }),
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(participantDemoResponse.status).toBe(403);
+
+    const demoResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/demo/regulatory-changes`,
+      {
+        body: JSON.stringify({ idempotencyKey: "facilitator-demo-event" }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(demoResponse.status).toBe(202);
+    const demoReceipt = RegulatoryChangeWebhookResponseSchema.parse(
+      await demoResponse.json(),
+    );
+    expect(demoReceipt).toMatchObject({
+      evaluationStatus: "pending",
+      event: {
+        monitorRegistrationId: monitoring.monitorRegistrationId,
+      },
+      receiptStatus: "received",
+    });
+    expect(demoReceipt.event.description).toContain("Staged demo event");
+    const demoDomainEvent = (
+      await runtime.externalEvents.events.load(meetingId)
+    ).find(
+      ({ event }) =>
+        event.eventType === "ExternalEventReceived" &&
+        String(event.payload.externalEvent.id) ===
+          String(demoReceipt.event.eventId),
+    )?.event;
+    expect(demoDomainEvent).toMatchObject({
+      actor: {
+        kind: "participant",
+      },
+      payload: {
+        externalEvent: {
+          origin: "human_input",
+          signatureResult: "not_applicable",
+        },
+      },
+    });
+    expect(
+      demoDomainEvent?.actor.kind === "participant"
+        ? demoDomainEvent.actor.participantId
+        : undefined,
+    ).toBeTruthy();
+
+    const listedExternalEventsResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/external-events`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(listedExternalEventsResponse.status).toBe(200);
+    expect(
+      ListSharedExternalEventsResponseSchema.parse(
+        await listedExternalEventsResponse.json(),
+      ).events,
+    ).toHaveLength(2);
 
     const staleReady = await app.request("/api/v1/decisions/ready", {
       body: JSON.stringify({

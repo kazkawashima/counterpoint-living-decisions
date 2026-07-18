@@ -26,18 +26,18 @@ history.
 
 ### D2 — Signed webhook
 
-- [ ] Define regulatory-change schema and monitor registration.
-- [ ] Verify timestamped signature over raw body.
-- [ ] Reject replay, wrong schema, and wrong meeting registration.
-- [ ] Enforce durable receipt and idempotency.
-- [ ] Publish evaluation status separately from receipt.
+- [x] Define regulatory-change schema and monitor registration.
+- [x] Verify timestamped signature over raw body.
+- [x] Reject replay, wrong schema, and wrong meeting registration.
+- [x] Enforce durable receipt and idempotency.
+- [x] Publish evaluation status separately from receipt.
 
 ### D3 — Demo event parity
 
-- [ ] Add facilitator-only demo event button.
-- [ ] Route it through the same normalized application use case.
-- [ ] Ensure it injects an event only; no automatic review confirmation.
-- [ ] Record actor/origin accurately.
+- [x] Add facilitator-only demo event button.
+- [x] Route it through the same normalized application use case.
+- [x] Ensure it injects an event only; no automatic review confirmation.
+- [x] Record actor/origin accurately.
 
 ### D4 — GPT-5.6 invalidation evaluation
 

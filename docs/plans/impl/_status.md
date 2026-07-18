@@ -4,9 +4,9 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**M1 Foundation, permissioned disclosure, private/shared AI assistance, and
-the deterministic Decision commitment slice are complete; production runtime
-and post-commit monitoring are next.**
+**Foundation, permissioned disclosure, private/shared AI assistance, Decision
+commitment, production-like Compose, monitoring, and external-event receipt
+are complete; invalidation evaluation and human review are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -129,11 +129,20 @@ The canonical implementation-facing artifacts are:
   appends a shared system-authored `MonitoringStarted` event, preserves the
   immutable committed revision, supports exact idempotent replay, and
   transitions the shared Decision from `COMMITTED` to `MONITORING`.
+- D2/D3 regulatory receipt uses strict schema-v1 payloads, exact raw-body
+  HMAC-SHA256 with a five-minute timestamp window, constant-time comparison,
+  durable event-store idempotency, and meeting/registration matching. Signed
+  webhook and facilitator-only staged demo transports converge on one
+  normalized use case while retaining truthful system/participant provenance.
+- External receipt and `evaluationStatus=pending` hydrate for all assigned
+  participants while the Decision remains `MONITORING`; invalid signatures
+  append nothing. Two new screenshots and the extended reel clip document the
+  state.
 
 ## In progress
 
+- Evaluate a received external event against the active committed revision.
 - Complete the versioned capability surface and realtime resume path.
-- Extend the committed Decision into monitoring and external-event review.
 
 ## Not started
 
@@ -142,12 +151,12 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue the shortest production-like path across L3/L7 and D1 in
-[`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md) and
+Continue D4 in
 [`04-commitment-and-living-decision.md`](../04-commitment-and-living-decision.md):
-add monitoring registration/state, then package the verified local path in
-Compose with health checks and persistent volumes. Keep Realtime and external
-ingestion behind explicit ports while those slices remain incomplete.
+build a bounded GPT-5.6 invalidation evaluation from the immutable active
+revision and received external event, validate every affected reference,
+append the suggestion with model provenance, and move the Decision to
+`AT_RISK`. Keep review confirmation human-only.
 
 ## Open gates
 

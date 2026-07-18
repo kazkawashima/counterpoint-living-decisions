@@ -6,6 +6,7 @@ import {
   createJsonCodec,
   LocalArtifactStore,
   NodeSqliteDatabase,
+  NodeHmacWebhookVerifier,
   ScryptPasswordHasher,
   seedSyntheticUsers,
   Sha256SessionTokenIssuer,
@@ -29,6 +30,7 @@ import type {
   DecisionCandidateDependencies,
   DecisionDependencies,
   DisclosureDependencies,
+  ExternalEventDependencies,
 } from "@counterpoint/application";
 import {
   domainEventTypes,
@@ -43,6 +45,7 @@ import type {
   PasswordVerifier,
   SessionRepository,
   SessionTokenIssuer,
+  WebhookVerifier,
 } from "@counterpoint/ports";
 
 import type { ServerConfiguration } from "./config.js";
@@ -53,6 +56,7 @@ export interface ServerRuntime {
   readonly decisionCandidates: DecisionCandidateDependencies;
   readonly decisions: DecisionDependencies;
   readonly disclosures: DisclosureDependencies;
+  readonly externalEvents: ExternalEventDependencies;
   readonly facilitatorUserIds: ReadonlySet<string>;
   readonly ids: IdGenerator;
   readonly identities: IdentityRepository;
@@ -62,6 +66,7 @@ export interface ServerRuntime {
   readonly passwords: PasswordVerifier;
   readonly sessions: SessionRepository;
   readonly tokens: SessionTokenIssuer;
+  readonly webhookVerifier: WebhookVerifier | undefined;
 }
 
 export interface LocalServerRuntime extends ServerRuntime {
@@ -267,6 +272,14 @@ export async function createLocalServerRuntime(
         : { candidateProposer: configuredCandidateProposer }),
       ...decisions,
     };
+    const webhookVerifier =
+      configuration.regulatoryWebhookSecret === undefined
+        ? undefined
+        : new NodeHmacWebhookVerifier({
+            clock,
+            maxAgeSeconds: configuration.regulatoryWebhookMaxAgeSeconds,
+            secret: configuration.regulatoryWebhookSecret,
+          });
 
     return {
       artifactStorageAvailable,
@@ -275,6 +288,12 @@ export async function createLocalServerRuntime(
       decisionCandidates,
       decisions,
       disclosures,
+      externalEvents: {
+        clock,
+        events,
+        ids,
+        projections,
+      },
       facilitatorUserIds: new Set(
         configuration.demoUsers
           .filter(({ role }) => role === "facilitator")
@@ -290,6 +309,7 @@ export async function createLocalServerRuntime(
       passwords: new ScryptPasswordHasher(),
       sessions: new SqliteSessionRepository(database),
       tokens: new Sha256SessionTokenIssuer(),
+      webhookVerifier,
     };
   } catch (error) {
     database.close();

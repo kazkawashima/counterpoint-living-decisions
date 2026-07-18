@@ -76,6 +76,15 @@ export {
   type SharedDecisionSynthesizer,
 } from "./decision-candidates.js";
 export {
+  injectDemoRegulatoryChange,
+  receiveRegulatoryChange,
+  type ExternalEventActor,
+  type ExternalEventDependencies,
+  type InjectDemoRegulatoryChangeInput,
+  type ReceiveRegulatoryChangeResult,
+  type RegulatoryChangeInput,
+} from "./external-events.js";
+export {
   createMeeting,
   joinMeetingByCode,
   listAssignedMeetings,
