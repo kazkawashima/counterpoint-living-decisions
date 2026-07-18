@@ -1,11 +1,24 @@
 import {
+  ApproveDisclosureResponseSchema,
   ErrorEnvelopeSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedEvidenceResponseSchema,
   LoginResponseSchema,
   LogoutResponseSchema,
+  PreviewDisclosureResponseSchema,
+  ProposeDisclosureResponseSchema,
+  RegisterPrivateTextSourceFixtureResponseSchema,
+  RejectDisclosureResponseSchema,
   type AssignedMeeting,
+  type ApproveDisclosureResponse,
   type LoginResponse,
+  type ListSharedEvidenceResponse,
+  type PreviewDisclosureResponse,
+  type ProposeDisclosureResponse,
+  type RegisterPrivateTextSourceFixtureResponse,
+  type RejectDisclosureResponse,
+  type TextRange,
 } from "@counterpoint/protocol";
 
 const SESSION_KEY = "counterpoint.session";
@@ -126,6 +139,19 @@ export async function listMeetings(
   return ListAssignedMeetingsResponseSchema.parse(body).meetings;
 }
 
+export async function listSharedEvidence(
+  session: StoredSession,
+  meetingId: string,
+  signal?: AbortSignal,
+): Promise<ListSharedEvidenceResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/evidence`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return ListSharedEvidenceResponseSchema.parse(body);
+}
+
 export async function joinMeeting(
   session: StoredSession,
   code: string,
@@ -154,4 +180,121 @@ export async function logout(session: StoredSession): Promise<void> {
     session,
   );
   LogoutResponseSchema.parse(body);
+}
+
+export async function registerPrivateTextSource(
+  session: StoredSession,
+  input: {
+    readonly expectedPosition: number;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly text: string;
+    readonly title: string;
+  },
+): Promise<RegisterPrivateTextSourceFixtureResponse> {
+  const body = await request(
+    "/api/v1/disclosures/sources/text",
+    {
+      body: JSON.stringify({
+        ...input,
+      }),
+      method: "POST",
+    },
+    session,
+  );
+  return RegisterPrivateTextSourceFixtureResponseSchema.parse(body);
+}
+
+export async function proposeDisclosure(
+  session: StoredSession,
+  input: {
+    readonly exactSnippet: string;
+    readonly expectedPosition: number;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly sourceArtifactId: string;
+    readonly sourceRange: TextRange;
+  },
+): Promise<ProposeDisclosureResponse> {
+  const body = await request(
+    "/api/v1/disclosures/proposals",
+    {
+      body: JSON.stringify({
+        ...input,
+      }),
+      method: "POST",
+    },
+    session,
+  );
+  return ProposeDisclosureResponseSchema.parse(body);
+}
+
+export async function previewDisclosure(
+  session: StoredSession,
+  input: {
+    readonly candidateId: string;
+    readonly exactSnippet: string;
+    readonly expectedPosition: number;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly sourceRange: TextRange;
+  },
+): Promise<PreviewDisclosureResponse> {
+  const body = await request(
+    "/api/v1/disclosures/preview",
+    {
+      body: JSON.stringify({
+        ...input,
+      }),
+      method: "POST",
+    },
+    session,
+  );
+  return PreviewDisclosureResponseSchema.parse(body);
+}
+
+export async function approveDisclosure(
+  session: StoredSession,
+  input: {
+    readonly candidateId: string;
+    readonly expectedPosition: number;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly previewHash: string;
+  },
+): Promise<ApproveDisclosureResponse> {
+  const body = await request(
+    "/api/v1/disclosures/approve",
+    {
+      body: JSON.stringify({
+        ...input,
+      }),
+      method: "POST",
+    },
+    session,
+  );
+  return ApproveDisclosureResponseSchema.parse(body);
+}
+
+export async function rejectDisclosure(
+  session: StoredSession,
+  input: {
+    readonly candidateId: string;
+    readonly expectedPosition: number;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly reason?: string;
+  },
+): Promise<RejectDisclosureResponse> {
+  const body = await request(
+    "/api/v1/disclosures/reject",
+    {
+      body: JSON.stringify({
+        ...input,
+      }),
+      method: "POST",
+    },
+    session,
+  );
+  return RejectDisclosureResponseSchema.parse(body);
 }

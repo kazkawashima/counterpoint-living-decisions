@@ -11,6 +11,7 @@
   "dependencies": {
     "@counterpoint/adapters-node": "0.0.0",
     "@counterpoint/application": "0.0.0",
+    "@counterpoint/domain": "0.0.0",
     "@counterpoint/ports": "0.0.0",
     "@counterpoint/protocol": "0.0.0",
     "@hono/node-server": "2.0.10",

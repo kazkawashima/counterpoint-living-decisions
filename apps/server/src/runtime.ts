@@ -1,16 +1,28 @@
+import { createHash } from "node:crypto";
+
 import {
   CryptographicIdGenerator,
   CURRENT_SQLITE_MIGRATION_COUNT,
+  createJsonCodec,
+  LocalArtifactStore,
   NodeSqliteDatabase,
   ScryptPasswordHasher,
   seedSyntheticUsers,
   Sha256SessionTokenIssuer,
   sqliteMigrationCount,
   SqliteIdentityRepository,
+  SqliteEventStore,
   SqliteMeetingRepository,
+  SqliteProjectionStore,
   SqliteSessionRepository,
   SystemClock,
 } from "@counterpoint/adapters-node";
+import type { DisclosureDependencies } from "@counterpoint/application";
+import {
+  domainEventTypes,
+  type DomainEvent,
+  type MeetingProjection,
+} from "@counterpoint/domain";
 import type {
   Clock,
   IdGenerator,
@@ -24,7 +36,9 @@ import type {
 import type { ServerConfiguration } from "./config.js";
 
 export interface ServerRuntime {
+  readonly artifactStorageAvailable: boolean;
   readonly clock: Clock;
+  readonly disclosures: DisclosureDependencies;
   readonly facilitatorUserIds: ReadonlySet<string>;
   readonly ids: IdGenerator;
   readonly identities: IdentityRepository;
@@ -42,6 +56,47 @@ export interface LocalServerRuntime extends ServerRuntime {
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 const FLAGSHIP_MEETING_CODE = "GLOBAL-AI-2026";
+const domainEventTypeSet = new Set<string>(domainEventTypes);
+
+function parseStoredDomainEvent(input: unknown): DomainEvent {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    !("eventType" in input) ||
+    typeof input.eventType !== "string" ||
+    !domainEventTypeSet.has(input.eventType) ||
+    !("eventId" in input) ||
+    typeof input.eventId !== "string" ||
+    !("meetingId" in input) ||
+    typeof input.meetingId !== "string" ||
+    !("position" in input) ||
+    typeof input.position !== "number" ||
+    !("schemaVersion" in input) ||
+    typeof input.schemaVersion !== "number" ||
+    !("visibility" in input) ||
+    (input.visibility !== "private" && input.visibility !== "shared") ||
+    !("payload" in input) ||
+    typeof input.payload !== "object" ||
+    input.payload === null
+  ) {
+    throw new TypeError("Stored domain event is invalid");
+  }
+  if (
+    (input.visibility === "private" &&
+      (!("ownerParticipantId" in input) ||
+        typeof input.ownerParticipantId !== "string")) ||
+    (input.visibility === "shared" && "ownerParticipantId" in input)
+  ) {
+    throw new TypeError("Stored domain event visibility scope is invalid");
+  }
+  return input as DomainEvent;
+}
+
+const sha256 = {
+  hash(value: string): string {
+    return `sha256:${createHash("sha256").update(value, "utf8").digest("base64url")}`;
+  },
+};
 
 async function seedFlagshipMeeting(
   meetings: MeetingRepository,
@@ -91,16 +146,53 @@ export async function createLocalServerRuntime(
     );
     const meetings = new SqliteMeetingRepository(database);
     await seedFlagshipMeeting(meetings, configuration);
+    const clock = new SystemClock();
+    const ids = new CryptographicIdGenerator();
+    const artifacts = new LocalArtifactStore(configuration.storagePath);
+    let artifactStorageAvailable = true;
+    const probeScope = {
+      artifactId: "runtime-probe",
+      meetingId: "runtime-probe",
+      ownerParticipantId: "runtime-probe",
+      visibility: "private" as const,
+    };
+    try {
+      await artifacts.put({
+        bytes: new Uint8Array(),
+        contentType: "application/octet-stream",
+        hash: "runtime-probe",
+        scope: probeScope,
+      });
+      await artifacts.delete(probeScope);
+    } catch {
+      artifactStorageAvailable = false;
+    }
+    const disclosures: DisclosureDependencies = {
+      artifacts,
+      clock,
+      events: new SqliteEventStore(
+        database,
+        createJsonCodec(parseStoredDomainEvent),
+      ),
+      hash: sha256,
+      ids,
+      projections: new SqliteProjectionStore<MeetingProjection>(
+        database,
+        createJsonCodec((input) => input as MeetingProjection),
+      ),
+    };
 
     return {
-      clock: new SystemClock(),
+      artifactStorageAvailable,
+      clock,
       close: () => database.close(),
+      disclosures,
       facilitatorUserIds: new Set(
         configuration.demoUsers
           .filter(({ role }) => role === "facilitator")
           .map(({ userId }) => userId),
       ),
-      ids: new CryptographicIdGenerator(),
+      ids,
       identities: new SqliteIdentityRepository(database),
       meetings,
       migrationsCurrent:

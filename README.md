@@ -12,8 +12,8 @@ implementation plan is in [`docs/plans/`](docs/plans/README.md). The M1
 foundation is complete: workspace tooling, protocol contracts, deterministic
 domain/replay, Decision lifecycle, ports, and contract harnesses are
 implemented. The local Node persistence/authentication API, seeded flagship,
-login/meeting UI, and first participant-private workspace shell are now
-implemented.
+login/meeting UI, participant-private workspace, and exact
+preview/approve/reject disclosure path are now implemented.
 
 The intended architecture is:
 

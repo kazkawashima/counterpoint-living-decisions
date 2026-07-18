@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   "JUDGE_MODE_FORBIDDEN",
   "USAGE_LIMIT_REACHED",
   "SHARED_FLOOR_BUSY",
+  "ARTIFACT_STORAGE_UNAVAILABLE",
   "ARTIFACT_TOO_LARGE",
   "ARTIFACT_TYPE_UNSUPPORTED",
   "URL_BLOCKED",
@@ -80,6 +81,10 @@ export const ERROR_CODE_REGISTRY = {
   },
   SHARED_FLOOR_BUSY: {
     message: "The shared floor is currently in use. Try again shortly.",
+    retryable: true,
+  },
+  ARTIFACT_STORAGE_UNAVAILABLE: {
+    message: "Artifact storage is temporarily unavailable.",
     retryable: true,
   },
   ARTIFACT_TOO_LARGE: {

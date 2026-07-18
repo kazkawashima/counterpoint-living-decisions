@@ -55,16 +55,36 @@ The canonical implementation-facing artifacts are:
 - React login, assigned-meeting list, code fallback, and responsive
   participant-private/shared workspace shell with tab-scoped session storage.
 - Browser E2E for desktop, mobile, reduced motion, external-host-style access,
-  and safe authentication failure, with six screenshots and one reel clip.
+  safe authentication failure, explicit disclosure approval, and rejection,
+  with nine screenshots and two reel clips.
 - Deterministic disclosure application core through owner-private source,
   proposal, editable preview, hash revalidation, approval/rejection, and
   shared Evidence publication. Complete projections remain owner-partitioned.
+- Versioned HTTP disclosure routes backed by SQLite events, partitioned local
+  artifacts, server-resolved meeting authorization, optimistic positions, and
+  strict request/response schemas.
+- Participant-visible cursors exclude other owners' private events; global
+  stream positions remain server-internal so private activity does not create a
+  cross-owner timing/count hint.
+- Persistent idempotent replay covers source registration and two-event
+  approval, and the browser reuses operation keys to recover after a lost
+  successful response.
+- Participant disclosure UI with editable exact-excerpt selection, complete
+  outgoing preview, explicit approve/keep-private actions, and animated shared
+  Evidence arrival with reduced-motion behavior.
+- Shared Evidence hydrates from persisted events after reload and appears for
+  every assigned participant, while owner-private source material remains
+  excluded.
+- Integration proof that cross-owner source access and tampered preview hashes
+  fail, no shared event exists before approval, and unapproved surrounding text
+  never enters the shared event.
+- Startup artifact-storage probe with readiness degradation and a stable 503
+  error when the configured local path is unusable.
 
 ## In progress
 
-- Expose the deterministic disclosure core through versioned HTTP and connect
-  the live participant workspace.
 - Complete the facilitator, shared-display, history, and audit role surfaces.
+- Assemble shared Decision inputs and the deterministic commit UI.
 
 ## Not started
 
@@ -73,9 +93,9 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Complete [`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md)
-L5 disclosure HTTP/UI vertical slice, preserving the owner/shared projection
-partition. Do not start optional scenarios.
+Continue [`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md)
+with the L6 deterministic Decision commit vertical slice while preserving the
+owner/shared projection partition. Do not start optional scenarios.
 
 ## Open gates
 

@@ -403,6 +403,7 @@ async function appendMutation(
     idempotencyKey: input.idempotencyKey,
     meetingId: input.meetingId,
     payloadFingerprint: fingerprint,
+    trustPayloadFingerprintForReplay: true,
   });
   if (result.kind === "position_conflict") {
     return {

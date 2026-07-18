@@ -57,7 +57,7 @@ ports.
       boundary.
 - [x] Produce a deterministic owner-only disclosure candidate through a test
       adapter.
-- [ ] Show exact outgoing preview and editable snippet.
+- [x] Show exact outgoing preview and editable snippet.
 - [x] Enforce preview hash and owner approval at the application boundary.
 - [x] Publish only approved Evidence to shared state.
 

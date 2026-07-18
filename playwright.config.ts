@@ -8,6 +8,7 @@ function reachableHost(): string {
 
 const webPort = 5173;
 const apiPort = 8787;
+const runtimeSuffix = String(process.pid);
 
 export default defineConfig({
   expect: {
@@ -38,20 +39,21 @@ export default defineConfig({
     {
       command: "npm run dev --workspace @counterpoint/server",
       env: {
-        DATABASE_PATH: "./data/e2e-counterpoint.sqlite",
+        DATABASE_PATH: `/tmp/counterpoint-e2e-${runtimeSuffix}.sqlite`,
         HOST: "0.0.0.0",
         NODE_ENV: "test",
         OPENAI_API_KEY: "",
         PORT: String(apiPort),
+        STORAGE_PATH: `/tmp/counterpoint-e2e-${runtimeSuffix}-artifacts`,
       },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       url: `http://127.0.0.1:${String(apiPort)}/health`,
     },
     {
       command:
         "npm run dev --workspace @counterpoint/web -- --port 5173 --strictPort",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       url: `http://127.0.0.1:${String(webPort)}`,
     },

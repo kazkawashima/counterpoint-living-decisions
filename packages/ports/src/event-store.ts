@@ -9,6 +9,8 @@ export interface AppendEventsRequest<TEvent> {
   readonly idempotencyKey?: string;
   readonly meetingId: string;
   readonly payloadFingerprint?: string;
+  /** Internal callers may opt in only when this is a canonical hash of every semantic input. */
+  readonly trustPayloadFingerprintForReplay?: boolean;
 }
 
 export type AppendEventsResult<TEvent> =

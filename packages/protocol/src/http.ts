@@ -113,6 +113,7 @@ export const AssignedMeetingSchema = z.strictObject({
   participantId: ParticipantIdSchema,
   purpose: NonEmptyTextSchema,
   phase: MeetingPhaseSchema,
+  position: MeetingPositionSchema,
   role: ParticipantRoleSchema,
 });
 export const ListAssignedMeetingsRequestSchema = z.strictObject({
@@ -367,6 +368,16 @@ export type DecisionSnapshot = z.infer<typeof DecisionSnapshotSchema>;
 export type Decision = z.infer<typeof DecisionSchema>;
 export type DecisionRevision = z.infer<typeof DecisionRevisionSchema>;
 export type AuditEntry = z.infer<typeof AuditEntrySchema>;
+
+export const ListSharedEvidenceResponseSchema = z.strictObject({
+  evidence: z.array(SharedEvidenceSchema),
+  meetingId: MeetingIdSchema,
+  position: MeetingPositionSchema,
+  ...RequiredCorrelationShape,
+});
+export type ListSharedEvidenceResponse = z.infer<
+  typeof ListSharedEvidenceResponseSchema
+>;
 
 export const RoleProjectionQuerySchema = z.strictObject({
   meetingId: MeetingIdSchema,

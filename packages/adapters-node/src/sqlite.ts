@@ -394,7 +394,8 @@ export class SqliteEventStore<TEvent> implements EventStore<TEvent> {
         if (previous !== undefined) {
           if (
             previous.payload_fingerprint !== fingerprint ||
-            previous.event_payloads_json !== serializedPayloads
+            (!request.trustPayloadFingerprintForReplay &&
+              previous.event_payloads_json !== serializedPayloads)
           ) {
             return {
               idempotencyKey: request.idempotencyKey,

@@ -5,13 +5,20 @@ import { Hono } from "hono";
 import type { ZodType } from "zod";
 
 import {
+  approveDisclosure,
   authenticateSession,
   createMeeting,
   joinMeetingByCode,
   listAssignedMeetings,
   login,
   logout,
+  previewDisclosure,
+  proposeDisclosure,
+  registerPrivateTextSource,
+  rejectDisclosure,
+  resolveMeetingAuthorization,
   userAuthorizationContext,
+  type DisclosureFailure,
 } from "@counterpoint/application";
 import type {
   IdGenerator,
@@ -20,6 +27,8 @@ import type {
   SessionRecord,
 } from "@counterpoint/ports";
 import {
+  ApproveDisclosureRequestSchema,
+  ApproveDisclosureResponseSchema,
   CreateMeetingRequestSchema,
   CreateMeetingResponseSchema,
   createErrorEnvelope,
@@ -28,11 +37,21 @@ import {
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedEvidenceResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
   LogoutResponseSchema,
+  PreviewDisclosureRequestSchema,
+  PreviewDisclosureResponseSchema,
+  ProposeDisclosureRequestSchema,
+  ProposeDisclosureResponseSchema,
   ReadinessResponseSchema,
+  RegisterPrivateTextSourceFixtureRequestSchema,
+  RegisterPrivateTextSourceFixtureResponseSchema,
+  RejectDisclosureRequestSchema,
+  RejectDisclosureResponseSchema,
+  RoleProjectionQuerySchema,
   type ErrorCode,
 } from "@counterpoint/protocol";
 
@@ -59,6 +78,7 @@ const STATUS_BY_CODE: Readonly<
   Record<ErrorCode, 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503>
 > = {
   API_KEY_REQUIRED: 400,
+  ARTIFACT_STORAGE_UNAVAILABLE: 503,
   ARTIFACT_TOO_LARGE: 400,
   ARTIFACT_TYPE_UNSUPPORTED: 400,
   AUTHENTICATION_REQUIRED: 401,
@@ -253,13 +273,39 @@ async function assignedMeeting(
   if (assignment === undefined || meeting === undefined) {
     return undefined;
   }
+  const position = await participantVisiblePosition(
+    runtime,
+    meetingId,
+    assignment.participantId,
+  );
   return {
     meetingId: meeting.meetingId,
     participantId: assignment.participantId,
     phase: "preparing" as const,
+    position,
     purpose: meeting.purpose,
     role: assignment.role,
   };
+}
+
+async function participantVisiblePosition(
+  runtime: ServerRuntime,
+  meetingId: string,
+  participantId: string,
+): Promise<number> {
+  const records = await runtime.disclosures.events.load(meetingId);
+  return records.filter(
+    ({ event }) =>
+      event.visibility === "shared" ||
+      event.ownerParticipantId === participantId,
+  ).length;
+}
+
+function disclosureFailureResponse(
+  context: AppContext,
+  failure: DisclosureFailure,
+) {
+  return errorResponse(context, failure.code);
 }
 
 export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
@@ -286,7 +332,12 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       checkedAt: runtime.clock.now(),
       dependencies: [
         { name: "database", status: "available" },
-        { name: "artifact_storage", status: "not_configured" },
+        {
+          name: "artifact_storage",
+          status: runtime.artifactStorageAvailable
+            ? "available"
+            : "unavailable",
+        },
         { name: "realtime", status: "degraded", message: "Not started in M2." },
         {
           name: "openai",
@@ -295,7 +346,10 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       ],
       migrationsCurrent: runtime.migrationsCurrent,
       protocolVersion: CURRENT_PROTOCOL_VERSION,
-      status: runtime.migrationsCurrent ? "ready" : "not_ready",
+      status:
+        runtime.migrationsCurrent && runtime.artifactStorageAvailable
+          ? "ready"
+          : "not_ready",
     });
     return context.json(response, response.status === "ready" ? 200 : 503);
   };
@@ -461,6 +515,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (result.kind === "rejected") {
       return errorResponse(context, result.code);
     }
+    const position = await participantVisiblePosition(
+      runtime,
+      result.meeting.meetingId,
+      result.authorization.participantId,
+    );
     return context.json(
       JoinMeetingByCodeResponseSchema.parse({
         capabilities: [...result.authorization.capabilities],
@@ -469,10 +528,301 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
           meetingId: result.meeting.meetingId,
           participantId: result.authorization.participantId,
           phase: "preparing",
+          position,
           purpose: result.meeting.purpose,
           role: result.authorization.role,
         },
-        position: 0,
+        position,
+      }),
+    );
+  });
+
+  app.get("/api/v1/meetings/:meetingId/evidence", async (context) => {
+    const query = RoleProjectionQuerySchema.safeParse({
+      meetingId: context.req.param("meetingId"),
+    });
+    if (!query.success) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      query.data.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const records = await runtime.disclosures.events.load(query.data.meetingId);
+    const evidence = records.flatMap(({ event }) =>
+      event.eventType === "EvidenceShared" && event.visibility === "shared"
+        ? [
+            {
+              createdAt: event.payload.evidence.createdAt,
+              evidenceId: event.payload.evidence.id,
+              exactSnippet: event.payload.evidence.exactSnippet,
+              sourceArtifactId: event.payload.evidence.sourceArtifactId,
+              sourceRange: event.payload.evidence.sourceRange,
+            },
+          ]
+        : [],
+    );
+    return context.json(
+      ListSharedEvidenceResponseSchema.parse({
+        correlationId: context.get("correlationId"),
+        evidence,
+        meetingId: query.data.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          query.data.meetingId,
+          resolved.authorization.participantId,
+        ),
+      }),
+    );
+  });
+
+  app.post("/api/v1/disclosures/sources/text", async (context) => {
+    const request = await parseJson(
+      context,
+      RegisterPrivateTextSourceFixtureRequestSchema,
+    );
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    if (!runtime.artifactStorageAvailable) {
+      return errorResponse(context, "ARTIFACT_STORAGE_UNAVAILABLE");
+    }
+    const result = await registerPrivateTextSource(
+      runtime.disclosures,
+      resolved.authorization,
+      {
+        ...request.value,
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.disclosures.events.position(
+          request.value.meetingId,
+        ),
+      },
+    );
+    if (result.kind === "failed") {
+      return disclosureFailureResponse(context, result);
+    }
+    return context.json(
+      RegisterPrivateTextSourceFixtureResponseSchema.parse({
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+        ),
+        source: result.source,
+      }),
+      201,
+    );
+  });
+
+  app.post("/api/v1/disclosures/proposals", async (context) => {
+    const request = await parseJson(context, ProposeDisclosureRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await proposeDisclosure(
+      runtime.disclosures,
+      resolved.authorization,
+      {
+        ...request.value,
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.disclosures.events.position(
+          request.value.meetingId,
+        ),
+      },
+    );
+    if (result.kind === "failed") {
+      return disclosureFailureResponse(context, result);
+    }
+    return context.json(
+      ProposeDisclosureResponseSchema.parse({
+        candidate: result.candidate,
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+        ),
+      }),
+      201,
+    );
+  });
+
+  app.post("/api/v1/disclosures/preview", async (context) => {
+    const request = await parseJson(context, PreviewDisclosureRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await previewDisclosure(
+      runtime.disclosures,
+      resolved.authorization,
+      {
+        ...request.value,
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.disclosures.events.position(
+          request.value.meetingId,
+        ),
+      },
+    );
+    if (result.kind === "failed") {
+      return disclosureFailureResponse(context, result);
+    }
+    return context.json(
+      PreviewDisclosureResponseSchema.parse({
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        outgoingPayload: result.outgoingPayload,
+        position: await participantVisiblePosition(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+        ),
+        previewHash: result.previewHash,
+      }),
+    );
+  });
+
+  app.post("/api/v1/disclosures/approve", async (context) => {
+    const request = await parseJson(context, ApproveDisclosureRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await approveDisclosure(
+      runtime.disclosures,
+      resolved.authorization,
+      {
+        ...request.value,
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.disclosures.events.position(
+          request.value.meetingId,
+        ),
+      },
+    );
+    if (result.kind === "failed") {
+      return disclosureFailureResponse(context, result);
+    }
+    return context.json(
+      ApproveDisclosureResponseSchema.parse({
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        evidence: result.evidence,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+        ),
+        previewHash: result.previewHash,
+      }),
+    );
+  });
+
+  app.post("/api/v1/disclosures/reject", async (context) => {
+    const request = await parseJson(context, RejectDisclosureRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await rejectDisclosure(
+      runtime.disclosures,
+      resolved.authorization,
+      {
+        candidateId: request.value.candidateId,
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.disclosures.events.position(
+          request.value.meetingId,
+        ),
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+        ...(request.value.reason === undefined
+          ? {}
+          : { reason: request.value.reason }),
+      },
+    );
+    if (result.kind === "failed") {
+      return disclosureFailureResponse(context, result);
+    }
+    return context.json(
+      RejectDisclosureResponseSchema.parse({
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+        ),
+        state: result.state,
       }),
     );
   });

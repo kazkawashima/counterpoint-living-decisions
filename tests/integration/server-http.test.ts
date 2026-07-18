@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,11 +9,17 @@ import {
   type LocalServerRuntime,
 } from "../../apps/server/src/index.js";
 import {
+  ApproveDisclosureResponseSchema,
   CreateMeetingResponseSchema,
   ErrorEnvelopeSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedEvidenceResponseSchema,
   LoginResponseSchema,
+  PreviewDisclosureResponseSchema,
+  ProposeDisclosureResponseSchema,
+  ReadinessResponseSchema,
+  RegisterPrivateTextSourceFixtureResponseSchema,
 } from "@counterpoint/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -28,6 +34,7 @@ async function fixture() {
       DATABASE_PATH: join(directory, "counterpoint.sqlite"),
       OPENAI_API_KEY: "",
       PORT: "8787",
+      STORAGE_PATH: join(directory, "artifacts"),
     }),
   );
   runtimes.push(runtime);
@@ -77,6 +84,51 @@ describe("Node HTTP flagship shell", () => {
     expect(body).toContain('"status":"ready"');
     expect(body).toContain('"openai","status":"not_configured"');
     expect(body).not.toMatch(/api.?key|Bearer|password/iu);
+  });
+
+  it("reports an unusable artifact path as unavailable instead of a conflict", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "counterpoint-storage-"));
+    temporaryDirectories.push(directory);
+    const invalidStoragePath = join(directory, "not-a-directory");
+    await writeFile(invalidStoragePath, "synthetic obstruction", "utf8");
+    const runtime = await createLocalServerRuntime(
+      readServerConfiguration({
+        DATABASE_PATH: join(directory, "counterpoint.sqlite"),
+        OPENAI_API_KEY: "",
+        PORT: "8787",
+        STORAGE_PATH: invalidStoragePath,
+      }),
+    );
+    runtimes.push(runtime);
+    const app = createServerApp(runtime);
+
+    const ready = await app.request("/ready");
+    expect(ready.status).toBe(503);
+    const readiness = ReadinessResponseSchema.parse(await ready.json());
+    expect(readiness.status).toBe("not_ready");
+    expect(
+      readiness.dependencies.find(({ name }) => name === "artifact_storage"),
+    ).toEqual({ name: "artifact_storage", status: "unavailable" });
+
+    const session = await login(app, "safety", "counterpoint-safety");
+    const registration = await app.request("/api/v1/disclosures/sources/text", {
+      body: JSON.stringify({
+        expectedPosition: 0,
+        idempotencyKey: "unavailable-storage-1",
+        meetingId: "meeting-global-ai-rollout",
+        text: "Synthetic private text.",
+        title: "Synthetic source",
+      }),
+      headers: {
+        authorization: `Bearer ${session.bearerToken}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(registration.status).toBe(503);
+    expect(ErrorEnvelopeSchema.parse(await registration.json())).toMatchObject({
+      code: "ARTIFACT_STORAGE_UNAVAILABLE",
+    });
   });
 
   it("logs in, lists the seeded flagship, joins by code, and revokes on logout", async () => {
@@ -234,5 +286,211 @@ describe("Node HTTP flagship shell", () => {
     const serialized = JSON.stringify(await unauthenticated.json());
     expect(serialized).not.toContain("short");
     expect(serialized).not.toContain("stack");
+  });
+
+  it("keeps source text private until an exact preview is explicitly approved", async () => {
+    const { app, runtime } = await fixture();
+    const safety = await login(app, "safety", "counterpoint-safety");
+    const legal = await login(app, "legal", "counterpoint-legal");
+    const meetingId = "meeting-global-ai-rollout";
+    const fullText =
+      "Private intro for the owner. Regional launch requires a documented approval gate. Private ending for the owner.";
+    const exactSnippet = "Regional launch requires a documented approval gate.";
+    const start = fullText.indexOf(exactSnippet);
+    const sourceRange = { end: start + exactSnippet.length, start };
+    const safetyHeaders = {
+      authorization: `Bearer ${safety.bearerToken}`,
+      "content-type": "application/json",
+    };
+
+    const registrationBody = JSON.stringify({
+      expectedPosition: 0,
+      idempotencyKey: "register-safety-source-1",
+      meetingId,
+      text: fullText,
+      title: "Synthetic regional launch note",
+    });
+    const registeredResponse = await app.request(
+      "/api/v1/disclosures/sources/text",
+      {
+        body: registrationBody,
+        headers: safetyHeaders,
+        method: "POST",
+      },
+    );
+    expect(registeredResponse.status).toBe(201);
+    const registered = RegisterPrivateTextSourceFixtureResponseSchema.parse(
+      await registeredResponse.json(),
+    );
+    expect(registered.position).toBe(1);
+    const replayedRegistration = await app.request(
+      "/api/v1/disclosures/sources/text",
+      {
+        body: registrationBody,
+        headers: safetyHeaders,
+        method: "POST",
+      },
+    );
+    expect(replayedRegistration.status).toBe(201);
+    expect(await replayedRegistration.json()).toMatchObject({
+      position: 1,
+      source: { sourceArtifactId: registered.source.sourceArtifactId },
+    });
+    expect(await runtime.disclosures.events.position(meetingId)).toBe(1);
+    const legalListBeforeApproval = await app.request("/api/v1/meetings", {
+      headers: { authorization: `Bearer ${legal.bearerToken}` },
+    });
+    expect(
+      ListAssignedMeetingsResponseSchema.parse(
+        await legalListBeforeApproval.json(),
+      ).meetings[0]?.position,
+    ).toBe(0);
+
+    const forbiddenProposal = await app.request(
+      "/api/v1/disclosures/proposals",
+      {
+        body: JSON.stringify({
+          exactSnippet,
+          expectedPosition: 1,
+          idempotencyKey: "propose-other-owner-source-1",
+          meetingId,
+          sourceArtifactId: registered.source.sourceArtifactId,
+          sourceRange,
+        }),
+        headers: {
+          authorization: `Bearer ${legal.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(forbiddenProposal.status).toBe(403);
+
+    const proposedResponse = await app.request(
+      "/api/v1/disclosures/proposals",
+      {
+        body: JSON.stringify({
+          exactSnippet,
+          expectedPosition: 1,
+          idempotencyKey: "propose-safety-source-1",
+          meetingId,
+          sourceArtifactId: registered.source.sourceArtifactId,
+          sourceRange,
+        }),
+        headers: safetyHeaders,
+        method: "POST",
+      },
+    );
+    expect(proposedResponse.status).toBe(201);
+    const proposed = ProposeDisclosureResponseSchema.parse(
+      await proposedResponse.json(),
+    );
+
+    const beforePreview = await runtime.disclosures.events.load(meetingId);
+    expect(
+      beforePreview.filter(({ event }) => event.visibility === "shared"),
+    ).toHaveLength(0);
+
+    const previewResponse = await app.request("/api/v1/disclosures/preview", {
+      body: JSON.stringify({
+        candidateId: proposed.candidate.candidateId,
+        exactSnippet,
+        expectedPosition: 2,
+        idempotencyKey: "preview-safety-source-1",
+        meetingId,
+        sourceRange,
+      }),
+      headers: safetyHeaders,
+      method: "POST",
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = PreviewDisclosureResponseSchema.parse(
+      await previewResponse.json(),
+    );
+    expect(preview.outgoingPayload).toEqual({
+      exactSnippet,
+      sourceArtifactId: registered.source.sourceArtifactId,
+      sourceRange,
+    });
+
+    const tamperedApproval = await app.request("/api/v1/disclosures/approve", {
+      body: JSON.stringify({
+        candidateId: preview.candidateId,
+        expectedPosition: 3,
+        idempotencyKey: "approve-tampered-1",
+        meetingId,
+        previewHash: "sha256:tampered",
+      }),
+      headers: safetyHeaders,
+      method: "POST",
+    });
+    expect(tamperedApproval.status).toBe(409);
+    expect(
+      ErrorEnvelopeSchema.parse(await tamperedApproval.json()),
+    ).toMatchObject({ code: "DISCLOSURE_PREVIEW_MISMATCH" });
+    expect(await runtime.disclosures.events.position(meetingId)).toBe(3);
+
+    const approvalBody = JSON.stringify({
+      candidateId: preview.candidateId,
+      expectedPosition: 3,
+      idempotencyKey: "approve-safety-source-1",
+      meetingId,
+      previewHash: preview.previewHash,
+    });
+    const approvedResponse = await app.request("/api/v1/disclosures/approve", {
+      body: approvalBody,
+      headers: safetyHeaders,
+      method: "POST",
+    });
+    expect(approvedResponse.status).toBe(200);
+    const approved = ApproveDisclosureResponseSchema.parse(
+      await approvedResponse.json(),
+    );
+    expect(approved).toMatchObject({
+      evidence: { exactSnippet, sourceRange },
+      position: 5,
+    });
+    const replayedApproval = await app.request("/api/v1/disclosures/approve", {
+      body: approvalBody,
+      headers: safetyHeaders,
+      method: "POST",
+    });
+    expect(replayedApproval.status).toBe(200);
+    expect(await replayedApproval.json()).toMatchObject({
+      evidence: { evidenceId: approved.evidence.evidenceId },
+      position: 5,
+    });
+
+    const events = await runtime.disclosures.events.load(meetingId);
+    const shared = events.filter(({ event }) => event.visibility === "shared");
+    expect(shared).toHaveLength(1);
+    expect(shared[0]?.event.eventType).toBe("EvidenceShared");
+    const serializedShared = JSON.stringify(shared);
+    expect(serializedShared).toContain(exactSnippet);
+    expect(serializedShared).not.toContain("Private intro for the owner");
+    expect(serializedShared).not.toContain("Private ending for the owner");
+    const legalListAfterApproval = await app.request("/api/v1/meetings", {
+      headers: { authorization: `Bearer ${legal.bearerToken}` },
+    });
+    expect(
+      ListAssignedMeetingsResponseSchema.parse(
+        await legalListAfterApproval.json(),
+      ).meetings[0]?.position,
+    ).toBe(1);
+    const legalEvidenceResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/evidence`,
+      {
+        headers: { authorization: `Bearer ${legal.bearerToken}` },
+      },
+    );
+    expect(legalEvidenceResponse.status).toBe(200);
+    expect(
+      ListSharedEvidenceResponseSchema.parse(
+        await legalEvidenceResponse.json(),
+      ),
+    ).toMatchObject({
+      evidence: [{ exactSnippet }],
+      position: 1,
+    });
   });
 });

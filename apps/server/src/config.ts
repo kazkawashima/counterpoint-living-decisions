@@ -12,6 +12,7 @@ export interface ServerConfiguration {
   readonly host: "0.0.0.0";
   readonly openAiConfigured: boolean;
   readonly port: number;
+  readonly storagePath: string;
 }
 
 const DEFAULT_DEMO_USERS: readonly DemoUserConfiguration[] = [
@@ -113,5 +114,6 @@ export function readServerConfiguration(
     host: "0.0.0.0",
     openAiConfigured: (environment.OPENAI_API_KEY ?? "").length > 0,
     port: parsePort(environment.PORT),
+    storagePath: environment.STORAGE_PATH ?? "./data/artifacts",
   };
 }

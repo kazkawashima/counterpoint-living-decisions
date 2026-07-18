@@ -36,6 +36,7 @@ export class InMemoryEventStore<TEvent> implements EventStore<TEvent> {
     string,
     {
       readonly fingerprint: string;
+      readonly payloads: string;
       readonly result: AppendEventsResult<TEvent>;
     }
   >();
@@ -51,9 +52,14 @@ export class InMemoryEventStore<TEvent> implements EventStore<TEvent> {
       const previous = this.#idempotency.get(idempotencyScope);
       const fingerprint =
         request.payloadFingerprint ?? JSON.stringify(request.events);
+      const payloads = JSON.stringify(request.events);
 
       if (previous !== undefined) {
-        if (previous.fingerprint !== fingerprint) {
+        if (
+          previous.fingerprint !== fingerprint ||
+          (!request.trustPayloadFingerprintForReplay &&
+            previous.payloads !== payloads)
+        ) {
           return Promise.resolve({
             idempotencyKey: request.idempotencyKey,
             kind: "idempotency_conflict",
@@ -93,6 +99,7 @@ export class InMemoryEventStore<TEvent> implements EventStore<TEvent> {
       this.#idempotency.set(`${request.meetingId}:${request.idempotencyKey}`, {
         fingerprint:
           request.payloadFingerprint ?? JSON.stringify(request.events),
+        payloads: JSON.stringify(request.events),
         result,
       });
     }

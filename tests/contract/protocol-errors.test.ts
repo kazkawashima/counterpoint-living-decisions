@@ -13,8 +13,8 @@ import {
 } from "@counterpoint/protocol";
 
 describe("safe protocol error contract", () => {
-  it("registers all 20 stable machine codes", () => {
-    expect(ERROR_CODES).toHaveLength(20);
+  it("registers all 21 stable machine codes", () => {
+    expect(ERROR_CODES).toHaveLength(21);
     expect(Object.keys(ERROR_CODE_REGISTRY)).toEqual([...ERROR_CODES]);
 
     for (const code of ERROR_CODES) {
