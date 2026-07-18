@@ -57,6 +57,22 @@ export {
   type SaveDecisionDraftResult,
 } from "./decisions.js";
 export {
+  dispositionDecisionCandidate,
+  prepareSharedDecisionCandidate,
+  type DecisionCandidateDependencies,
+  type DecisionCandidateFailure,
+  type DecisionCandidateView,
+  type DispositionDecisionCandidateInput,
+  type DispositionDecisionCandidateResult,
+  type ManualDecisionDraftInput,
+  type PrepareSharedDecisionCandidateInput,
+  type PrepareSharedDecisionCandidateResult,
+  type PremiseCandidateDispositionInput,
+  type SharedDecisionSynthesis,
+  type SharedDecisionSynthesisInput,
+  type SharedDecisionSynthesizer,
+} from "./decision-candidates.js";
+export {
   createMeeting,
   joinMeetingByCode,
   listAssignedMeetings,

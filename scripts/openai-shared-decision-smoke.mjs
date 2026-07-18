@@ -37,7 +37,8 @@ const event = logs.at(-1);
 
 console.log(
   JSON.stringify({
-    actionOwnerGrounded: result.draft.action.ownerParticipantId === participantId,
+    actionOwnerGrounded:
+      result.draft.action.ownerParticipantId === participantId,
     evidenceReferencesGrounded:
       result.draft.premise.evidenceReferenceIds.length > 0 &&
       result.draft.premise.evidenceReferenceIds.every(

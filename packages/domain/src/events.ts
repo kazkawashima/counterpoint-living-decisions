@@ -92,6 +92,16 @@ export interface DecisionInferenceSuggestionDetails {
   readonly premiseSuggestionIds: readonly SuggestionId[];
   readonly dissentSuggestionIds: readonly SuggestionId[];
   readonly actionSuggestionIds: readonly SuggestionId[];
+  readonly provenance?:
+    | {
+        readonly origin: "ai_assisted";
+        readonly operation: NonEmptyText;
+        readonly outputSchemaVersion: NonEmptyText;
+        readonly generatedAt: Timestamp;
+      }
+    | {
+        readonly origin: "human_authored";
+      };
 }
 
 export type InferenceSuggestionDetails =
