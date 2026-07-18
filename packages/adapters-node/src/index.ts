@@ -1,1 +1,26 @@
+export { LocalArtifactStore } from "./artifacts.js";
+export {
+  CryptographicIdGenerator,
+  isScryptPasswordHash,
+  ScryptPasswordHasher,
+  Sha256SessionTokenIssuer,
+  SystemClock,
+} from "./identity.js";
+export { createJsonCodec, type JsonCodec } from "./json-codec.js";
+export {
+  seedSyntheticUsers,
+  SqliteIdentityRepository,
+  SqliteMeetingRepository,
+  SqliteSessionRepository,
+  type SyntheticUserSeed,
+} from "./repositories.js";
+export {
+  applySqliteMigrations,
+  CURRENT_SQLITE_MIGRATION_COUNT,
+  NodeSqliteDatabase,
+  sqliteMigrationCount,
+  SqliteEventStore,
+  SqliteProjectionStore,
+} from "./sqlite.js";
+
 export const adaptersNodePackage = "@counterpoint/adapters-node";

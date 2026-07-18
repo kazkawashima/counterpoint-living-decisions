@@ -6,6 +6,20 @@ export interface IdGenerator {
   next(namespace: string): string;
 }
 
+export interface PasswordVerifier {
+  verify(password: string, encodedHash: string): Promise<boolean>;
+}
+
+export interface SessionToken {
+  readonly hash: string;
+  readonly value: string;
+}
+
+export interface SessionTokenIssuer {
+  digest(value: string): Promise<string>;
+  issue(): Promise<SessionToken>;
+}
+
 export interface UsageSubject {
   readonly accountId: string;
   readonly ipAddress: string;

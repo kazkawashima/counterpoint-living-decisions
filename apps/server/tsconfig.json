@@ -3,7 +3,22 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/.tsbuildinfo"
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../../packages/adapters-node"
+    },
+    {
+      "path": "../../packages/application"
+    },
+    {
+      "path": "../../packages/ports"
+    },
+    {
+      "path": "../../packages/protocol"
+    }
+  ]
 }

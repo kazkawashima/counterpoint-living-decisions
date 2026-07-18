@@ -23,6 +23,9 @@ export type {
 export type {
   Clock,
   IdGenerator,
+  PasswordVerifier,
+  SessionToken,
+  SessionTokenIssuer,
   StructuredLogEntry,
   StructuredLogger,
   UsageDecision,
@@ -41,5 +44,7 @@ export type {
   ParticipantAssignment,
   ProjectionScope,
   ProjectionStore,
+  SessionRecord,
+  SessionRepository,
 } from "./repositories.js";
 export type { RealtimeMessage, RealtimePublisher } from "./realtime.js";

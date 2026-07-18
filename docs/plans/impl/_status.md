@@ -4,7 +4,7 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**M1 Foundation complete; M2 local skeleton is next.**
+**M1 Foundation complete; M2 local skeleton is in progress.**
 
 The canonical implementation-facing artifacts are:
 
@@ -42,17 +42,40 @@ The canonical implementation-facing artifacts are:
   test-only in-memory adapters.
 - Deterministic M1 integration journey through `REVIEW_REQUIRED`, held Action,
   and reconsideration task with equivalent shared-only replay.
+- L1 SQLite migrations, meeting-scoped event/projection adapters, partitioned
+  local artifact storage, reusable adapter contracts, and restart coverage.
+- L2 fixed-user password hashing, persisted Bearer sessions, inactivity and
+  absolute expiry, meeting creation, 3–8 assignments, assigned list, and code
+  join application boundaries.
+- Strict v1 HTTP DTOs for the planned local flagship capability surface,
+  including health/readiness contracts.
+- Local Hono startup on `0.0.0.0`, fixed five-user and flagship-meeting seed,
+  versioned identity/meeting routes, safe errors, correlation IDs, and
+  secret-free health/readiness.
+- React login, assigned-meeting list, code fallback, and responsive
+  participant-private/shared workspace shell with tab-scoped session storage.
+- Browser E2E for desktop, mobile, reduced motion, external-host-style access,
+  and safe authentication failure, with six screenshots and one reel clip.
+- Deterministic disclosure application core through owner-private source,
+  proposal, editable preview, hash revalidation, approval/rejection, and
+  shared Evidence publication. Complete projections remain owner-partitioned.
+
+## In progress
+
+- Expose the deterministic disclosure core through versioned HTTP and connect
+  the live participant workspace.
+- Complete the facilitator, shared-display, history, and audit role surfaces.
 
 ## Not started
 
-- Node persistence/auth/API adapters.
-- UI, deployment, and submission assets.
+- Realtime application hub and resume.
+- Deployment and remaining submission assets.
 
 ## Next executable slice
 
-Begin [`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md) with
-L1 Node persistence adapters and migrations, then L2 authentication and meeting
-participation. Do not start optional scenarios.
+Complete [`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md)
+L5 disclosure HTTP/UI vertical slice, preserving the owner/shared projection
+partition. Do not start optional scenarios.
 
 ## Open gates
 

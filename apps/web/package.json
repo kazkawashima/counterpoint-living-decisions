@@ -4,8 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && vite build",
+    "bundle": "vite build",
     "dev": "vite --host 0.0.0.0",
     "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@counterpoint/protocol": "0.0.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   }
 }

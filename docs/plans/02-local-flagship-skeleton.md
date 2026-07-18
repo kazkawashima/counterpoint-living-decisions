@@ -18,47 +18,48 @@ ports.
 
 ### L1 — Node persistence adapters
 
-- [ ] Implement SQLite migrations for users, meetings, assignments, events,
+- [x] Implement SQLite migrations for users, meetings, assignments, events,
       projections, revisions, audit, and artifact metadata.
-- [ ] Implement event/projection repositories with meeting scope.
-- [ ] Implement local artifact storage with meeting/owner partitions.
-- [ ] Run reusable port contract suites.
-- [ ] Add safe first-start and restart migration tests.
+- [x] Implement event/projection repositories with meeting scope.
+- [x] Implement local artifact storage with meeting/owner partitions.
+- [x] Run reusable port contract suites.
+- [x] Add safe first-start and restart migration tests.
 
 ### L2 — Authentication and meeting participation
 
-- [ ] Seed fixed synthetic users from environment-safe configuration.
-- [ ] Implement login/logout and tab-scoped Bearer session.
-- [ ] Enforce inactivity and absolute expiry with testable clock.
-- [ ] Implement meeting creation, 3–8 user assignment, list, and code join.
-- [ ] Add server-side capability checks to every use case.
+- [x] Seed fixed synthetic users from environment-safe configuration.
+- [x] Implement login/logout and tab-scoped Bearer session.
+- [x] Enforce inactivity and absolute expiry with testable clock.
+- [x] Implement meeting creation, 3–8 user assignment, list, and code join.
+- [x] Add server-side capability checks to every implemented use case.
 
 ### L3 — Node API and realtime application hub
 
 - [ ] Implement versioned HTTP capability surface.
-- [ ] Implement safe error mapping and correlation IDs.
+- [x] Implement safe error mapping and correlation IDs.
 - [ ] Implement scoped realtime projection subscriptions.
 - [ ] Handle resume from last-seen meeting position.
-- [ ] Bind server to `0.0.0.0`.
+- [x] Bind server to `0.0.0.0`.
 
 ### L4 — Web shell and role surfaces
 
-- [ ] Build login and meeting list.
-- [ ] Build participant-private workspace shell.
+- [x] Build login and meeting list.
+- [x] Build participant-private workspace shell.
 - [ ] Build facilitator dashboard shell.
 - [ ] Build read-only shared display with revocable token.
 - [ ] Build Decision history/audit shell.
-- [ ] Use stable visual grammar for scope, origin, and confirmation.
-- [ ] Add responsive navigation and keyboard support.
+- [x] Use stable visual grammar for scope, origin, and confirmation.
+- [x] Add responsive navigation and keyboard support for implemented surfaces.
 
 ### L5 — Deterministic text disclosure
 
-- [ ] Allow owner-private text/source fixture registration.
-- [ ] Produce a deterministic owner-only disclosure candidate through a test
+- [x] Allow owner-private text/source fixture registration at the application
+      boundary.
+- [x] Produce a deterministic owner-only disclosure candidate through a test
       adapter.
 - [ ] Show exact outgoing preview and editable snippet.
-- [ ] Enforce preview hash and owner approval.
-- [ ] Publish only approved Evidence to shared state.
+- [x] Enforce preview hash and owner approval at the application boundary.
+- [x] Publish only approved Evidence to shared state.
 
 ### L6 — Deterministic Decision commit
 

@@ -6,6 +6,7 @@
     "declaration": false,
     "declarationMap": false,
     "ignoreDeprecations": "6.0",
+    "jsx": "react-jsx",
     "noEmit": true,
     "paths": {
       "@counterpoint/adapters-cloudflare": [
@@ -24,7 +25,9 @@
   },
   "include": [
     "apps/**/*.ts",
+    "apps/**/*.tsx",
     "packages/**/*.ts",
+    "playwright.config.ts",
     "scripts/**/*.mjs",
     "tests/**/*.ts",
     "vitest.config.ts"

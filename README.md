@@ -11,7 +11,9 @@ contract is in [`docs/specs/`](docs/specs/README.md), and the ordered
 implementation plan is in [`docs/plans/`](docs/plans/README.md). The M1
 foundation is complete: workspace tooling, protocol contracts, deterministic
 domain/replay, Decision lifecycle, ports, and contract harnesses are
-implemented. The local Node skeleton is the next delivery stage.
+implemented. The local Node persistence/authentication API, seeded flagship,
+login/meeting UI, and first participant-private workspace shell are now
+implemented.
 
 The intended architecture is:
 
@@ -35,6 +37,31 @@ Local development servers must bind to `0.0.0.0` so they remain reachable over
 Tailscale. Do not place production credentials in `.env`, `.dev.vars`, the
 repository, or logs. The judge-funded key belongs in the Cloudflare Worker
 Secret `OPENAI_API_KEY_JUDGE` only.
+
+Install and start the API and web app in separate terminals:
+
+```bash
+npm install
+npm run dev:server
+```
+
+```bash
+npm run dev:web
+```
+
+Open `http://<this-machine-ip>:5173`. The default synthetic identities use the
+following public demo-only passwords:
+
+| User ID       | Role        | Password                   |
+| ------------- | ----------- | -------------------------- |
+| `product`     | Facilitator | `counterpoint-product`     |
+| `safety`      | Participant | `counterpoint-safety`      |
+| `legal`       | Participant | `counterpoint-legal`       |
+| `engineering` | Participant | `counterpoint-engineering` |
+| `sales`       | Participant | `counterpoint-sales`       |
+
+Run `npm test` for unit/contract/integration coverage and `npm run e2e` for the
+committed browser journey and reel-evidence capture.
 
 ## Documentation
 

@@ -39,6 +39,7 @@ docs/*.zip
 # Tests and browser tooling
 playwright-report/
 test-results/
+.playwright-cli/
 
 # OS and editor files
 .DS_Store
