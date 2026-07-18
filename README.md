@@ -8,9 +8,10 @@ Decisions**.
 The repository is in active implementation. Product and submission source
 material is in [`docs/topics/`](docs/topics/README.md). The normalized build
 contract is in [`docs/specs/`](docs/specs/README.md), and the ordered
-implementation plan is in [`docs/plans/`](docs/plans/README.md). The initial
-npm workspace, command surface, environment validation, and dependency-boundary
-checks are implemented; deterministic domain and protocol work is in progress.
+implementation plan is in [`docs/plans/`](docs/plans/README.md). The M1
+foundation is complete: workspace tooling, protocol contracts, deterministic
+domain/replay, Decision lifecycle, ports, and contract harnesses are
+implemented. The local Node skeleton is the next delivery stage.
 
 The intended architecture is:
 

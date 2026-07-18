@@ -4,7 +4,7 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**M1 Foundation implementation in progress.**
+**M1 Foundation complete; M2 local skeleton is next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -30,22 +30,29 @@ The canonical implementation-facing artifacts are:
 - Secret-safe environment-example validation.
 - Enforced domain/package dependency boundaries with deliberate failing
   fixtures.
-
-## In progress
-
-- F2 protocol primitives and versioned envelopes.
-- F3–F5 domain entities, event reducers, and Decision lifecycle.
-- F6 ports and reusable contract harnesses.
+- F2 protocol primitives, private/shared event envelopes, version/upcast policy,
+  stable errors, and deep secret/private-data redaction.
+- F3 flagship domain entities and construction invariants.
+- F4 all 37 required event payloads, deterministic projections, replay,
+  idempotency, optimistic concurrency, owner isolation, and scoped reset.
+- F5 complete Decision transition matrix, human-confirmed review boundary,
+  Action hold, revisions, and reconsideration task behavior.
+- F6 all required ports, authorization/command/query boundaries, reusable
+  EventStore/ProjectionStore/ArtifactStore/RealtimePublisher contracts, and
+  test-only in-memory adapters.
+- Deterministic M1 integration journey through `REVIEW_REQUIRED`, held Action,
+  and reconsideration task with equivalent shared-only replay.
 
 ## Not started
 
-- Runtime adapters, UI, deployment, and submission assets.
+- Node persistence/auth/API adapters.
+- UI, deployment, and submission assets.
 
 ## Next executable slice
 
-Continue [`01-foundation-domain-and-contracts.md`](../01-foundation-domain-and-contracts.md)
-with F2 protocol primitives, then complete the deterministic F3–F6 domain
-foundation. Do not start optional scenarios.
+Begin [`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md) with
+L1 Node persistence adapters and migrations, then L2 authentication and meeting
+participation. Do not start optional scenarios.
 
 ## Open gates
 

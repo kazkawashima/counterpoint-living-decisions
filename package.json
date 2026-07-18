@@ -20,6 +20,7 @@
     "deploy:smoke": "node scripts/deployment-smoke.mjs",
     "dev": "npm run dev --workspace @counterpoint/web",
     "dev:web": "npm run dev --workspace @counterpoint/web",
+    "e2e": "vitest run --project e2e",
     "env:check": "node scripts/check-environment.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -28,7 +29,8 @@
     "test": "vitest run",
     "test:architecture": "node scripts/check-architecture.mjs",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -p tsconfig.check.json --noEmit"
+    "typecheck": "tsc -p tsconfig.check.json --noEmit",
+    "unit": "vitest run --project unit"
   },
   "dependencies": {
     "zod": "4.4.3"

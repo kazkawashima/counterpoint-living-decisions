@@ -37,46 +37,46 @@ Implemented in the foundation tooling slice. Verified with `npm install`,
 
 ### F2 — Protocol primitives
 
-- [ ] Define opaque ID types, timestamps, visibility, origin, confirmation
+- [x] Define opaque ID types, timestamps, visibility, origin, confirmation
       status, actor, correlation, causation, and idempotency primitives.
-- [ ] Define event envelope and error envelope.
-- [ ] Define protocol/event schema version policy and parsing.
-- [ ] Define safe error-code registry.
-- [ ] Add tests for invalid/unknown versions and error redaction.
+- [x] Define event envelope and error envelope.
+- [x] Define protocol/event schema version policy and parsing.
+- [x] Define safe error-code registry.
+- [x] Add tests for invalid/unknown versions and error redaction.
 
 ### F3 — Domain entities and values
 
-- [ ] Implement only flagship-required entity fields first.
-- [ ] Model Proposition/Stance/Premise/Evidence as distinct types.
-- [ ] Model private ownership and meeting scope as required values.
-- [ ] Model Decision revision snapshot, Dissent, Action, and
+- [x] Implement only flagship-required entity fields first.
+- [x] Model Proposition/Stance/Premise/Evidence as distinct types.
+- [x] Model private ownership and meeting scope as required values.
+- [x] Model Decision revision snapshot, Dissent, Action, and
       ReconsiderationTask.
-- [ ] Add construction invariants and serialization tests.
+- [x] Add construction invariants and serialization tests.
 
 ### F4 — Event stream and reducers
 
-- [ ] Define required event payload schemas.
-- [ ] Implement deterministic reducer and projection types.
-- [ ] Add monotonic meeting position and optimistic concurrency contract.
-- [ ] Add idempotency behavior.
-- [ ] Add replay and projection rebuild tests.
-- [ ] Prove a shared projection can be created without private payload reads.
+- [x] Define required event payload schemas.
+- [x] Implement deterministic reducer and projection types.
+- [x] Add monotonic meeting position and optimistic concurrency contract.
+- [x] Add idempotency behavior.
+- [x] Add replay and projection rebuild tests.
+- [x] Prove a shared projection can be created without private payload reads.
 
 ### F5 — Decision state machine
 
-- [ ] Implement all specified transitions and authority/condition checks.
-- [ ] Enforce GPT suggestion → `AT_RISK` and facilitator review →
+- [x] Implement all specified transitions and authority/condition checks.
+- [x] Enforce GPT suggestion → `AT_RISK` and facilitator review →
       `REVIEW_REQUIRED`.
-- [ ] Implement Action selection/hold and revision append.
-- [ ] Add table-driven tests for every valid and invalid transition.
+- [x] Implement Action selection/hold and revision append.
+- [x] Add table-driven tests for every valid and invalid transition.
 
 ### F6 — Ports and contract harness
 
-- [ ] Define persistence, artifact, realtime, AI, key, clock, ID, limiter, and
+- [x] Define persistence, artifact, realtime, AI, key, clock, ID, limiter, and
       logger ports.
-- [ ] Create reusable contract-test suites.
-- [ ] Add in-memory test adapters used only by unit/application tests.
-- [ ] Define application command/query boundaries and authorization context.
+- [x] Create reusable contract-test suites.
+- [x] Add in-memory test adapters used only by unit/application tests.
+- [x] Define application command/query boundaries and authorization context.
 
 ## Non-goals
 
@@ -100,6 +100,11 @@ No browser E2E is required until a UI is introduced.
 Given a synthetic sequence of commands and candidate events, the domain can
 produce the complete flagship state through `REVIEW_REQUIRED` deterministically,
 reject forbidden transitions, and rebuild the same projections from replay.
+
+Satisfied by the deterministic foundation integration journey plus unit and
+contract suites. The synthetic stream reaches `REVIEW_REQUIRED`, holds the
+affected Action, creates the reconsideration task, and produces identical full
+and shared-only replay results.
 
 ## Suggested commit boundary
 

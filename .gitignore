@@ -49,3 +49,8 @@ Thumbs.db
 !.vscode/settings.json
 
 .specstory/
+
+# Local agent and indexing state
+.codex/
+.serena/
+.cursorindexingignore

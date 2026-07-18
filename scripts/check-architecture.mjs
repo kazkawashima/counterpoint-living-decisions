@@ -9,38 +9,28 @@ const packageRules = new Map([
     "domain",
     {
       allowedInternal: new Set(),
-      forbiddenExternal: [
-        /^@cloudflare\//u,
-        /^@openai\//u,
-        /^better-sqlite3$/u,
-        /^cloudflare:/u,
-        /^node:/u,
-        /^openai$/u,
-        /^react(?:\/|$)/u,
-        /^vite(?:\/|$)/u,
-        /^ws$/u,
-      ],
+      allowedExternal: new Set(),
     },
   ],
   [
     "ports",
     {
       allowedInternal: new Set(["domain"]),
-      forbiddenExternal: [],
+      allowedExternal: new Set(),
     },
   ],
   [
     "protocol",
     {
       allowedInternal: new Set(["domain"]),
-      forbiddenExternal: [],
+      allowedExternal: new Set(["zod"]),
     },
   ],
   [
     "application",
     {
       allowedInternal: new Set(["domain", "ports", "protocol"]),
-      forbiddenExternal: [],
+      allowedExternal: new Set(),
     },
   ],
 ]);
@@ -89,7 +79,10 @@ export function findArchitectureViolations({
       );
     }
 
-    if (rule.forbiddenExternal.some((pattern) => pattern.test(specifier))) {
+    const isRelative =
+      specifier.startsWith("./") || specifier.startsWith("../");
+    const isInternal = internalMatch !== null;
+    if (!isRelative && !isInternal && !rule.allowedExternal.has(specifier)) {
       violations.push(
         `${sourcePath}: ${packageName} cannot import runtime dependency ${specifier}`,
       );
