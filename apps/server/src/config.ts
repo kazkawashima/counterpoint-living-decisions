@@ -7,6 +7,7 @@ export interface DemoUserConfiguration {
 }
 
 export interface ServerConfiguration {
+  readonly appOrigin: string | undefined;
   readonly databasePath: string;
   readonly demoUsers: readonly DemoUserConfiguration[];
   readonly host: "0.0.0.0";
@@ -129,6 +130,7 @@ export function readServerConfiguration(
       : "live";
 
   return {
+    appOrigin: environment.APP_ORIGIN,
     databasePath: environment.DATABASE_PATH ?? "./data/counterpoint.sqlite",
     demoUsers: parseDemoUsers(environment.DEMO_USERS_JSON),
     host: "0.0.0.0",

@@ -72,11 +72,11 @@ key:
 docker compose up --build
 ```
 
-Open `http://<this-machine-ip>:8080`. Set `WEB_PORT` to change the published
-port. The API is not published separately; nginx forwards same-origin
-`/api`, `/health`, and `/ready` requests over the internal Compose network.
-SQLite and partitioned artifacts persist in the `counterpoint-data` named
-volume across container replacement.
+Open `http://<this-machine-ip>:8080`. Set `PUBLIC_HOST` to that IP so the
+startup log prints the reachable URL, and set `COMPOSE_PORT` to change the
+published port. One Node container serves the built React app and same-origin
+`/api`, `/health`, and `/ready` routes. SQLite and partitioned artifacts
+persist in the `counterpoint-data` named volume across container replacement.
 
 To enable live AI locally, export `OPENAI_API_KEY` only in the invoking shell or
 place it in an untracked `.env`. Do not add it to `compose.yaml`, an image, or
