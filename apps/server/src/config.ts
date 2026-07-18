@@ -10,7 +10,11 @@ export interface ServerConfiguration {
   readonly databasePath: string;
   readonly demoUsers: readonly DemoUserConfiguration[];
   readonly host: "0.0.0.0";
+  readonly openAiApiKey: string | undefined;
   readonly openAiConfigured: boolean;
+  readonly openAiFakeExactSnippet: string | undefined;
+  readonly openAiMode: "deterministic" | "disabled" | "live";
+  readonly openAiModel: string;
   readonly port: number;
   readonly storagePath: string;
 }
@@ -108,11 +112,31 @@ function parseDemoUsers(
 export function readServerConfiguration(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ServerConfiguration {
+  const openAiApiKey =
+    (environment.OPENAI_API_KEY ?? "").length > 0
+      ? environment.OPENAI_API_KEY
+      : undefined;
+  const deterministicOpenAi = environment.OPENAI_FAKE_MODE === "deterministic";
+  if (deterministicOpenAi && environment.NODE_ENV !== "test") {
+    throw new Error(
+      "OPENAI_FAKE_MODE=deterministic is allowed only when NODE_ENV=test",
+    );
+  }
+  const openAiMode = deterministicOpenAi
+    ? "deterministic"
+    : openAiApiKey === undefined
+      ? "disabled"
+      : "live";
+
   return {
     databasePath: environment.DATABASE_PATH ?? "./data/counterpoint.sqlite",
     demoUsers: parseDemoUsers(environment.DEMO_USERS_JSON),
     host: "0.0.0.0",
-    openAiConfigured: (environment.OPENAI_API_KEY ?? "").length > 0,
+    openAiApiKey,
+    openAiConfigured: openAiMode !== "disabled",
+    openAiFakeExactSnippet: environment.OPENAI_FAKE_EXACT_SNIPPET,
+    openAiMode,
+    openAiModel: environment.OPENAI_MODEL ?? "gpt-5.6",
     port: parsePort(environment.PORT),
     storagePath: environment.STORAGE_PATH ?? "./data/artifacts",
   };

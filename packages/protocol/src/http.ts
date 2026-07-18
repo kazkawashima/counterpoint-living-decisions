@@ -446,8 +446,14 @@ export type PrivateTextSourceFixtureRegistrationRequest =
 export type PrivateTextSourceFixtureRegistrationResponse =
   RegisterPrivateTextSourceFixtureResponse;
 
+export const DisclosureAssistanceSchema = z.enum(["ai_preferred", "manual"]);
+export const DisclosureProposalOriginSchema = z.enum([
+  "ai_assisted",
+  "human_selected",
+]);
 export const ProposeDisclosureRequestSchema = z.strictObject({
   ...MeetingMutationShape,
+  assistance: DisclosureAssistanceSchema.default("manual"),
   sourceArtifactId: SourceArtifactIdSchema,
   exactSnippet: NonEmptyTextSchema,
   sourceRange: TextRangeSchema,
@@ -455,6 +461,7 @@ export const ProposeDisclosureRequestSchema = z.strictObject({
 export const ProposeDisclosureResponseSchema = z.strictObject({
   ...MeetingMutationReceiptShape,
   candidate: DisclosureCandidateSchema,
+  origin: DisclosureProposalOriginSchema,
 });
 export const PreviewDisclosureRequestSchema = z.strictObject({
   ...MeetingMutationShape,

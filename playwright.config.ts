@@ -43,6 +43,9 @@ export default defineConfig({
         HOST: "0.0.0.0",
         NODE_ENV: "test",
         OPENAI_API_KEY: "",
+        OPENAI_FAKE_EXACT_SNIPPET:
+          "Regional launch requires a documented approval gate.",
+        OPENAI_FAKE_MODE: "deterministic",
         PORT: String(apiPort),
         STORAGE_PATH: `/tmp/counterpoint-e2e-${runtimeSuffix}-artifacts`,
       },

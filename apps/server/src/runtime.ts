@@ -17,6 +17,11 @@ import {
   SqliteSessionRepository,
   SystemClock,
 } from "@counterpoint/adapters-node";
+import {
+  createOpenAiPrivateDisclosureProposer,
+  DeterministicPrivateDisclosureModel,
+  OpenAiPrivateDisclosureProposer,
+} from "@counterpoint/adapters-openai";
 import type { DisclosureDependencies } from "@counterpoint/application";
 import {
   domainEventTypes,
@@ -57,6 +62,34 @@ export interface LocalServerRuntime extends ServerRuntime {
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 const FLAGSHIP_MEETING_CODE = "GLOBAL-AI-2026";
 const domainEventTypeSet = new Set<string>(domainEventTypes);
+
+function candidateProposer(configuration: ServerConfiguration) {
+  if (configuration.openAiMode === "disabled") {
+    return undefined;
+  }
+  if (configuration.openAiMode === "deterministic") {
+    return new OpenAiPrivateDisclosureProposer({
+      model: configuration.openAiModel,
+      modelAdapter: new DeterministicPrivateDisclosureModel({
+        ...(configuration.openAiFakeExactSnippet === undefined
+          ? {}
+          : { exactSnippet: configuration.openAiFakeExactSnippet }),
+      }),
+    });
+  }
+  if (configuration.openAiApiKey === undefined) {
+    throw new Error("Live OpenAI mode requires a server-side API key");
+  }
+  return createOpenAiPrivateDisclosureProposer({
+    apiKey: configuration.openAiApiKey,
+    logger: {
+      log(entry) {
+        console.info(JSON.stringify(entry));
+      },
+    },
+    model: configuration.openAiModel,
+  });
+}
 
 function parseStoredDomainEvent(input: unknown): DomainEvent {
   if (
@@ -167,8 +200,12 @@ export async function createLocalServerRuntime(
     } catch {
       artifactStorageAvailable = false;
     }
+    const configuredCandidateProposer = candidateProposer(configuration);
     const disclosures: DisclosureDependencies = {
       artifacts,
+      ...(configuredCandidateProposer === undefined
+        ? {}
+        : { candidateProposer: configuredCandidateProposer }),
       clock,
       events: new SqliteEventStore(
         database,

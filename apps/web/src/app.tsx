@@ -373,9 +373,18 @@ function WorkspaceShell({
 }) {
   const [position, setPosition] = useState(meeting.position);
   const [phase, setPhase] = useState<
-    "idle" | "preparing" | "preview" | "approving" | "approved" | "rejected"
+    | "ai-unavailable"
+    | "approved"
+    | "approving"
+    | "idle"
+    | "preparing"
+    | "preview"
+    | "rejected"
   >("idle");
   const [preview, setPreview] = useState<PreviewDisclosureResponse>();
+  const [proposalOrigin, setProposalOrigin] = useState<
+    "ai_assisted" | "human_selected"
+  >();
   const [evidence, setEvidence] = useState<SharedEvidence>();
   const [error, setError] = useState<string>();
   const [selectedSnippet, setSelectedSnippet] = useState(
@@ -384,7 +393,8 @@ function WorkspaceShell({
   const commandKeys = useRef({
     approve: crypto.randomUUID(),
     preview: crypto.randomUUID(),
-    propose: crypto.randomUUID(),
+    proposeAi: crypto.randomUUID(),
+    proposeManual: crypto.randomUUID(),
     register: crypto.randomUUID(),
     reject: crypto.randomUUID(),
   });
@@ -410,7 +420,7 @@ function WorkspaceShell({
     onPositionChange(nextPosition);
   }
 
-  async function preparePreview() {
+  async function preparePreview(assistance: "ai_preferred" | "manual") {
     setPhase("preparing");
     setError(undefined);
     try {
@@ -432,28 +442,41 @@ function WorkspaceShell({
       });
       advancePosition(registered.position);
       const proposed = await proposeDisclosure(session, {
+        assistance,
         exactSnippet,
         expectedPosition: registered.position,
-        idempotencyKey: commandKeys.current.propose,
+        idempotencyKey:
+          assistance === "ai_preferred"
+            ? commandKeys.current.proposeAi
+            : commandKeys.current.proposeManual,
         meetingId: meeting.meetingId,
         sourceArtifactId: registered.source.sourceArtifactId,
         sourceRange,
       });
       advancePosition(proposed.position);
+      const proposedPayload = proposed.candidate.outgoingPayload;
+      setSelectedSnippet(proposedPayload.exactSnippet);
+      setProposalOrigin(proposed.origin);
       const prepared = await previewDisclosure(session, {
         candidateId: proposed.candidate.candidateId,
-        exactSnippet,
+        exactSnippet: proposedPayload.exactSnippet,
         expectedPosition: proposed.position,
         idempotencyKey: commandKeys.current.preview,
         meetingId: meeting.meetingId,
-        sourceRange,
+        sourceRange: proposedPayload.sourceRange,
       });
       advancePosition(prepared.position);
       setPreview(prepared);
       setPhase("preview");
     } catch (cause) {
       setError(messageFor(cause));
-      setPhase("idle");
+      setPhase(
+        assistance === "ai_preferred" &&
+          cause instanceof ApiError &&
+          cause.code === "OPENAI_UNAVAILABLE"
+          ? "ai-unavailable"
+          : "idle",
+      );
     }
   }
 
@@ -548,6 +571,22 @@ function WorkspaceShell({
               </p>
             </div>
           </div>
+          <section className="private-assistant" aria-label="Private assistant">
+            <div className="assistant-signal" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div>
+              <span className="source-type">Private assistant</span>
+              <strong>Suggests one grounded excerpt</strong>
+              <p>
+                Owner-only input. The model cannot publish; your exact preview
+                and approval remain required.
+              </p>
+            </div>
+            <span className="assistant-boundary">Suggestion only</span>
+          </section>
           <div className="channel-choice">
             <button className="channel active" type="button">
               <span aria-hidden="true">◉</span>
@@ -586,10 +625,10 @@ function WorkspaceShell({
             {phase === "idle" ? (
               <button
                 className="prepare-button"
-                onClick={() => void preparePreview()}
+                onClick={() => void preparePreview("ai_preferred")}
                 type="button"
               >
-                Prepare exact sharing preview
+                Prepare grounded sharing preview
               </button>
             ) : null}
             {phase === "preparing" ? (
@@ -597,8 +636,33 @@ function WorkspaceShell({
                 Building private preview…
               </button>
             ) : null}
+            {phase === "ai-unavailable" ? (
+              <div className="assistant-recovery" role="alert">
+                <strong>Private assistant is temporarily unavailable</strong>
+                <p>
+                  Your source remains private. Retry the suggestion or continue
+                  with the exact excerpt you selected.
+                </p>
+                <div>
+                  <button
+                    className="prepare-button"
+                    onClick={() => void preparePreview("ai_preferred")}
+                    type="button"
+                  >
+                    Retry private assistant
+                  </button>
+                  <button
+                    className="manual-button"
+                    onClick={() => void preparePreview("manual")}
+                    type="button"
+                  >
+                    Continue with manual excerpt
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
-          {error === undefined ? null : (
+          {error === undefined || phase === "ai-unavailable" ? null : (
             <p className="form-error" role="alert">
               {error}
             </p>
@@ -628,7 +692,11 @@ function WorkspaceShell({
                 </div>
                 <div>
                   <dt>Origin</dt>
-                  <dd>Human-selected source excerpt</dd>
+                  <dd>
+                    {proposalOrigin === "ai_assisted"
+                      ? "AI suggestion · owner only"
+                      : "Human-selected source excerpt"}
+                  </dd>
                 </div>
               </dl>
               {phase === "approved" ? (

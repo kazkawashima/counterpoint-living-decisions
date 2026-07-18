@@ -816,6 +816,86 @@ button:disabled {
   color: var(--private);
 }
 
+.private-assistant {
+  position: relative;
+  display: grid;
+  margin: 0 0 1rem;
+  padding: 1rem;
+  align-items: center;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(197, 164, 255, 0.34);
+  background:
+    linear-gradient(110deg, rgba(197, 164, 255, 0.09), transparent 58%),
+    rgba(8, 15, 13, 0.8);
+}
+
+.private-assistant::after {
+  position: absolute;
+  right: -20%;
+  bottom: -1px;
+  left: 55%;
+  height: 1px;
+  animation: assistant-scan 3.2s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--private), transparent);
+  content: "";
+}
+
+.private-assistant strong {
+  display: block;
+  margin: 0.15rem 0 0.25rem;
+  font-size: 0.8rem;
+}
+
+.private-assistant p,
+.assistant-recovery p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.assistant-signal {
+  position: relative;
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.assistant-signal span {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(197, 164, 255, 0.48);
+  border-radius: 50%;
+  animation: assistant-orbit 5s linear infinite;
+}
+
+.assistant-signal span:nth-child(2) {
+  inset: 0.35rem;
+  animation-direction: reverse;
+  animation-duration: 3.5s;
+  border-radius: 35%;
+}
+
+.assistant-signal span:nth-child(3) {
+  inset: 0.85rem;
+  animation: private-breathe 2.4s ease-in-out infinite;
+  border: 0;
+  background: var(--private);
+  box-shadow: 0 0 1.3rem rgba(197, 164, 255, 0.65);
+}
+
+.assistant-boundary {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(197, 164, 255, 0.28);
+  color: var(--private);
+  font-family: ui-monospace, monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .channel-choice {
   display: grid;
   margin: 1rem 0;
@@ -858,6 +938,32 @@ button:disabled {
   color: #151d0c;
   background: var(--acid);
   font-weight: 700;
+}
+
+.workspace-input .manual-button {
+  border: 1px solid rgba(197, 164, 255, 0.45);
+  color: var(--private);
+  background: transparent;
+}
+
+.assistant-recovery {
+  padding: 1rem;
+  border: 1px solid rgba(255, 193, 112, 0.42);
+  background: rgba(255, 193, 112, 0.055);
+}
+
+.assistant-recovery strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #ffd7a2;
+  font-size: 0.76rem;
+}
+
+.assistant-recovery > div {
+  display: grid;
+  margin-top: 0.8rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
 }
 
 .excerpt-hint {
@@ -1220,6 +1326,28 @@ button:disabled {
   }
 }
 
+@keyframes assistant-orbit {
+  50% {
+    border-radius: 38%;
+    transform: rotate(180deg) scale(0.86);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes assistant-scan {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateX(-40%);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateX(35%);
+  }
+}
+
 @media (max-width: 1050px) {
   .login-shell {
     grid-template-columns: 1fr;
@@ -1343,8 +1471,18 @@ button:disabled {
   }
 
   .approval-actions,
+  .assistant-recovery > div,
   .disclosure-preview dl {
     grid-template-columns: 1fr;
+  }
+
+  .private-assistant {
+    grid-template-columns: auto 1fr;
+  }
+
+  .assistant-boundary {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .preview-heading {

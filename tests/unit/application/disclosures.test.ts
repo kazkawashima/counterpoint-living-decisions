@@ -127,6 +127,81 @@ async function registerProposeAndPreview(deps: DisclosureDependencies) {
 }
 
 describe("deterministic private text disclosure", () => {
+  it("replays an AI proposal before calling the provider again", async () => {
+    let proposalCalls = 0;
+    const deps: DisclosureDependencies = {
+      ...dependencies(),
+      candidateProposer: {
+        propose: ({ text }) => {
+          proposalCalls += 1;
+          if (proposalCalls > 1) {
+            return Promise.reject(
+              new Error("provider must not run during replay"),
+            );
+          }
+          const start = text.indexOf(SELECTED_SNIPPET);
+          return Promise.resolve({
+            exactSnippet: SELECTED_SNIPPET,
+            sourceRange: {
+              end: start + SELECTED_SNIPPET.length,
+              start,
+            },
+          });
+        },
+      },
+    };
+    const registered = await registerSource(deps);
+    const input = {
+      expectedPosition: 1,
+      idempotencyKey: "replay-ai-proposal",
+      meetingId: MEETING_ID,
+      sourceArtifactId: registered.source.sourceArtifactId,
+    };
+
+    const first = await proposeDisclosure(deps, ownerContext(), input);
+    const replayed = await proposeDisclosure(deps, ownerContext(), input);
+
+    expect(first.kind).toBe("proposed");
+    expect(replayed).toEqual(
+      first.kind === "proposed"
+        ? {
+            ...first,
+            replayed: true,
+          }
+        : first,
+    );
+    expect(proposalCalls).toBe(1);
+    expect(await deps.events.position(MEETING_ID)).toBe(2);
+  });
+
+  it("rejects a cross-command idempotency collision before AI spend", async () => {
+    let proposalCalls = 0;
+    const deps: DisclosureDependencies = {
+      ...dependencies(),
+      candidateProposer: {
+        propose: () => {
+          proposalCalls += 1;
+          return Promise.reject(new Error("provider must not run"));
+        },
+      },
+    };
+    const registered = await registerSource(deps);
+
+    await expect(
+      proposeDisclosure(deps, ownerContext(), {
+        expectedPosition: 1,
+        idempotencyKey: "register-source",
+        meetingId: MEETING_ID,
+        sourceArtifactId: registered.source.sourceArtifactId,
+      }),
+    ).resolves.toEqual({
+      code: "IDEMPOTENCY_CONFLICT",
+      kind: "failed",
+    });
+    expect(proposalCalls).toBe(0);
+    expect(await deps.events.position(MEETING_ID)).toBe(1);
+  });
+
   it("does not append a disclosure event when candidate generation fails", async () => {
     const deps: DisclosureDependencies = {
       ...dependencies(),

@@ -43,11 +43,13 @@ text/manual degraded path.
 
 ### A4 — Private evidence assistance
 
-- [ ] Retrieve only owner-authorized private material plus allowed shared state.
-- [ ] Generate owner-only disclosure candidates with exact ranges.
-- [ ] Keep candidates out of shared model context, events, logs, and screens.
-- [ ] Preserve existing server-side approval and preview-hash flow.
-- [ ] Add prompt-injection fixtures proving the model cannot publish.
+- [x] Retrieve only owner-authorized private material plus allowed shared state.
+- [x] Generate owner-only disclosure candidates with exact ranges.
+- [x] Keep candidates out of shared model context, shared events/logs/screens,
+      while retaining the owner-private candidate event needed for audit and
+      replay.
+- [x] Preserve existing server-side approval and preview-hash flow.
+- [x] Add prompt-injection fixtures proving the model cannot publish.
 
 ### A5 — Shared Decision synthesis
 

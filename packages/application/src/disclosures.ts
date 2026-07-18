@@ -741,6 +741,43 @@ export async function registerPrivateTextSource(
 
 export const registerPrivateTextSourceFixture = registerPrivateTextSource;
 
+async function replayedAiProposal(
+  dependencies: DisclosureDependencies,
+  context: UserAuthorizationContext,
+  input: ProposeDisclosureInput,
+): Promise<ProposeDisclosureResult | undefined> {
+  const records = await dependencies.events.load(input.meetingId);
+  const existing = normalizeRecords(records).find(
+    (event) => event.idempotencyKey === input.idempotencyKey,
+  );
+  if (existing === undefined) {
+    return undefined;
+  }
+  if (
+    existing.eventType !== "DisclosureProposed" ||
+    existing.ownerParticipantId !== context.participantId
+  ) {
+    return failed("IDEMPOTENCY_CONFLICT");
+  }
+  const proposed: EventOf<"DisclosureProposed"> = existing;
+  if (
+    proposed.payload.outgoingPayload.sourceArtifactId !== input.sourceArtifactId
+  ) {
+    return failed("IDEMPOTENCY_CONFLICT");
+  }
+  return {
+    candidate: {
+      candidateId: proposed.payload.disclosureId,
+      outgoingPayload: outgoingPayloadView(proposed.payload.outgoingPayload),
+      state: "proposed",
+    },
+    correlationId: proposed.correlationId,
+    kind: "proposed",
+    position: proposed.position,
+    replayed: true,
+  };
+}
+
 export async function proposeDisclosure(
   dependencies: DisclosureDependencies,
   context: UserAuthorizationContext,
@@ -768,6 +805,10 @@ export async function proposeDisclosure(
   let proposedRange = input.sourceRange;
   let proposedSnippet = input.exactSnippet;
   if (dependencies.candidateProposer !== undefined) {
+    const replayed = await replayedAiProposal(dependencies, context, input);
+    if (replayed !== undefined) {
+      return replayed;
+    }
     const proposal = await dependencies.candidateProposer.propose({
       meetingId: input.meetingId,
       ownerParticipantId: context.participantId,

@@ -208,6 +208,7 @@ export async function registerPrivateTextSource(
 export async function proposeDisclosure(
   session: StoredSession,
   input: {
+    readonly assistance: "ai_preferred" | "manual";
     readonly exactSnippet: string;
     readonly expectedPosition: number;
     readonly idempotencyKey: string;

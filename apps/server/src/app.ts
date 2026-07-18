@@ -19,7 +19,9 @@ import {
   resolveMeetingAuthorization,
   userAuthorizationContext,
   type DisclosureFailure,
+  type DisclosureDependencies,
 } from "@counterpoint/application";
+import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import type {
   IdGenerator,
   MeetingRecord,
@@ -306,6 +308,19 @@ function disclosureFailureResponse(
   failure: DisclosureFailure,
 ) {
   return errorResponse(context, failure.code);
+}
+
+function manualDisclosureDependencies(
+  dependencies: DisclosureDependencies,
+): DisclosureDependencies {
+  return {
+    artifacts: dependencies.artifacts,
+    clock: dependencies.clock,
+    events: dependencies.events,
+    hash: dependencies.hash,
+    ids: dependencies.ids,
+    projections: dependencies.projections,
+  };
 }
 
 export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
@@ -653,17 +668,30 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (resolved.kind === "rejected") {
       return errorResponse(context, resolved.code);
     }
-    const result = await proposeDisclosure(
-      runtime.disclosures,
-      resolved.authorization,
-      {
-        ...request.value,
-        correlationId: context.get("correlationId"),
-        expectedPosition: await runtime.disclosures.events.position(
-          request.value.meetingId,
-        ),
-      },
-    );
+    const aiAssisted =
+      request.value.assistance === "ai_preferred" &&
+      runtime.disclosures.candidateProposer !== undefined;
+    let result: Awaited<ReturnType<typeof proposeDisclosure>>;
+    try {
+      result = await proposeDisclosure(
+        aiAssisted
+          ? runtime.disclosures
+          : manualDisclosureDependencies(runtime.disclosures),
+        resolved.authorization,
+        {
+          ...request.value,
+          correlationId: context.get("correlationId"),
+          expectedPosition: await runtime.disclosures.events.position(
+            request.value.meetingId,
+          ),
+        },
+      );
+    } catch (error) {
+      if (error instanceof OpenAiCandidateError) {
+        return errorResponse(context, "OPENAI_UNAVAILABLE");
+      }
+      throw error;
+    }
     if (result.kind === "failed") {
       return disclosureFailureResponse(context, result);
     }
@@ -672,6 +700,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         candidate: result.candidate,
         correlationId: result.correlationId,
         meetingId: request.value.meetingId,
+        origin: aiAssisted ? "ai_assisted" : "human_selected",
         position: await participantVisiblePosition(
           runtime,
           request.value.meetingId,

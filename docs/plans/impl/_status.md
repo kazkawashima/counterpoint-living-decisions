@@ -4,8 +4,8 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**M1 Foundation and the permissioned disclosure vertical slice are complete;
-M2 private AI assistance is in progress.**
+**M1 Foundation, permissioned disclosure, and A3/A4 private AI assistance are
+complete; shared Decision synthesis is next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -90,11 +90,20 @@ The canonical implementation-facing artifacts are:
 - Architecture checks now constrain the OpenAI adapter to application/ports and
   its explicit provider/schema dependencies.
 - Application proof that provider failure cannot append a disclosure event.
+- A4 runtime wiring selects live, disabled, or test-only deterministic private
+  assistance without reading secrets inside the adapter package.
+- `ai_preferred` and explicit `manual` proposal modes preserve one HTTP
+  boundary; AI-unavailable responses map to a redacted retryable 503 and the UI
+  retains an explicit manual-excerpt path.
+- AI proposals are replayed before any provider call for the same
+  owner/meeting/source/idempotency key, preventing duplicate spend and
+  nondeterministic retry conflicts.
+- Browser proof covers AI-assisted owner-only origin, exact preview and
+  approval, isolated dependency failure/manual recovery, mobile rejection, and
+  reduced motion. Screenshots and reel clips are current.
 
 ## In progress
 
-- Wire private AI assistance into the owner-authorized disclosure runtime while
-  preserving the deterministic manual fallback and approval/hash boundary.
 - Complete the facilitator, shared-display, history, and audit role surfaces.
 - Assemble shared Decision inputs and the deterministic commit UI.
 
@@ -105,11 +114,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue A4 in
+Continue A5 in
 [`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md):
-configure the proposer only when a server-side key exists, map bounded provider
-failure to safe HTTP/degraded UI behavior, and prove the owner-only candidate
-flow by browser E2E. Preserve manual selection when AI is unavailable.
+add shared-only Decision-state candidate synthesis, then connect it to the L6
+deterministic draft/confirmation/commit slice. AI output must remain a
+human-confirmed candidate and the manual draft path must remain available.
 
 ## Open gates
 

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
+  createErrorEnvelope,
   CreateMeetingResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
@@ -87,12 +88,13 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   });
 
   await page
-    .getByRole("button", { name: "Prepare exact sharing preview" })
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
   await expect(
     page.getByRole("heading", { name: "Review the exact payload" }),
   ).toBeVisible();
   await expect(page.getByText("Nothing has been shared yet.")).toBeVisible();
+  await expect(page.getByText("AI suggestion · owner only")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "No evidence has crossed the boundary" }),
   ).toBeVisible();
@@ -158,6 +160,83 @@ test("invalid credential is safe and visually explicit", async ({ page }) => {
   });
 });
 
+test("AI dependency failure preserves an explicit manual excerpt fallback", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const facilitatorLogin = await page.request.post("/api/v1/login", {
+    data: {
+      password: "counterpoint-product",
+      userId: "product",
+    },
+  });
+  const facilitator = LoginResponseSchema.parse(await facilitatorLogin.json());
+  const createdResponse = await page.request.post("/api/v1/meetings", {
+    data: {
+      idempotencyKey: "ai-fallback-isolated-meeting",
+      purpose: "AI fallback isolation check",
+      users: [
+        { role: "facilitator", userId: "product" },
+        { role: "participant", userId: "legal" },
+        { role: "participant", userId: "engineering" },
+      ],
+    },
+    headers: {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+    },
+  });
+  const created = CreateMeetingResponseSchema.parse(
+    await createdResponse.json(),
+  );
+  await signIn(page, "Legal", "counterpoint-legal");
+  const privateMeeting = page
+    .getByRole("article")
+    .filter({ hasText: created.purpose });
+  await privateMeeting.getByRole("button", { name: "Open workspace" }).click();
+  await page.route("**/api/v1/disclosures/proposals", async (route) => {
+    const request = route.request().postDataJSON() as {
+      assistance?: string;
+    };
+    if (request.assistance === "ai_preferred") {
+      await route.fulfill({
+        body: JSON.stringify(
+          createErrorEnvelope({
+            code: "OPENAI_UNAVAILABLE",
+            correlationId: "correlation_e2e_ai_unavailable",
+          }),
+        ),
+        contentType: "application/json",
+        status: 503,
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Private assistant is temporarily unavailable",
+  );
+  await expect(
+    page.getByRole("button", { name: "Continue with manual excerpt" }),
+  ).toBeVisible();
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${disclosureScreenshotDirectory}/2026-07-19-ai-degraded-manual-fallback-desktop.png`,
+  });
+
+  await page
+    .getByRole("button", { name: "Continue with manual excerpt" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Review the exact payload" }),
+  ).toBeVisible();
+  await expect(page.getByText("Human-selected source excerpt")).toBeVisible();
+});
+
 test("mobile and reduced-motion views preserve the permission boundary", async ({
   page,
 }) => {
@@ -207,7 +286,7 @@ test("mobile and reduced-motion views preserve the permission boundary", async (
     path: `${screenshotDirectory}/2026-07-19-permission-workspace-mobile.png`,
   });
   await page
-    .getByRole("button", { name: "Prepare exact sharing preview" })
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
   await page.getByRole("button", { name: "Keep private" }).click();
   await expect(page.getByText("Kept private")).toBeVisible();
@@ -259,7 +338,7 @@ test("records explicit preview-to-approved evidence motion for the reel", async 
   await signIn(page, "Sales", "counterpoint-sales");
   await page.getByRole("button", { name: "Open workspace" }).click();
   await page
-    .getByRole("button", { name: "Prepare exact sharing preview" })
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
   await expect(
     page.getByRole("heading", { name: "Review the exact payload" }),
