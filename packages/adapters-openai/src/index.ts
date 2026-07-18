@@ -18,3 +18,21 @@ export {
   type PrivateDisclosureProposal,
   type TokenUsage,
 } from "./private-disclosure.js";
+export {
+  DECISION_SYNTHESIS_OPERATION,
+  DECISION_SYNTHESIS_PROMPT_VERSION,
+  DECISION_SYNTHESIS_SCHEMA_VERSION,
+  DeterministicSharedDecisionModel,
+  OpenAiSharedDecisionModel,
+  OpenAiSharedDecisionSynthesizer,
+  SharedDecisionModelOutputSchema,
+  createOpenAiSharedDecisionSynthesizer,
+  type OpenAiSharedDecisionModelOptions,
+  type OpenAiSharedDecisionSynthesizerOptions,
+  type SharedDecisionAiEnvelope,
+  type SharedDecisionModel,
+  type SharedDecisionModelRequest,
+  type SharedDecisionModelResult,
+  type SharedDecisionSynthesis,
+  type SharedDecisionSynthesisInput,
+} from "./decision-synthesis.js";

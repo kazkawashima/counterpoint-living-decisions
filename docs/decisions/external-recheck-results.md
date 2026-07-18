@@ -19,6 +19,12 @@ dated implementation inputs, not permanent assumptions.
   to `gpt-5.6-sol`, returned a schema-valid exact source range on the first
   attempt, and reported 247 input plus 299 output tokens. No key or source body
   was printed by the smoke script.
+- A second live synthetic smoke for shared Decision synthesis on 2026-07-19
+  resolved the same alias to `gpt-5.6-sol`, grounded every premise reference in
+  the supplied shared Evidence IDs, grounded the Action owner in the supplied
+  participant IDs, and succeeded on the first attempt. It reported 315 input
+  plus 310 output tokens. The smoke used synthetic shared data and printed
+  neither the API key nor source text.
 
 Sources:
 
