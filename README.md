@@ -5,10 +5,12 @@ Decisions**.
 
 ## Repository status
 
-The repository is currently in the preparation stage. Product and submission
-reference material is in [`docs/topics/`](docs/topics/README.md). Application
-code and runtime configuration will be added in a subsequent implementation
-slice.
+The repository is currently in the specification and planning stage. Product
+and submission source material is in [`docs/topics/`](docs/topics/README.md).
+The normalized build contract is in [`docs/specs/`](docs/specs/README.md), and
+the ordered implementation plan is in [`docs/plans/`](docs/plans/README.md).
+Application code and runtime configuration will be added in a subsequent
+implementation slice.
 
 The intended architecture is:
 
@@ -42,6 +44,6 @@ For submission preparation, start with the hackathon rules, submission
 checklist, IP guidance, and risk controls. The implementation requirements are
 in [`docs/topics/14-implementation-requirements.md`](docs/topics/14-implementation-requirements.md).
 
-The repository does not yet contain a `docs/plans/` or
-`docs/plans/impl/_status.md` status surface; implementation status will be
-introduced when development begins.
+Use [`docs/plans/impl/_status.md`](docs/plans/impl/_status.md) as the concise
+current-state surface. It records planning as complete and implementation as
+not started.
