@@ -19,10 +19,17 @@ import {
 } from "@counterpoint/adapters-node";
 import {
   createOpenAiPrivateDisclosureProposer,
+  createOpenAiSharedDecisionSynthesizer,
   DeterministicPrivateDisclosureModel,
+  DeterministicSharedDecisionModel,
   OpenAiPrivateDisclosureProposer,
+  OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
-import type { DisclosureDependencies } from "@counterpoint/application";
+import type {
+  DecisionCandidateDependencies,
+  DecisionDependencies,
+  DisclosureDependencies,
+} from "@counterpoint/application";
 import {
   domainEventTypes,
   type DomainEvent,
@@ -43,6 +50,8 @@ import type { ServerConfiguration } from "./config.js";
 export interface ServerRuntime {
   readonly artifactStorageAvailable: boolean;
   readonly clock: Clock;
+  readonly decisionCandidates: DecisionCandidateDependencies;
+  readonly decisions: DecisionDependencies;
   readonly disclosures: DisclosureDependencies;
   readonly facilitatorUserIds: ReadonlySet<string>;
   readonly ids: IdGenerator;
@@ -81,6 +90,30 @@ function candidateProposer(configuration: ServerConfiguration) {
     throw new Error("Live OpenAI mode requires a server-side API key");
   }
   return createOpenAiPrivateDisclosureProposer({
+    apiKey: configuration.openAiApiKey,
+    logger: {
+      log(entry) {
+        console.info(JSON.stringify(entry));
+      },
+    },
+    model: configuration.openAiModel,
+  });
+}
+
+function decisionSynthesizer(configuration: ServerConfiguration) {
+  if (configuration.openAiMode === "disabled") {
+    return undefined;
+  }
+  if (configuration.openAiMode === "deterministic") {
+    return new OpenAiSharedDecisionSynthesizer({
+      model: configuration.openAiModel,
+      modelAdapter: new DeterministicSharedDecisionModel(),
+    });
+  }
+  if (configuration.openAiApiKey === undefined) {
+    throw new Error("Live OpenAI mode requires a server-side API key");
+  }
+  return createOpenAiSharedDecisionSynthesizer({
     apiKey: configuration.openAiApiKey,
     logger: {
       log(entry) {
@@ -201,28 +234,46 @@ export async function createLocalServerRuntime(
       artifactStorageAvailable = false;
     }
     const configuredCandidateProposer = candidateProposer(configuration);
+    const configuredDecisionSynthesizer = decisionSynthesizer(configuration);
+    const events = new SqliteEventStore(
+      database,
+      createJsonCodec(parseStoredDomainEvent),
+    );
+    const projections = new SqliteProjectionStore<MeetingProjection>(
+      database,
+      createJsonCodec((input) => input as MeetingProjection),
+    );
+    const decisions: DecisionDependencies = {
+      clock,
+      events,
+      hash: sha256,
+      ids,
+      projections,
+    };
+    const decisionCandidates: DecisionCandidateDependencies = {
+      ...decisions,
+      listParticipantIds: async (meetingId) =>
+        (await meetings.listAssignments(meetingId))
+          .filter(({ active }) => active)
+          .map(({ participantId }) => participantId),
+      ...(configuredDecisionSynthesizer === undefined
+        ? {}
+        : { synthesizer: configuredDecisionSynthesizer }),
+    };
     const disclosures: DisclosureDependencies = {
       artifacts,
       ...(configuredCandidateProposer === undefined
         ? {}
         : { candidateProposer: configuredCandidateProposer }),
-      clock,
-      events: new SqliteEventStore(
-        database,
-        createJsonCodec(parseStoredDomainEvent),
-      ),
-      hash: sha256,
-      ids,
-      projections: new SqliteProjectionStore<MeetingProjection>(
-        database,
-        createJsonCodec((input) => input as MeetingProjection),
-      ),
+      ...decisions,
     };
 
     return {
       artifactStorageAvailable,
       clock,
       close: () => database.close(),
+      decisionCandidates,
+      decisions,
       disclosures,
       facilitatorUserIds: new Set(
         configuration.demoUsers

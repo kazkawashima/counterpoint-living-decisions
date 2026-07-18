@@ -7,21 +7,36 @@ import type { ZodType } from "zod";
 import {
   approveDisclosure,
   authenticateSession,
+  commitDecision,
   createMeeting,
+  dispositionDecisionCandidate,
   joinMeetingByCode,
   listAssignedMeetings,
   login,
   logout,
+  markDecisionReady,
   previewDisclosure,
+  prepareSharedDecisionCandidate,
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
   resolveMeetingAuthorization,
+  saveDecisionDraft,
   userAuthorizationContext,
+  type DecisionCandidateFailure,
+  type DecisionFailure,
   type DisclosureFailure,
   type DisclosureDependencies,
 } from "@counterpoint/application";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
+import {
+  meetingId as domainMeetingId,
+  meetingPosition,
+  replayMeeting,
+  type Decision as DomainDecision,
+  type DecisionRevision as DomainDecisionRevision,
+  type DomainEvent,
+} from "@counterpoint/domain";
 import type {
   IdGenerator,
   MeetingRecord,
@@ -31,19 +46,30 @@ import type {
 import {
   ApproveDisclosureRequestSchema,
   ApproveDisclosureResponseSchema,
+  CommitDecisionRequestSchema,
+  CommitDecisionResponseSchema,
   CreateMeetingRequestSchema,
   CreateMeetingResponseSchema,
   createErrorEnvelope,
   CURRENT_PROTOCOL_VERSION,
+  DecisionAuditQuerySchema,
+  DecisionAuditResponseSchema,
+  DecisionHistoryQuerySchema,
+  DecisionHistoryResponseSchema,
+  DispositionSharedDecisionCandidateRequestSchema,
+  DispositionSharedDecisionCandidateResponseSchema,
   HealthResponseSchema,
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
   LogoutResponseSchema,
+  MarkDecisionReadyRequestSchema,
+  MarkDecisionReadyResponseSchema,
   PreviewDisclosureRequestSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureRequestSchema,
@@ -54,6 +80,10 @@ import {
   RejectDisclosureRequestSchema,
   RejectDisclosureResponseSchema,
   RoleProjectionQuerySchema,
+  SaveDecisionDraftRequestSchema,
+  SaveDecisionDraftResponseSchema,
+  SynthesizeSharedDecisionRequestSchema,
+  SynthesizeSharedDecisionResponseSchema,
   type ErrorCode,
 } from "@counterpoint/protocol";
 
@@ -295,11 +325,22 @@ async function participantVisiblePosition(
   meetingId: string,
   participantId: string,
 ): Promise<number> {
+  return participantVisiblePositionAt(runtime, meetingId, participantId);
+}
+
+async function participantVisiblePositionAt(
+  runtime: ServerRuntime,
+  meetingId: string,
+  participantId: string,
+  throughGlobalPosition?: number,
+): Promise<number> {
   const records = await runtime.disclosures.events.load(meetingId);
   return records.filter(
-    ({ event }) =>
-      event.visibility === "shared" ||
-      event.ownerParticipantId === participantId,
+    ({ event, position }) =>
+      (throughGlobalPosition === undefined ||
+        position <= throughGlobalPosition) &&
+      (event.visibility === "shared" ||
+        event.ownerParticipantId === participantId),
   ).length;
 }
 
@@ -308,6 +349,148 @@ function disclosureFailureResponse(
   failure: DisclosureFailure,
 ) {
   return errorResponse(context, failure.code);
+}
+
+function decisionFailureResponse(
+  context: AppContext,
+  failure: DecisionFailure | DecisionCandidateFailure,
+) {
+  switch (failure.code) {
+    case "CONFLICT":
+      return errorResponse(context, "CONFLICT", {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      });
+    case "FORBIDDEN":
+    case "IDEMPOTENCY_CONFLICT":
+    case "INVALID_STATE_TRANSITION":
+    case "OPENAI_UNAVAILABLE":
+      return errorResponse(context, failure.code);
+    default:
+      return errorResponse(context, "VALIDATION_FAILED");
+  }
+}
+
+function decisionReadiness(decision: DomainDecision) {
+  return {
+    actionIds: decision.actionIds.length > 0,
+    evidenceIds: decision.evidenceIds.length > 0,
+    monitorCondition: decision.monitorCondition.description.length > 0,
+    outcome: decision.outcome.length > 0,
+    premiseIds: decision.premiseIds.length > 0,
+  };
+}
+
+function decisionView(
+  decision: DomainDecision,
+  updatedAt: string = decision.createdAt,
+) {
+  return {
+    activeRevision: decision.activeRevision,
+    activeRevisionId: decision.activeRevisionId,
+    decisionId: decision.id,
+    readiness: decisionReadiness(decision),
+    snapshot: {
+      actionIds: decision.actionIds,
+      dissentIds: decision.dissentIds,
+      evidenceIds: decision.evidenceIds,
+      monitorCondition: decision.monitorCondition,
+      outcome: decision.outcome,
+      premiseIds: decision.premiseIds,
+      status: decision.status,
+      title: decision.title,
+    },
+    status: decision.status,
+    updatedAt,
+  };
+}
+
+function decisionRevisionView(revision: DomainDecisionRevision) {
+  return {
+    changeReason: revision.changeReason,
+    createdAt: revision.createdAt,
+    createdBy: revision.createdBy,
+    decisionId: revision.decisionId,
+    ...(revision.previousRevisionId === undefined
+      ? {}
+      : { previousRevisionId: revision.previousRevisionId }),
+    revisionId: revision.id,
+    snapshot: revision.snapshot,
+    version: revision.version,
+  };
+}
+
+async function resolvedDecisionMutation(
+  context: AppContext,
+  runtime: ServerRuntime,
+  input: {
+    readonly expectedPosition: number;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+  },
+  isExpectedReplayEvent: (event: DomainEvent) => boolean,
+) {
+  const authenticated = await authenticatedSession(context, runtime);
+  if (authenticated.kind === "rejected") {
+    return authenticated;
+  }
+  const resolved = await resolveMeetingAuthorization(
+    runtime.meetings,
+    authenticated.session,
+    input.meetingId,
+  );
+  if (resolved.kind === "rejected") {
+    return resolved;
+  }
+  const records = await runtime.decisions.events.load(input.meetingId);
+  const priorIdempotencyEvent = records.find(
+    ({ event }) => event.idempotencyKey === input.idempotencyKey,
+  )?.event;
+  if (
+    priorIdempotencyEvent !== undefined &&
+    !isExpectedReplayEvent(priorIdempotencyEvent)
+  ) {
+    return {
+      code: "IDEMPOTENCY_CONFLICT" as const,
+      kind: "rejected" as const,
+    };
+  }
+  const visiblePosition = await participantVisiblePosition(
+    runtime,
+    input.meetingId,
+    resolved.authorization.participantId,
+  );
+  if (
+    priorIdempotencyEvent === undefined &&
+    visiblePosition !== input.expectedPosition
+  ) {
+    return {
+      actualPosition: visiblePosition,
+      code: "CONFLICT" as const,
+      expectedPosition: input.expectedPosition,
+      kind: "rejected" as const,
+    };
+  }
+  return {
+    authorization: resolved.authorization,
+    globalPosition: await runtime.decisions.events.position(input.meetingId),
+    kind: "resolved" as const,
+  };
+}
+
+function resolvedDecisionMutationFailure(
+  context: AppContext,
+  result: Exclude<
+    Awaited<ReturnType<typeof resolvedDecisionMutation>>,
+    { readonly kind: "resolved" }
+  >,
+) {
+  return result.code === "CONFLICT"
+    ? errorResponse(context, "CONFLICT", {
+        actualPosition: result.actualPosition,
+        expectedPosition: result.expectedPosition,
+      })
+    : errorResponse(context, result.code);
 }
 
 function manualDisclosureDependencies(
@@ -599,6 +782,55 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     );
   });
 
+  app.get("/api/v1/meetings/:meetingId/decisions", async (context) => {
+    const query = RoleProjectionQuerySchema.safeParse({
+      meetingId: context.req.param("meetingId"),
+    });
+    if (!query.success) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      query.data.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const records = await runtime.decisions.events.load(query.data.meetingId);
+    const projection = replayMeeting(
+      domainMeetingId(query.data.meetingId),
+      records.map(({ event, position }) => ({
+        ...event,
+        position: meetingPosition(position),
+      })),
+    );
+    return context.json(
+      ListSharedDecisionsResponseSchema.parse({
+        correlationId: context.get("correlationId"),
+        decisions: projection.shared.decisions.map((decision) => {
+          const activeRevision = projection.shared.decisionRevisions.find(
+            ({ id }) => String(id) === String(decision.activeRevisionId),
+          );
+          return decisionView(
+            decision,
+            activeRevision?.createdAt ?? decision.createdAt,
+          );
+        }),
+        meetingId: query.data.meetingId,
+        position: await participantVisiblePosition(
+          runtime,
+          query.data.meetingId,
+          resolved.authorization.participantId,
+        ),
+      }),
+    );
+  });
+
   app.post("/api/v1/disclosures/sources/text", async (context) => {
     const request = await parseJson(
       context,
@@ -640,10 +872,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       RegisterPrivateTextSourceFixtureResponseSchema.parse({
         correlationId: result.correlationId,
         meetingId: request.value.meetingId,
-        position: await participantVisiblePosition(
+        position: await participantVisiblePositionAt(
           runtime,
           request.value.meetingId,
           resolved.authorization.participantId,
+          result.position,
         ),
         source: result.source,
       }),
@@ -701,10 +934,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         correlationId: result.correlationId,
         meetingId: request.value.meetingId,
         origin: aiAssisted ? "ai_assisted" : "human_selected",
-        position: await participantVisiblePosition(
+        position: await participantVisiblePositionAt(
           runtime,
           request.value.meetingId,
           resolved.authorization.participantId,
+          result.position,
         ),
       }),
       201,
@@ -748,10 +982,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         correlationId: result.correlationId,
         meetingId: request.value.meetingId,
         outgoingPayload: result.outgoingPayload,
-        position: await participantVisiblePosition(
+        position: await participantVisiblePositionAt(
           runtime,
           request.value.meetingId,
           resolved.authorization.participantId,
+          result.position,
         ),
         previewHash: result.previewHash,
       }),
@@ -795,10 +1030,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         correlationId: result.correlationId,
         evidence: result.evidence,
         meetingId: request.value.meetingId,
-        position: await participantVisiblePosition(
+        position: await participantVisiblePositionAt(
           runtime,
           request.value.meetingId,
           resolved.authorization.participantId,
+          result.position,
         ),
         previewHash: result.previewHash,
       }),
@@ -846,14 +1082,443 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         candidateId: result.candidateId,
         correlationId: result.correlationId,
         meetingId: request.value.meetingId,
-        position: await participantVisiblePosition(
+        position: await participantVisiblePositionAt(
           runtime,
           request.value.meetingId,
           resolved.authorization.participantId,
+          result.position,
         ),
         state: result.state,
       }),
     );
+  });
+
+  app.post("/api/v1/decisions/candidates", async (context) => {
+    const request = await parseJson(
+      context,
+      SynthesizeSharedDecisionRequestSchema,
+    );
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) =>
+        event.eventType === "InferenceSuggested" &&
+        event.payload.candidateKind === "decision",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    let result: Awaited<ReturnType<typeof prepareSharedDecisionCandidate>>;
+    try {
+      result = await prepareSharedDecisionCandidate(
+        runtime.decisionCandidates,
+        resolved.authorization,
+        request.value.assistance === "manual"
+          ? {
+              assistance: "manual",
+              correlationId: context.get("correlationId"),
+              draft: request.value.draft,
+              expectedPosition: resolved.globalPosition,
+              idempotencyKey: request.value.idempotencyKey,
+              meetingId: request.value.meetingId,
+            }
+          : {
+              assistance: "ai_preferred",
+              correlationId: context.get("correlationId"),
+              expectedPosition: resolved.globalPosition,
+              idempotencyKey: request.value.idempotencyKey,
+              meetingId: request.value.meetingId,
+            },
+      );
+    } catch (error) {
+      if (error instanceof OpenAiCandidateError) {
+        return errorResponse(context, "OPENAI_UNAVAILABLE");
+      }
+      throw error;
+    }
+    if (result.kind === "failed") {
+      return decisionFailureResponse(context, result);
+    }
+    return context.json(
+      SynthesizeSharedDecisionResponseSchema.parse({
+        candidate: result.candidate,
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      201,
+    );
+  });
+
+  app.post("/api/v1/decisions/candidates/disposition", async (context) => {
+    const request = await parseJson(
+      context,
+      DispositionSharedDecisionCandidateRequestSchema,
+    );
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) =>
+        event.eventType === "InferenceConfirmed" ||
+        event.eventType === "InferenceRejected",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const result = await dispositionDecisionCandidate(
+      runtime.decisionCandidates,
+      resolved.authorization,
+      {
+        actions: request.value.actions,
+        candidateId: request.value.candidateId,
+        correlationId: context.get("correlationId"),
+        dissent: request.value.dissent,
+        expectedPosition: resolved.globalPosition,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+        premiseDispositions: request.value.premiseDispositions.map(
+          (disposition) =>
+            disposition.disposition === "confirmed"
+              ? {
+                  candidateId: disposition.candidateId,
+                  disposition: disposition.disposition,
+                  premise: disposition.premise,
+                }
+              : {
+                  candidateId: disposition.candidateId,
+                  disposition: disposition.disposition,
+                  ...(disposition.reason === undefined
+                    ? {}
+                    : { reason: disposition.reason }),
+                },
+        ),
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(context, result);
+    }
+    return context.json(
+      DispositionSharedDecisionCandidateResponseSchema.parse({
+        actions: result.actions.map(
+          ({ id, ownerParticipantId, scope, status }) => ({
+            actionId: id,
+            ownerParticipantId,
+            scope,
+            status,
+          }),
+        ),
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        dissent: result.dissent.map(({ id, reason, retained }) => ({
+          dissentId: id,
+          reason,
+          retained,
+        })),
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        premiseDispositions: result.premiseDispositions,
+        premises: result.premises.map(
+          ({ confirmationStatus, id, statement }) => ({
+            confirmationStatus,
+            premiseId: id,
+            statement,
+          }),
+        ),
+      }),
+    );
+  });
+
+  app.post("/api/v1/decisions/drafts", async (context) => {
+    const request = await parseJson(context, SaveDecisionDraftRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === "DecisionDrafted",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const result = await saveDecisionDraft(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        actionIds: request.value.actionIds,
+        changeReason: request.value.changeReason,
+        correlationId: context.get("correlationId"),
+        ...(request.value.decisionId === undefined
+          ? {}
+          : { decisionId: request.value.decisionId }),
+        dissentIds: request.value.dissentIds,
+        evidenceIds: request.value.evidenceIds,
+        expectedPosition: resolved.globalPosition,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+        monitorCondition: {
+          description: request.value.monitorCondition.description,
+          ...(request.value.monitorCondition.registrationId === undefined
+            ? {}
+            : {
+                registrationId: request.value.monitorCondition.registrationId,
+              }),
+        },
+        outcome: request.value.outcome,
+        premiseIds: request.value.premiseIds,
+        title: request.value.title,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(context, result);
+    }
+    return context.json(
+      SaveDecisionDraftResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, result.revision.createdAt),
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        revision: decisionRevisionView(result.revision),
+      }),
+      201,
+    );
+  });
+
+  app.post("/api/v1/decisions/ready", async (context) => {
+    const request = await parseJson(context, MarkDecisionReadyRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === "DecisionMarkedReady",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const result = await markDecisionReady(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        correlationId: context.get("correlationId"),
+        decisionId: request.value.decisionId,
+        expectedPosition: resolved.globalPosition,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(context, result);
+    }
+    return context.json(
+      MarkDecisionReadyResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, runtime.clock.now()),
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+    );
+  });
+
+  app.post("/api/v1/decisions/commit", async (context) => {
+    const request = await parseJson(context, CommitDecisionRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === "DecisionCommitted",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const result = await commitDecision(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        correlationId: context.get("correlationId"),
+        decisionId: request.value.decisionId,
+        expectedPosition: resolved.globalPosition,
+        explicitCommit: true,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(context, result);
+    }
+    return context.json(
+      CommitDecisionResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, result.revision.createdAt),
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        revision: decisionRevisionView(result.revision),
+      }),
+    );
+  });
+
+  app.get(
+    "/api/v1/meetings/:meetingId/decisions/:decisionId/history",
+    async (context) => {
+      const query = DecisionHistoryQuerySchema.safeParse({
+        decisionId: context.req.param("decisionId"),
+        meetingId: context.req.param("meetingId"),
+      });
+      if (!query.success) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        query.data.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const records = await runtime.decisions.events.load(query.data.meetingId);
+      const projection = replayMeeting(
+        domainMeetingId(query.data.meetingId),
+        records.map(({ event, position }) => ({
+          ...event,
+          position: meetingPosition(position),
+        })),
+      );
+      const decision = projection.shared.decisions.find(
+        ({ id }) => String(id) === String(query.data.decisionId),
+      );
+      if (decision === undefined) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const revisions = projection.shared.decisionRevisions.filter(
+        ({ decisionId }) => decisionId === decision.id,
+      );
+      return context.json(
+        DecisionHistoryResponseSchema.parse({
+          correlationId: context.get("correlationId"),
+          decision: decisionView(
+            decision,
+            revisions.at(-1)?.createdAt ?? decision.createdAt,
+          ),
+          meetingId: query.data.meetingId,
+          revisions: revisions.map(decisionRevisionView),
+        }),
+      );
+    },
+  );
+
+  app.get("/api/v1/meetings/:meetingId/decisions/audit", async (context) => {
+    const query = DecisionAuditQuerySchema.safeParse({
+      meetingId: context.req.param("meetingId"),
+      ...(context.req.query("decisionId") === undefined
+        ? {}
+        : { decisionId: context.req.query("decisionId") }),
+    });
+    if (!query.success) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      query.data.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const records = await runtime.decisions.events.load(query.data.meetingId);
+    const entries = records.flatMap(({ event, position }) => {
+      if (
+        ![
+          "DecisionCommitted",
+          "DecisionDrafted",
+          "DecisionMarkedReady",
+        ].includes(event.eventType)
+      ) {
+        return [];
+      }
+      if (
+        query.data.decisionId !== undefined &&
+        (!("decision" in event.payload) ||
+          String(event.payload.decision.id) !== String(query.data.decisionId))
+      ) {
+        return [];
+      }
+      return [
+        {
+          actor:
+            event.actor.kind === "participant"
+              ? event.actor
+              : {
+                  actorId:
+                    event.actor.kind === "ai"
+                      ? `ai-${event.actor.model}`
+                      : "system",
+                  kind: "system" as const,
+                },
+          auditId: `audit-${event.eventId}`,
+          correlationId: event.correlationId,
+          eventId: event.eventId,
+          eventType: event.eventType,
+          meetingId: event.meetingId,
+          occurredAt: event.occurredAt,
+          position,
+        },
+      ];
+    });
+    const response = DecisionAuditResponseSchema.safeParse({
+      correlationId: context.get("correlationId"),
+      entries,
+      meetingId: query.data.meetingId,
+    });
+    return response.success
+      ? context.json(response.data)
+      : errorResponse(context, "VALIDATION_FAILED");
   });
 
   app.notFound((context) => errorResponse(context, "MEETING_NOT_FOUND"));

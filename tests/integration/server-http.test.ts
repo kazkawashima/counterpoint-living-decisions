@@ -11,16 +11,24 @@ import {
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import {
   ApproveDisclosureResponseSchema,
+  CommitDecisionResponseSchema,
   CreateMeetingResponseSchema,
+  DecisionAuditResponseSchema,
+  DecisionHistoryResponseSchema,
+  DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
   LoginResponseSchema,
+  MarkDecisionReadyResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   ReadinessResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  SaveDecisionDraftResponseSchema,
+  SynthesizeSharedDecisionResponseSchema,
 } from "@counterpoint/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -623,5 +631,394 @@ describe("Node HTTP flagship shell", () => {
       evidence: [{ exactSnippet }],
       position: 1,
     });
+  });
+
+  it("completes facilitator-only synthesis, confirmation, draft, ready, commit, and immutable history", async () => {
+    const { app, runtime } = await fixture({
+      NODE_ENV: "test",
+      OPENAI_FAKE_MODE: "deterministic",
+    });
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const participant = await login(app, "safety", "counterpoint-safety");
+    const meetingId = "meeting-global-ai-rollout";
+    const headers = {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const exactSnippet =
+      "Synthetic shared fact: regional launch requires a documented approval gate.";
+
+    const registeredResponse = await app.request(
+      "/api/v1/disclosures/sources/text",
+      {
+        body: JSON.stringify({
+          expectedPosition: 0,
+          idempotencyKey: "decision-source",
+          meetingId,
+          text: exactSnippet,
+          title: "Synthetic shared gate",
+        }),
+        headers,
+        method: "POST",
+      },
+    );
+    const registered = RegisterPrivateTextSourceFixtureResponseSchema.parse(
+      await registeredResponse.json(),
+    );
+    const proposedResponse = await app.request(
+      "/api/v1/disclosures/proposals",
+      {
+        body: JSON.stringify({
+          assistance: "manual",
+          exactSnippet,
+          expectedPosition: registered.position,
+          idempotencyKey: "decision-disclosure",
+          meetingId,
+          sourceArtifactId: registered.source.sourceArtifactId,
+          sourceRange: { end: exactSnippet.length, start: 0 },
+        }),
+        headers,
+        method: "POST",
+      },
+    );
+    const proposed = ProposeDisclosureResponseSchema.parse(
+      await proposedResponse.json(),
+    );
+    const previewResponse = await app.request("/api/v1/disclosures/preview", {
+      body: JSON.stringify({
+        candidateId: proposed.candidate.candidateId,
+        exactSnippet,
+        expectedPosition: proposed.position,
+        idempotencyKey: "decision-preview",
+        meetingId,
+        sourceRange: { end: exactSnippet.length, start: 0 },
+      }),
+      headers,
+      method: "POST",
+    });
+    const preview = PreviewDisclosureResponseSchema.parse(
+      await previewResponse.json(),
+    );
+    const approvedResponse = await app.request("/api/v1/disclosures/approve", {
+      body: JSON.stringify({
+        candidateId: preview.candidateId,
+        expectedPosition: preview.position,
+        idempotencyKey: "decision-approval",
+        meetingId,
+        previewHash: preview.previewHash,
+      }),
+      headers,
+      method: "POST",
+    });
+    const approved = ApproveDisclosureResponseSchema.parse(
+      await approvedResponse.json(),
+    );
+
+    const synthesisBody = JSON.stringify({
+      assistance: "ai_preferred",
+      expectedPosition: approved.position,
+      idempotencyKey: "synthesize-shared-decision",
+      meetingId,
+    });
+    const synthesizedResponse = await app.request(
+      "/api/v1/decisions/candidates",
+      {
+        body: synthesisBody,
+        headers,
+        method: "POST",
+      },
+    );
+    expect(synthesizedResponse.status).toBe(201);
+    const synthesized = SynthesizeSharedDecisionResponseSchema.parse(
+      await synthesizedResponse.json(),
+    );
+    expect(synthesized).toMatchObject({
+      candidate: {
+        provenance: {
+          origin: "ai_assisted",
+        },
+      },
+    });
+    expect(
+      synthesized.candidate.draft.premiseCandidates[0]?.evidenceReferenceIds,
+    ).toEqual([approved.evidence.evidenceId]);
+    const replayedSynthesisResponse = await app.request(
+      "/api/v1/decisions/candidates",
+      {
+        body: synthesisBody,
+        headers,
+        method: "POST",
+      },
+    );
+    expect(replayedSynthesisResponse.status).toBe(201);
+    expect(
+      SynthesizeSharedDecisionResponseSchema.parse(
+        await replayedSynthesisResponse.json(),
+      ),
+    ).toEqual(synthesized);
+    const eventsAfterSynthesis =
+      await runtime.decisions.events.position(meetingId);
+    const crossCommandKey = await app.request("/api/v1/decisions/candidates", {
+      body: JSON.stringify({
+        assistance: "ai_preferred",
+        expectedPosition: synthesized.position,
+        idempotencyKey: "decision-source",
+        meetingId,
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(crossCommandKey.status).toBe(409);
+    expect(
+      ErrorEnvelopeSchema.parse(await crossCommandKey.json()),
+    ).toMatchObject({
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    expect(await runtime.decisions.events.position(meetingId)).toBe(
+      eventsAfterSynthesis,
+    );
+
+    const participantForbidden = await app.request(
+      "/api/v1/decisions/candidates",
+      {
+        body: JSON.stringify({
+          assistance: "manual",
+          draft: {
+            actions: [],
+            dissent: [],
+            monitorCondition: { description: "Synthetic monitor" },
+            outcome: "Synthetic participant draft",
+            premises: [
+              {
+                evidenceReferenceIds: [approved.evidence.evidenceId],
+                statement: "Synthetic participant premise",
+              },
+            ],
+            title: "Forbidden participant candidate",
+          },
+          expectedPosition: 1,
+          idempotencyKey: "participant-candidate",
+          meetingId,
+        }),
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(participantForbidden.status).toBe(403);
+
+    const premiseCandidate = synthesized.candidate.draft.premiseCandidates[0];
+    if (premiseCandidate === undefined) {
+      throw new Error("Deterministic synthesis returned no premise");
+    }
+    const dispositionBody = JSON.stringify({
+      actions: synthesized.candidate.draft.actionCandidates.map(
+        ({ ownerParticipantId, scope }) => ({
+          ownerParticipantId,
+          scope,
+        }),
+      ),
+      candidateId: synthesized.candidate.candidateId,
+      dissent: synthesized.candidate.draft.dissentCandidates.map(
+        ({ reason, retained }) => ({ reason, retained }),
+      ),
+      expectedPosition: synthesized.position,
+      idempotencyKey: "confirm-shared-decision",
+      meetingId,
+      monitorCondition: synthesized.candidate.draft.monitorCondition,
+      outcome: synthesized.candidate.draft.outcome,
+      premiseDispositions: [
+        {
+          candidateId: premiseCandidate.candidateId,
+          disposition: "confirmed",
+          premise: {
+            evidenceReferenceIds: premiseCandidate.evidenceReferenceIds,
+            statement: premiseCandidate.statement,
+          },
+        },
+      ],
+      reason: "Facilitator reviewed the grounded candidate.",
+      title: synthesized.candidate.draft.title,
+    });
+    const dispositionResponse = await app.request(
+      "/api/v1/decisions/candidates/disposition",
+      {
+        body: dispositionBody,
+        headers,
+        method: "POST",
+      },
+    );
+    expect(dispositionResponse.status).toBe(200);
+    const disposition = DispositionSharedDecisionCandidateResponseSchema.parse(
+      await dispositionResponse.json(),
+    );
+    expect(disposition).toMatchObject({
+      actions: [{ status: "planned" }],
+      premiseDispositions: [{ disposition: "confirmed" }],
+    });
+    const replayedDispositionResponse = await app.request(
+      "/api/v1/decisions/candidates/disposition",
+      {
+        body: dispositionBody,
+        headers,
+        method: "POST",
+      },
+    );
+    expect(replayedDispositionResponse.status).toBe(200);
+    expect(
+      DispositionSharedDecisionCandidateResponseSchema.parse(
+        await replayedDispositionResponse.json(),
+      ),
+    ).toEqual(disposition);
+
+    const draftResponse = await app.request("/api/v1/decisions/drafts", {
+      body: JSON.stringify({
+        actionIds: disposition.actions.map(({ actionId }) => actionId),
+        changeReason: "Initial facilitator draft from grounded candidate",
+        dissentIds: disposition.dissent.map(({ dissentId }) => dissentId),
+        evidenceIds: [approved.evidence.evidenceId],
+        expectedPosition: disposition.position,
+        idempotencyKey: "save-shared-decision",
+        meetingId,
+        monitorCondition: synthesized.candidate.draft.monitorCondition,
+        outcome: synthesized.candidate.draft.outcome,
+        premiseIds: disposition.premises.map(({ premiseId }) => premiseId),
+        title: synthesized.candidate.draft.title,
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(draftResponse.status).toBe(201);
+    const draft = SaveDecisionDraftResponseSchema.parse(
+      await draftResponse.json(),
+    );
+    expect(draft.decision.status).toBe("DRAFT");
+    expect(draft.revision.snapshot.status).toBe("DRAFT");
+
+    const readyResponse = await app.request("/api/v1/decisions/ready", {
+      body: JSON.stringify({
+        decisionId: draft.decision.decisionId,
+        expectedPosition: draft.position,
+        idempotencyKey: "ready-shared-decision",
+        meetingId,
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(readyResponse.status).toBe(200);
+    const ready = MarkDecisionReadyResponseSchema.parse(
+      await readyResponse.json(),
+    );
+    expect(ready.decision.status).toBe("DECISION_READY");
+
+    const commitResponse = await app.request("/api/v1/decisions/commit", {
+      body: JSON.stringify({
+        decisionId: draft.decision.decisionId,
+        expectedPosition: ready.position,
+        idempotencyKey: "commit-shared-decision",
+        meetingId,
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(commitResponse.status).toBe(200);
+    const committed = CommitDecisionResponseSchema.parse(
+      await commitResponse.json(),
+    );
+    expect(committed).toMatchObject({
+      decision: {
+        activeRevision: 2,
+        status: "COMMITTED",
+      },
+      revision: {
+        previousRevisionId: draft.revision.revisionId,
+        snapshot: { status: "COMMITTED" },
+        version: 2,
+      },
+    });
+
+    const historyResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions/${draft.decision.decisionId}/history`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(historyResponse.status).toBe(200);
+    const history = DecisionHistoryResponseSchema.parse(
+      await historyResponse.json(),
+    );
+    expect(history.decision.status).toBe("COMMITTED");
+    expect(history.revisions.map(({ snapshot }) => snapshot.status)).toEqual([
+      "DRAFT",
+      "COMMITTED",
+    ]);
+
+    const sharedDecisionsResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(sharedDecisionsResponse.status).toBe(200);
+    expect(
+      ListSharedDecisionsResponseSchema.parse(
+        await sharedDecisionsResponse.json(),
+      ).decisions,
+    ).toEqual([
+      expect.objectContaining({
+        activeRevision: 2,
+        decisionId: draft.decision.decisionId,
+        status: "COMMITTED",
+      }),
+    ]);
+
+    const auditResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions/audit?decisionId=${draft.decision.decisionId}`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(auditResponse.status).toBe(200);
+    expect(
+      DecisionAuditResponseSchema.parse(await auditResponse.json()).entries.map(
+        ({ eventType }) => eventType,
+      ),
+    ).toEqual(["DecisionDrafted", "DecisionMarkedReady", "DecisionCommitted"]);
+
+    const staleReady = await app.request("/api/v1/decisions/ready", {
+      body: JSON.stringify({
+        decisionId: draft.decision.decisionId,
+        expectedPosition: draft.position,
+        idempotencyKey: "stale-ready",
+        meetingId,
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(staleReady.status).toBe(409);
+    expect(ErrorEnvelopeSchema.parse(await staleReady.json())).toMatchObject({
+      code: "CONFLICT",
+    });
+
+    const records = await runtime.decisions.events.load(meetingId);
+    const sharedJson = JSON.stringify(
+      records.filter(({ event }) => event.visibility === "shared"),
+    );
+    expect(sharedJson).not.toContain("gpt-5.6");
+    expect(
+      records.filter(
+        ({ event }) =>
+          event.eventType === "DecisionCommitted" &&
+          event.visibility === "shared",
+      ),
+    ).toHaveLength(1);
   });
 });

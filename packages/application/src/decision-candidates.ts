@@ -1199,6 +1199,13 @@ function materializedEvents(
       position: meetingPosition(input.expectedPosition + events.length + 1),
     });
   });
+  const firstEvent = events[0];
+  if (firstEvent !== undefined) {
+    events[0] = {
+      ...firstEvent,
+      idempotencyKey: idempotencyKey(input.idempotencyKey),
+    };
+  }
   return { actions, dissent, events, premises };
 }
 
@@ -1245,12 +1252,17 @@ export async function dispositionDecisionCandidate(
   const actualPremiseIds = input.premiseDispositions.map(
     ({ candidateId }) => candidateId,
   );
+  const hasConfirmedPremise = input.premiseDispositions.some(
+    ({ disposition }) => disposition === "confirmed",
+  );
   if (
     actualPremiseIds.length !== expectedPremiseIds.size ||
     new Set(actualPremiseIds).size !== actualPremiseIds.length ||
     !actualPremiseIds.every((id) => expectedPremiseIds.has(id)) ||
-    input.dissent.length !== bundle.dissentEvents.length ||
-    input.actions.length !== bundle.actionEvents.length
+    (hasConfirmedPremise
+      ? input.dissent.length !== bundle.dissentEvents.length ||
+        input.actions.length !== bundle.actionEvents.length
+      : input.dissent.length > 0 || input.actions.length > 0)
   ) {
     return failed("VALIDATION_FAILED");
   }

@@ -396,6 +396,56 @@ describe("shared Decision candidate application flow", () => {
     });
   });
 
+  it("records a rejected premise without publishing linked Actions or dissent", async () => {
+    const deps = dependencies();
+    await seedEvidence(deps);
+    const prepared = await prepareSharedDecisionCandidate(
+      deps,
+      facilitatorContext(),
+      aiRequest,
+    );
+    if (prepared.kind !== "candidate_prepared") {
+      throw new Error(`Candidate fixture failed: ${prepared.code}`);
+    }
+    const premise = prepared.candidate.draft.premiseCandidates[0];
+    if (premise === undefined) {
+      throw new Error("Candidate fixture has no premise");
+    }
+    const rejected = await dispositionDecisionCandidate(
+      deps,
+      facilitatorContext(),
+      {
+        actions: [],
+        candidateId: prepared.candidate.candidateId,
+        dissent: [],
+        expectedPosition: prepared.position,
+        idempotencyKey: "reject-ai-candidate",
+        meetingId: MEETING_ID,
+        premiseDispositions: [
+          {
+            candidateId: premise.candidateId,
+            disposition: "rejected",
+            reason: "The source does not establish the proposed dependency.",
+          },
+        ],
+      },
+    );
+    expect(rejected).toMatchObject({
+      actions: [],
+      dissent: [],
+      kind: "candidate_disposed",
+      premises: [],
+      premiseDispositions: [{ disposition: "rejected" }],
+    });
+    const records = await deps.events.load(MEETING_ID);
+    expect(
+      records.filter(({ event }) => event.eventType === "InferenceRejected"),
+    ).toHaveLength(1);
+    expect(
+      records.filter(({ event }) => event.eventType === "InferenceConfirmed"),
+    ).toHaveLength(0);
+  });
+
   it("rejects unauthorized use and references outside shared meeting state", async () => {
     const deps = dependencies();
     await seedEvidence(deps);

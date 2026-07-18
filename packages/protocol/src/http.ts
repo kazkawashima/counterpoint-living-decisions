@@ -378,6 +378,15 @@ export const ListSharedEvidenceResponseSchema = z.strictObject({
 export type ListSharedEvidenceResponse = z.infer<
   typeof ListSharedEvidenceResponseSchema
 >;
+export const ListSharedDecisionsResponseSchema = z.strictObject({
+  decisions: z.array(DecisionSchema),
+  meetingId: MeetingIdSchema,
+  position: MeetingPositionSchema,
+  ...RequiredCorrelationShape,
+});
+export type ListSharedDecisionsResponse = z.infer<
+  typeof ListSharedDecisionsResponseSchema
+>;
 
 export const RoleProjectionQuerySchema = z.strictObject({
   meetingId: MeetingIdSchema,
