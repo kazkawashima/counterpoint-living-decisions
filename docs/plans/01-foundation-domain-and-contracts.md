@@ -16,20 +16,24 @@ independent of Node, Cloudflare, React, and OpenAI.
 
 ### F1 — Workspace and command surface
 
-- [ ] Select and pin the Node/package-manager versions.
-- [ ] Create workspace packages and application directories from the specified
+- [x] Select and pin the Node/package-manager versions.
+- [x] Create workspace packages and application directories from the specified
       layout.
-- [ ] Add root scripts for format, lint, typecheck, unit, contract, integration,
+- [x] Add root scripts for format, lint, typecheck, unit, contract, integration,
       E2E, build, dev, and deployment smoke.
-- [ ] Configure Vite dev with `--host 0.0.0.0`.
-- [ ] Add CI-safe environment validation with no production secret values.
-- [ ] Add architecture-boundary checks preventing domain runtime dependencies.
+- [x] Configure Vite dev with `--host 0.0.0.0`.
+- [x] Add CI-safe environment validation with no production secret values.
+- [x] Add architecture-boundary checks preventing domain runtime dependencies.
 
 Proof:
 
 - clean install
 - root typecheck/test/build command starts
 - forbidden dependency test fails on a deliberate fixture and passes normally
+
+Implemented in the foundation tooling slice. Verified with `npm install`,
+`npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`,
+`npm run build`, `npm run env:check`, and `npm run test:architecture`.
 
 ### F2 — Protocol primitives
 

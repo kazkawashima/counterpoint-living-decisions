@@ -1,0 +1,48 @@
+{
+  "name": "counterpoint-living-decisions",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Counterpoint — Living Decisions hackathon monorepo",
+  "type": "module",
+  "packageManager": "npm@11.12.1",
+  "engines": {
+    "node": "24.15.0",
+    "npm": "11.12.1"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "contract": "vitest run --project contract",
+    "deploy:smoke": "node scripts/deployment-smoke.mjs",
+    "dev": "npm run dev --workspace @counterpoint/web",
+    "dev:web": "npm run dev --workspace @counterpoint/web",
+    "env:check": "node scripts/check-environment.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "integration": "vitest run --project integration",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:architecture": "node scripts/check-architecture.mjs",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.check.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.1.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.7.0",
+    "globals": "17.7.0",
+    "prettier": "3.9.5",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.64.0",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
+  }
+}

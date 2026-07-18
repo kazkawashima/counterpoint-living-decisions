@@ -1,0 +1,35 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/ports"
+    },
+    {
+      "path": "./packages/protocol"
+    },
+    {
+      "path": "./packages/application"
+    },
+    {
+      "path": "./packages/adapters-node"
+    },
+    {
+      "path": "./packages/adapters-cloudflare"
+    },
+    {
+      "path": "./packages/adapters-openai"
+    },
+    {
+      "path": "./apps/server"
+    },
+    {
+      "path": "./apps/worker"
+    },
+    {
+      "path": "./apps/web"
+    }
+  ]
+}

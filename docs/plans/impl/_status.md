@@ -4,7 +4,7 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**Planning complete; implementation not started.**
+**M1 Foundation implementation in progress.**
 
 The canonical implementation-facing artifacts are:
 
@@ -23,18 +23,29 @@ The canonical implementation-facing artifacts are:
 - Topic and topic-14 section coverage matrices.
 - Ordered M0–M6 delivery plan.
 - User-decision list separated from external fact rechecks.
+- F1 npm workspace scaffold with pinned Node/npm versions.
+- Root format, lint, typecheck, unit/contract/integration, build, development,
+  and deployment-smoke command surface.
+- Vite development and preview host binding to `0.0.0.0`.
+- Secret-safe environment-example validation.
+- Enforced domain/package dependency boundaries with deliberate failing
+  fixtures.
+
+## In progress
+
+- F2 protocol primitives and versioned envelopes.
+- F3–F5 domain entities, event reducers, and Decision lifecycle.
+- F6 ports and reusable contract harnesses.
 
 ## Not started
 
-- Application/workspace scaffolding.
-- Domain, adapters, UI, tests, deployment, and submission assets.
+- Runtime adapters, UI, deployment, and submission assets.
 
 ## Next executable slice
 
-After explicit implementation instruction, begin
-[`01-foundation-domain-and-contracts.md`](../01-foundation-domain-and-contracts.md)
-with F1 workspace setup and F2 protocol primitives. Do not start optional
-scenarios.
+Continue [`01-foundation-domain-and-contracts.md`](../01-foundation-domain-and-contracts.md)
+with F2 protocol primitives, then complete the deterministic F3–F6 domain
+foundation. Do not start optional scenarios.
 
 ## Open gates
 

@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "ignoreDeprecations": "6.0",
+    "noEmit": true,
+    "paths": {
+      "@counterpoint/adapters-cloudflare": [
+        "packages/adapters-cloudflare/src/index.ts"
+      ],
+      "@counterpoint/adapters-node": ["packages/adapters-node/src/index.ts"],
+      "@counterpoint/adapters-openai": [
+        "packages/adapters-openai/src/index.ts"
+      ],
+      "@counterpoint/application": ["packages/application/src/index.ts"],
+      "@counterpoint/domain": ["packages/domain/src/index.ts"],
+      "@counterpoint/ports": ["packages/ports/src/index.ts"],
+      "@counterpoint/protocol": ["packages/protocol/src/index.ts"]
+    },
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "apps/**/*.ts",
+    "packages/**/*.ts",
+    "scripts/**/*.mjs",
+    "tests/**/*.ts",
+    "vitest.config.ts"
+  ]
+}
