@@ -33,6 +33,13 @@ const packageRules = new Map([
       allowedExternal: new Set(),
     },
   ],
+  [
+    "adapters-openai",
+    {
+      allowedInternal: new Set(["application", "ports"]),
+      allowedExternal: new Set(["openai", "openai/helpers/zod", "zod"]),
+    },
+  ],
 ]);
 
 const importPattern = /(?:from\s*|import\s*\(\s*|import\s*)["']([^"']+)["']/gu;

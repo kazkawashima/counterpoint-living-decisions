@@ -22,3 +22,7 @@ Do not convert an unverified topic statement into a current fact. Record the
 date, exact source, and observed value when each item is closed.
 
 ER-07 is scheduled for product-owner inspection on 2026-07-20.
+
+ER-03 was closed on 2026-07-19. ER-04 has a verified model/WebRTC topology but
+remains open for account-specific expiry and limit verification. See
+[`external-recheck-results.md`](./external-recheck-results.md).

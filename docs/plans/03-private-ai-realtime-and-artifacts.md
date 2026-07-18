@@ -35,11 +35,11 @@ text/manual degraded path.
 
 ### A3 — OpenAI structured-output adapter
 
-- [ ] Resolve official GPT-5.6 model configuration from ER-03.
-- [ ] Implement prompt/schema versioning and structured-output validation.
-- [ ] Implement source-reference validation.
-- [ ] Record model, prompt version, usage, and latency without content/secrets.
-- [ ] Add capped retry and deterministic fake adapter.
+- [x] Resolve official GPT-5.6 model configuration from ER-03.
+- [x] Implement prompt/schema versioning and structured-output validation.
+- [x] Implement source-reference validation.
+- [x] Record model, prompt version, usage, and latency without content/secrets.
+- [x] Add capped retry and deterministic fake adapter.
 
 ### A4 — Private evidence assistance
 

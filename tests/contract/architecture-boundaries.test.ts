@@ -33,4 +33,16 @@ describe("architecture dependency boundaries", () => {
       "fixture/ports.ts: ports cannot import @counterpoint/application",
     ]);
   });
+
+  it("rejects OpenAI adapter imports from apps or sibling runtime adapters", () => {
+    expect(
+      findArchitectureViolations({
+        packageName: "adapters-openai",
+        source: 'import { startServer } from "@counterpoint/adapters-node";',
+        sourcePath: "fixture/adapters-openai.ts",
+      }),
+    ).toEqual([
+      "fixture/adapters-openai.ts: adapters-openai cannot import @counterpoint/adapters-node",
+    ]);
+  });
 });

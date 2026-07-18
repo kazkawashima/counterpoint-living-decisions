@@ -127,6 +127,31 @@ async function registerProposeAndPreview(deps: DisclosureDependencies) {
 }
 
 describe("deterministic private text disclosure", () => {
+  it("does not append a disclosure event when candidate generation fails", async () => {
+    const deps: DisclosureDependencies = {
+      ...dependencies(),
+      candidateProposer: {
+        propose: () =>
+          Promise.reject(new Error("synthetic provider unavailable")),
+      },
+    };
+    const registered = await registerSource(deps);
+
+    await expect(
+      proposeDisclosure(deps, ownerContext(), {
+        expectedPosition: 1,
+        idempotencyKey: "failed-ai-proposal",
+        meetingId: MEETING_ID,
+        sourceArtifactId: registered.source.sourceArtifactId,
+      }),
+    ).rejects.toThrow("synthetic provider unavailable");
+
+    expect(await deps.events.position(MEETING_ID)).toBe(1);
+    expect(
+      (await deps.events.load(MEETING_ID)).map(({ event }) => event.eventType),
+    ).toEqual(["ArtifactRegistered"]);
+  });
+
   it("publishes only the exact owner-approved snippet as shared Evidence", async () => {
     const deps = dependencies();
     const { previewed, proposed, registered } =

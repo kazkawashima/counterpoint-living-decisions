@@ -10,9 +10,10 @@
     }
   },
   "dependencies": {
-    "@counterpoint/domain": "0.0.0",
+    "@counterpoint/application": "0.0.0",
     "@counterpoint/ports": "0.0.0",
-    "@counterpoint/protocol": "0.0.0"
+    "openai": "6.48.0",
+    "zod": "4.4.3"
   },
   "scripts": {
     "build": "tsc -b"

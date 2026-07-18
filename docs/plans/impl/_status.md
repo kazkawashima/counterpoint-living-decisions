@@ -4,7 +4,8 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**M1 Foundation complete; M2 local skeleton is in progress.**
+**M1 Foundation and the permissioned disclosure vertical slice are complete;
+M2 private AI assistance is in progress.**
 
 The canonical implementation-facing artifacts are:
 
@@ -80,9 +81,20 @@ The canonical implementation-facing artifacts are:
   never enters the shared event.
 - Startup artifact-storage probe with readiness degradation and a stable 503
   error when the configured local path is unusable.
+- ER-03 dated verification of the current GPT-5.6 Responses/Structured Outputs
+  path, including a live synthetic `gpt-5.6-sol` exact-range smoke.
+- A3 OpenAI private-disclosure adapter with pinned SDK, strict Zod output,
+  prompt/schema versions, `store: false`, source-reference and exact-range
+  enforcement, capped retry, deterministic fake, and content-free structured
+  usage/latency logs.
+- Architecture checks now constrain the OpenAI adapter to application/ports and
+  its explicit provider/schema dependencies.
+- Application proof that provider failure cannot append a disclosure event.
 
 ## In progress
 
+- Wire private AI assistance into the owner-authorized disclosure runtime while
+  preserving the deterministic manual fallback and approval/hash boundary.
 - Complete the facilitator, shared-display, history, and audit role surfaces.
 - Assemble shared Decision inputs and the deterministic commit UI.
 
@@ -93,9 +105,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue [`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md)
-with the L6 deterministic Decision commit vertical slice while preserving the
-owner/shared projection partition. Do not start optional scenarios.
+Continue A4 in
+[`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md):
+configure the proposer only when a server-side key exists, map bounded provider
+failure to safe HTTP/degraded UI behavior, and prove the owner-only candidate
+flow by browser E2E. Preserve manual selection when AI is unavailable.
 
 ## Open gates
 

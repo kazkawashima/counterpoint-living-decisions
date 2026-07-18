@@ -27,6 +27,7 @@
     "format:check": "prettier --check .",
     "integration": "vitest run --project integration",
     "lint": "eslint .",
+    "smoke:openai": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-private-disclosure-smoke.mjs",
     "test": "vitest run",
     "test:architecture": "node scripts/check-architecture.mjs",
     "test:coverage": "vitest run --coverage",

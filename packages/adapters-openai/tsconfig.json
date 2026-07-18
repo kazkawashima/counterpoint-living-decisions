@@ -9,10 +9,10 @@
   "include": ["src"],
   "references": [
     {
-      "path": "../ports"
+      "path": "../application"
     },
     {
-      "path": "../protocol"
+      "path": "../ports"
     }
   ]
 }
