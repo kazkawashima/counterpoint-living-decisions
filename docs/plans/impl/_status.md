@@ -121,11 +121,14 @@ The canonical implementation-facing artifacts are:
   explicit commit, reload persistence, separate-participant visibility,
   responsive mobile layout, and reduced motion. Five current screenshots and
   one candidate-to-commit reel clip accompany the test.
+- L7 production-like Docker Compose path builds pinned Node and nginx images,
+  serves one same-origin UI/API endpoint on `0.0.0.0`, waits for API readiness,
+  persists SQLite and artifacts in a named volume, and starts without an
+  OpenAI key.
 
 ## In progress
 
-- Complete the versioned capability surface, realtime resume path, and
-  production Compose runtime.
+- Complete the versioned capability surface and realtime resume path.
 - Extend the committed Decision into monitoring and external-event review.
 
 ## Not started

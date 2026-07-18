@@ -1,0 +1,33 @@
+name: counterpoint
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      DATABASE_PATH: /data/counterpoint.sqlite
+      NODE_ENV: production
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
+      PORT: "8787"
+      STORAGE_PATH: /data/artifacts
+    restart: unless-stopped
+    volumes:
+      - counterpoint-data:/data
+
+  web:
+    build:
+      context: .
+      target: web
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      WEB_PORT: ${WEB_PORT:-8080}
+    ports:
+      - "0.0.0.0:${WEB_PORT:-8080}:8080"
+    restart: unless-stopped
+
+volumes:
+  counterpoint-data:

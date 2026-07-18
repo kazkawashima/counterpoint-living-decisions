@@ -71,11 +71,11 @@ ports.
 
 ### L7 — Compose path
 
-- [ ] Add production build container and Compose configuration.
-- [ ] Persist SQLite and artifacts with named volumes.
-- [ ] Add health check and startup migration.
-- [ ] Start without an OpenAI key.
-- [ ] Print one Tailscale-reachable URL.
+- [x] Add production build container and Compose configuration.
+- [x] Persist SQLite and artifacts with named volumes.
+- [x] Add health check and startup migration.
+- [x] Start without an OpenAI key.
+- [x] Print one Tailscale-reachable URL.
 
 ## Browser verification
 

@@ -17,6 +17,8 @@
     "build": "tsc -b && npm run bundle --workspace @counterpoint/web",
     "clean": "tsc -b --clean",
     "contract": "vitest run --project contract",
+    "compose:config": "docker compose config --quiet",
+    "compose:up": "docker compose up --build",
     "deploy:smoke": "npm run build && node scripts/deployment-smoke.mjs",
     "dev": "npm run dev --workspace @counterpoint/web",
     "dev:server": "npm run dev --workspace @counterpoint/server",

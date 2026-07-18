@@ -63,6 +63,29 @@ following public demo-only passwords:
 Run `npm test` for unit/contract/integration coverage and `npm run e2e` for the
 committed browser journey and reel-evidence capture.
 
+## Production-like local runtime
+
+The standard persistent path serves one origin and starts without an OpenAI
+key:
+
+```bash
+docker compose up --build
+```
+
+Open `http://<this-machine-ip>:8080`. Set `WEB_PORT` to change the published
+port. The API is not published separately; nginx forwards same-origin
+`/api`, `/health`, and `/ready` requests over the internal Compose network.
+SQLite and partitioned artifacts persist in the `counterpoint-data` named
+volume across container replacement.
+
+To enable live AI locally, export `OPENAI_API_KEY` only in the invoking shell or
+place it in an untracked `.env`. Do not add it to `compose.yaml`, an image, or
+the repository. Stop the stack without deleting persisted data:
+
+```bash
+docker compose down
+```
+
 ## Documentation
 
 Read [`docs/topics/README.md`](docs/topics/README.md) for the Japanese reference
