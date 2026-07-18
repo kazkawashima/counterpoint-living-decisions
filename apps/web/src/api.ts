@@ -1,25 +1,165 @@
 import {
   ApproveDisclosureResponseSchema,
+  CommitDecisionResponseSchema,
+  DecisionAuditResponseSchema,
+  DecisionHistoryResponseSchema,
+  DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
   LoginResponseSchema,
   LogoutResponseSchema,
+  MarkDecisionReadyResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
+  SaveDecisionDraftResponseSchema,
+  SynthesizeSharedDecisionResponseSchema,
   type AssignedMeeting,
   type ApproveDisclosureResponse,
+  type CommitDecisionRequest,
+  type CommitDecisionResponse,
+  type DecisionAuditQuery,
+  type DecisionAuditResponse,
+  type DecisionHistoryQuery,
+  type DecisionHistoryResponse,
+  type DispositionSharedDecisionCandidateRequest,
+  type DispositionSharedDecisionCandidateResponse,
   type LoginResponse,
+  type ListSharedDecisionsResponse,
   type ListSharedEvidenceResponse,
+  type MarkDecisionReadyRequest,
+  type MarkDecisionReadyResponse,
   type PreviewDisclosureResponse,
   type ProposeDisclosureResponse,
   type RegisterPrivateTextSourceFixtureResponse,
   type RejectDisclosureResponse,
+  type SaveDecisionDraftRequest,
+  type SaveDecisionDraftResponse,
+  type SynthesizeSharedDecisionRequest,
+  type SynthesizeSharedDecisionResponse,
   type TextRange,
 } from "@counterpoint/protocol";
+
+export type {
+  CommitDecisionRequest,
+  CommitDecisionResponse,
+  DecisionAuditQuery,
+  DecisionAuditResponse,
+  DecisionHistoryQuery,
+  DecisionHistoryResponse,
+  DispositionSharedDecisionCandidateRequest,
+  DispositionSharedDecisionCandidateResponse,
+  MarkDecisionReadyRequest,
+  MarkDecisionReadyResponse,
+  SaveDecisionDraftRequest,
+  SaveDecisionDraftResponse,
+  SynthesizeSharedDecisionRequest,
+  SynthesizeSharedDecisionResponse,
+};
+
+interface MeetingMutationInput {
+  readonly correlationId?: string;
+  readonly expectedPosition: number;
+  readonly idempotencyKey: string;
+  readonly meetingId: string;
+}
+
+export interface ManualSharedDecisionDraftClientInput {
+  readonly actions: readonly {
+    readonly ownerParticipantId: string;
+    readonly scope: readonly string[];
+  }[];
+  readonly dissent: readonly {
+    readonly reason: string;
+    readonly retained: boolean;
+  }[];
+  readonly monitorCondition: {
+    readonly description: string;
+  };
+  readonly outcome: string;
+  readonly premises: readonly {
+    readonly evidenceReferenceIds: readonly string[];
+    readonly statement: string;
+  }[];
+  readonly title: string;
+}
+
+export type SynthesizeSharedDecisionClientInput = MeetingMutationInput &
+  (
+    | {
+        readonly assistance: "ai_preferred";
+      }
+    | {
+        readonly assistance: "manual";
+        readonly draft: ManualSharedDecisionDraftClientInput;
+      }
+  );
+
+export interface DispositionSharedDecisionCandidateClientInput extends MeetingMutationInput {
+  readonly actions: readonly {
+    readonly ownerParticipantId: string;
+    readonly scope: readonly string[];
+  }[];
+  readonly candidateId: string;
+  readonly dissent: readonly {
+    readonly reason: string;
+    readonly retained: boolean;
+  }[];
+  readonly monitorCondition: {
+    readonly description: string;
+  };
+  readonly outcome: string;
+  readonly premiseDispositions: readonly (
+    | {
+        readonly candidateId: string;
+        readonly disposition: "confirmed";
+        readonly premise: {
+          readonly evidenceReferenceIds: readonly string[];
+          readonly statement: string;
+        };
+      }
+    | {
+        readonly candidateId: string;
+        readonly disposition: "rejected";
+        readonly reason?: string;
+      }
+  )[];
+  readonly reason?: string;
+  readonly title: string;
+}
+
+export interface SaveDecisionDraftClientInput extends MeetingMutationInput {
+  readonly actionIds: readonly string[];
+  readonly changeReason: string;
+  readonly decisionId?: string;
+  readonly dissentIds: readonly string[];
+  readonly evidenceIds: readonly string[];
+  readonly monitorCondition: {
+    readonly description: string;
+    readonly registrationId?: string;
+  };
+  readonly outcome: string;
+  readonly premiseIds: readonly string[];
+  readonly title: string;
+}
+
+export interface DecisionLifecycleClientInput extends MeetingMutationInput {
+  readonly decisionId: string;
+}
+
+export interface DecisionHistoryClientQuery {
+  readonly decisionId: string;
+  readonly meetingId: string;
+}
+
+export interface DecisionAuditClientQuery {
+  readonly decisionId?: string;
+  readonly meetingId: string;
+}
 
 const SESSION_KEY = "counterpoint.session";
 
@@ -150,6 +290,19 @@ export async function listSharedEvidence(
     session,
   );
   return ListSharedEvidenceResponseSchema.parse(body);
+}
+
+export async function listSharedDecisions(
+  session: StoredSession,
+  meetingId: string,
+  signal?: AbortSignal,
+): Promise<ListSharedDecisionsResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/decisions`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return ListSharedDecisionsResponseSchema.parse(body);
 }
 
 export async function joinMeeting(
@@ -298,4 +451,110 @@ export async function rejectDisclosure(
     session,
   );
   return RejectDisclosureResponseSchema.parse(body);
+}
+
+export async function synthesizeSharedDecisionCandidate(
+  session: StoredSession,
+  input: SynthesizeSharedDecisionClientInput,
+): Promise<SynthesizeSharedDecisionResponse> {
+  const body = await request(
+    "/api/v1/decisions/candidates",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return SynthesizeSharedDecisionResponseSchema.parse(body);
+}
+
+export async function dispositionSharedDecisionCandidate(
+  session: StoredSession,
+  input: DispositionSharedDecisionCandidateClientInput,
+): Promise<DispositionSharedDecisionCandidateResponse> {
+  const body = await request(
+    "/api/v1/decisions/candidates/disposition",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return DispositionSharedDecisionCandidateResponseSchema.parse(body);
+}
+
+export async function saveDecisionDraft(
+  session: StoredSession,
+  input: SaveDecisionDraftClientInput,
+): Promise<SaveDecisionDraftResponse> {
+  const body = await request(
+    "/api/v1/decisions/drafts",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return SaveDecisionDraftResponseSchema.parse(body);
+}
+
+export async function markDecisionReady(
+  session: StoredSession,
+  input: DecisionLifecycleClientInput,
+): Promise<MarkDecisionReadyResponse> {
+  const body = await request(
+    "/api/v1/decisions/ready",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return MarkDecisionReadyResponseSchema.parse(body);
+}
+
+export async function commitDecision(
+  session: StoredSession,
+  input: DecisionLifecycleClientInput,
+): Promise<CommitDecisionResponse> {
+  const body = await request(
+    "/api/v1/decisions/commit",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return CommitDecisionResponseSchema.parse(body);
+}
+
+export async function getDecisionHistory(
+  session: StoredSession,
+  query: DecisionHistoryClientQuery,
+  signal?: AbortSignal,
+): Promise<DecisionHistoryResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(query.meetingId)}/decisions/${encodeURIComponent(query.decisionId)}/history`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return DecisionHistoryResponseSchema.parse(body);
+}
+
+export async function getDecisionAudit(
+  session: StoredSession,
+  query: DecisionAuditClientQuery,
+  signal?: AbortSignal,
+): Promise<DecisionAuditResponse> {
+  const search = new URLSearchParams();
+  if (query.decisionId !== undefined) {
+    search.set("decisionId", query.decisionId);
+  }
+  const suffix = search.size === 0 ? "" : `?${search.toString()}`;
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(query.meetingId)}/decisions/audit${suffix}`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return DecisionAuditResponseSchema.parse(body);
 }

@@ -135,7 +135,11 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   const otherPage = await otherContext.newPage();
   await otherPage.goto(baseURL ?? "/");
   await signIn(otherPage, "Engineering", "counterpoint-engineering");
-  await otherPage.getByRole("button", { name: "Open workspace" }).click();
+  await otherPage
+    .getByRole("article")
+    .filter({ hasText: "Global AI Product Rollout" })
+    .getByRole("button", { name: "Open workspace" })
+    .click();
   await expect(otherPage.getByText("Permission recorded")).toBeVisible();
   await expect(otherPage.locator(".shared-evidence blockquote")).toHaveText(
     "Regional launch requires a documented approval gate.",

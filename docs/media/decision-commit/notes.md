@@ -1,0 +1,28 @@
+# Grounded Decision commitment reel notes
+
+All captures use the isolated, synthetic `Grounded Decision commitment check`
+story. The private note, shared Evidence, model output, participant identities,
+and Decision content are demo fixtures; no user data or production credential
+appears in the material.
+
+| State | Viewport | Suggested reel use |
+|---|---|---|
+| Grounded AI Decision candidate | Desktop, 1440×900 | Establish that the model sees approved shared Evidence only. Hold briefly on the AI-proposed label, model, confidence, source link, reason, and editable premise. |
+| Human-ready commit gate | Desktop, 1440×900 | Cut after premise confirmation and DRAFT creation. Emphasize that AI cannot press the explicit facilitator-only commit control. |
+| Committed revision and audit lineage | Desktop, 1440×900 | Hero frame for the commitment moment: human seal, revision 2, immutable DRAFT-to-COMMITTED lineage, and Drafted/MarkedReady/Committed audit trail. |
+| Participant shared Decision | Desktop, 1440×900 | Prove that a separate participant receives the committed shared state without facilitator controls or private candidate metadata. |
+| Participant shared Decision | Mobile, 390×844, reduced motion | Responsive and accessibility proof for the same committed state without motion dependence. |
+
+The clip under `docs/media/clips/decision-commit/` records the complete
+candidate-to-commit interaction, including explicit premise confirmation,
+readiness validation, commitment animation, and persistence after reload.
+
+Useful narration:
+
+> GPT-5.6 proposes a grounded Decision from approved shared Evidence, but the
+> facilitator owns every canonical step. They edit and confirm the premise,
+> validate the complete Decision, and explicitly commit an immutable revision.
+> Other participants receive the shared result—not the private AI candidate.
+
+Capture date: 2026-07-19. Feature slice: A5 shared Decision synthesis and L6
+deterministic Decision commitment.

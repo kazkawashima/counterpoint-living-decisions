@@ -17,12 +17,12 @@ history.
 
 ### D1 — Commitment completeness
 
-- [ ] Validate Decision outcome, confirmed premises, evidence references,
+- [x] Validate Decision outcome, confirmed premises, evidence references,
       dissent, Actions, owners, and monitor condition.
-- [ ] Create immutable committed revision.
+- [x] Create immutable committed revision.
 - [ ] Register one regulatory-change monitor.
 - [ ] Transition `COMMITTED → MONITORING`.
-- [ ] Render source-to-Decision audit lineage.
+- [x] Render source-to-Decision audit lineage.
 
 ### D2 — Signed webhook
 

@@ -63,11 +63,11 @@ ports.
 
 ### L6 — Deterministic Decision commit
 
-- [ ] Show shared evidence and draft outcome/premise/dissent/Action.
-- [ ] Show fact/inference/confirmed labels.
-- [ ] Implement facilitator confirmation/rejection of candidate premise.
-- [ ] Implement ready validation and explicit commit.
-- [ ] Show immutable revision marker and audit lineage.
+- [x] Show shared evidence and draft outcome/premise/dissent/Action.
+- [x] Show fact/inference/confirmed labels.
+- [x] Implement facilitator confirmation/rejection of candidate premise.
+- [x] Implement ready validation and explicit commit.
+- [x] Show immutable revision marker and audit lineage.
 
 ### L7 — Compose path
 

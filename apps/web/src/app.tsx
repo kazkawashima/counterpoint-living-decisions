@@ -1,25 +1,38 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type {
   AssignedMeeting,
+  Decision as DecisionView,
+  DecisionAuditResponse,
+  DecisionHistoryResponse,
+  DispositionSharedDecisionCandidateResponse,
   PreviewDisclosureResponse,
   SharedEvidence,
+  SharedDecisionSynthesisCandidate,
 } from "@counterpoint/protocol";
 
 import {
   ApiError,
   approveDisclosure,
   clearStoredSession,
+  commitDecision,
+  dispositionSharedDecisionCandidate,
+  getDecisionAudit,
+  getDecisionHistory,
   joinMeeting,
   listMeetings,
+  listSharedDecisions,
   listSharedEvidence,
   loadStoredSession,
   login,
   logout,
+  markDecisionReady,
   previewDisclosure,
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  saveDecisionDraft,
   storeSession,
+  synthesizeSharedDecisionCandidate,
   type StoredSession,
 } from "./api.js";
 
@@ -360,6 +373,745 @@ function MeetingListScreen({
   );
 }
 
+interface DecisionDraftForm {
+  readonly actionOwnerParticipantId: string;
+  readonly actionScope: string;
+  readonly dissentReason: string;
+  readonly monitorCondition: string;
+  readonly outcome: string;
+  readonly premise: string;
+  readonly title: string;
+}
+
+function SharedDecisionCard({ decision }: { readonly decision: DecisionView }) {
+  const readinessCount = Object.values(decision.readiness).filter(
+    Boolean,
+  ).length;
+
+  return (
+    <section
+      aria-labelledby={`shared-decision-${decision.decisionId}`}
+      className="shared-decision-card"
+    >
+      <div className="shared-decision-seal" aria-hidden="true">
+        ✓
+      </div>
+      <div>
+        <p className="zone-label shared">Shared · Human committed</p>
+        <h2 id={`shared-decision-${decision.decisionId}`}>
+          {decision.snapshot.title}
+        </h2>
+        <p className="shared-decision-outcome">{decision.snapshot.outcome}</p>
+      </div>
+      <div className="shared-decision-metadata">
+        <span>Revision {decision.activeRevision}</span>
+        <span>{decision.status}</span>
+        <span>{readinessCount} / 5 readiness checks</span>
+      </div>
+      <div className="shared-decision-links">
+        <span>{decision.snapshot.evidenceIds.length} Evidence source</span>
+        <span>{decision.snapshot.premiseIds.length} confirmed premise</span>
+        <span>{decision.snapshot.dissentIds.length} retained dissent</span>
+        <span>{decision.snapshot.actionIds.length} bounded Action</span>
+      </div>
+      <p className="shared-decision-monitor">
+        <strong>Monitor</strong>
+        {decision.snapshot.monitorCondition.description}
+      </p>
+    </section>
+  );
+}
+
+function FacilitatorDecisionPanel({
+  evidence,
+  existingDecision,
+  meeting,
+  onDecisionChange,
+  onPositionChange,
+  position,
+  session,
+}: {
+  readonly evidence: SharedEvidence;
+  readonly existingDecision: DecisionView | undefined;
+  readonly meeting: AssignedMeeting;
+  readonly onDecisionChange: (decision: DecisionView) => void;
+  readonly onPositionChange: (position: AssignedMeeting["position"]) => void;
+  readonly position: AssignedMeeting["position"];
+  readonly session: StoredSession;
+}) {
+  const [phase, setPhase] = useState<
+    | "ai-unavailable"
+    | "candidate"
+    | "committed"
+    | "committing"
+    | "confirming"
+    | "draft"
+    | "idle"
+    | "manual-edit"
+    | "premise-confirmed"
+    | "premise-rejected"
+    | "ready"
+    | "saving"
+    | "synthesizing"
+  >(
+    existingDecision?.status === "COMMITTED"
+      ? "committed"
+      : existingDecision?.status === "DECISION_READY"
+        ? "ready"
+        : existingDecision?.status === "DRAFT"
+          ? "draft"
+          : "idle",
+  );
+  const [candidate, setCandidate] =
+    useState<SharedDecisionSynthesisCandidate>();
+  const [materialized, setMaterialized] =
+    useState<DispositionSharedDecisionCandidateResponse>();
+  const [decision, setDecision] = useState<DecisionView | undefined>(
+    existingDecision,
+  );
+  const [history, setHistory] = useState<DecisionHistoryResponse>();
+  const [audit, setAudit] = useState<DecisionAuditResponse>();
+  const [error, setError] = useState<string>();
+  const [draft, setDraft] = useState<DecisionDraftForm>({
+    actionOwnerParticipantId: meeting.participantId,
+    actionScope: "Document the approval gate before regional launch.",
+    dissentReason:
+      "Rollback ownership and staffing remain explicit retained concerns.",
+    monitorCondition:
+      "Reopen if the approval gate, staffing plan, or regulation changes.",
+    outcome:
+      "Proceed with regional launch only after the documented approval gate is satisfied.",
+    premise: evidence.exactSnippet,
+    title: "Conditional regional launch",
+  });
+  const commandKeys = useRef({
+    commit: crypto.randomUUID(),
+    confirm: crypto.randomUUID(),
+    manualCandidate: crypto.randomUUID(),
+    ready: crypto.randomUUID(),
+    reject: crypto.randomUUID(),
+    save: crypto.randomUUID(),
+    synthesize: crypto.randomUUID(),
+  });
+
+  useEffect(() => {
+    if (existingDecision?.status !== "COMMITTED") {
+      return;
+    }
+    const controller = new AbortController();
+    void Promise.all([
+      getDecisionHistory(
+        session,
+        {
+          decisionId: existingDecision.decisionId,
+          meetingId: meeting.meetingId,
+        },
+        controller.signal,
+      ),
+      getDecisionAudit(
+        session,
+        {
+          decisionId: existingDecision.decisionId,
+          meetingId: meeting.meetingId,
+        },
+        controller.signal,
+      ),
+    ])
+      .then(([nextHistory, nextAudit]) => {
+        setHistory(nextHistory);
+        setAudit(nextAudit);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(messageFor(cause));
+        }
+      });
+    return () => controller.abort();
+  }, [
+    existingDecision?.decisionId,
+    existingDecision?.status,
+    meeting.meetingId,
+    session,
+  ]);
+
+  function advancePosition(nextPosition: AssignedMeeting["position"]) {
+    onPositionChange(nextPosition);
+  }
+
+  function setDraftField<Key extends keyof DecisionDraftForm>(
+    key: Key,
+    value: DecisionDraftForm[Key],
+  ) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function startManualEdit() {
+    setCandidate(undefined);
+    setMaterialized(undefined);
+    setError(undefined);
+    commandKeys.current.manualCandidate = crypto.randomUUID();
+    setPhase("manual-edit");
+  }
+
+  function populateCandidate(next: SharedDecisionSynthesisCandidate) {
+    const premise = next.draft.premiseCandidates[0];
+    const action = next.draft.actionCandidates[0];
+    const dissent = next.draft.dissentCandidates[0];
+    setCandidate(next);
+    setDraft({
+      actionOwnerParticipantId:
+        action?.ownerParticipantId ?? meeting.participantId,
+      actionScope: action?.scope.join("\n") ?? draft.actionScope,
+      dissentReason: dissent?.reason ?? draft.dissentReason,
+      monitorCondition: next.draft.monitorCondition.description,
+      outcome: next.draft.outcome,
+      premise: premise?.statement ?? draft.premise,
+      title: next.draft.title,
+    });
+    setPhase("candidate");
+  }
+
+  async function synthesizeAi() {
+    setPhase("synthesizing");
+    setError(undefined);
+    try {
+      const response = await synthesizeSharedDecisionCandidate(session, {
+        assistance: "ai_preferred",
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.synthesize,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(response.position);
+      populateCandidate(response.candidate);
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase(
+        cause instanceof ApiError && cause.code === "OPENAI_UNAVAILABLE"
+          ? "ai-unavailable"
+          : "idle",
+      );
+    }
+  }
+
+  async function createManualCandidate() {
+    setPhase("synthesizing");
+    setError(undefined);
+    try {
+      const response = await synthesizeSharedDecisionCandidate(session, {
+        assistance: "manual",
+        draft: {
+          actions: [
+            {
+              ownerParticipantId: draft.actionOwnerParticipantId,
+              scope: [draft.actionScope],
+            },
+          ],
+          dissent: [{ reason: draft.dissentReason, retained: true }],
+          monitorCondition: { description: draft.monitorCondition },
+          outcome: draft.outcome,
+          premises: [
+            {
+              evidenceReferenceIds: [evidence.evidenceId],
+              statement: draft.premise,
+            },
+          ],
+          title: draft.title,
+        },
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.manualCandidate,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(response.position);
+      populateCandidate(response.candidate);
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("manual-edit");
+    }
+  }
+
+  async function disposePremise(disposition: "confirmed" | "rejected") {
+    const premiseCandidate = candidate?.draft.premiseCandidates[0];
+    if (candidate === undefined || premiseCandidate === undefined) {
+      return;
+    }
+    setPhase("confirming");
+    setError(undefined);
+    try {
+      const response = await dispositionSharedDecisionCandidate(session, {
+        actions:
+          disposition === "confirmed"
+            ? [
+                {
+                  ownerParticipantId: draft.actionOwnerParticipantId,
+                  scope: [draft.actionScope],
+                },
+              ]
+            : [],
+        candidateId: candidate.candidateId,
+        dissent:
+          disposition === "confirmed"
+            ? [{ reason: draft.dissentReason, retained: true }]
+            : [],
+        expectedPosition: position,
+        idempotencyKey:
+          disposition === "confirmed"
+            ? commandKeys.current.confirm
+            : commandKeys.current.reject,
+        meetingId: meeting.meetingId,
+        monitorCondition: { description: draft.monitorCondition },
+        outcome: draft.outcome,
+        premiseDispositions: [
+          disposition === "confirmed"
+            ? {
+                candidateId: premiseCandidate.candidateId,
+                disposition,
+                premise: {
+                  evidenceReferenceIds: premiseCandidate.evidenceReferenceIds,
+                  statement: draft.premise,
+                },
+              }
+            : {
+                candidateId: premiseCandidate.candidateId,
+                disposition,
+                reason:
+                  "Facilitator rejected the proposed premise after review.",
+              },
+        ],
+        reason:
+          disposition === "confirmed"
+            ? "Facilitator confirmed the grounded premise and edited fields."
+            : "Facilitator rejected the premise without publishing linked material.",
+        title: draft.title,
+      });
+      advancePosition(response.position);
+      setMaterialized(response);
+      setPhase(
+        disposition === "confirmed" ? "premise-confirmed" : "premise-rejected",
+      );
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("candidate");
+    }
+  }
+
+  async function saveDraft() {
+    if (materialized === undefined) {
+      return;
+    }
+    setPhase("saving");
+    setError(undefined);
+    try {
+      const response = await saveDecisionDraft(session, {
+        actionIds: materialized.actions.map(({ actionId }) => actionId),
+        changeReason: "Facilitator draft from reviewed synthesis candidate",
+        dissentIds: materialized.dissent.map(({ dissentId }) => dissentId),
+        evidenceIds: [evidence.evidenceId],
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.save,
+        meetingId: meeting.meetingId,
+        monitorCondition: { description: draft.monitorCondition },
+        outcome: draft.outcome,
+        premiseIds: materialized.premises.map(({ premiseId }) => premiseId),
+        title: draft.title,
+      });
+      advancePosition(response.position);
+      setDecision(response.decision);
+      onDecisionChange(response.decision);
+      setPhase("draft");
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("premise-confirmed");
+    }
+  }
+
+  async function markReady() {
+    if (decision === undefined) {
+      return;
+    }
+    setPhase("saving");
+    setError(undefined);
+    try {
+      const response = await markDecisionReady(session, {
+        decisionId: decision.decisionId,
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.ready,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(response.position);
+      setDecision(response.decision);
+      onDecisionChange(response.decision);
+      setPhase("ready");
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("draft");
+    }
+  }
+
+  async function commit() {
+    if (decision === undefined) {
+      return;
+    }
+    setPhase("committing");
+    setError(undefined);
+    try {
+      const response = await commitDecision(session, {
+        decisionId: decision.decisionId,
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.commit,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(response.position);
+      setDecision(response.decision);
+      onDecisionChange(response.decision);
+      const [nextHistory, nextAudit] = await Promise.all([
+        getDecisionHistory(session, {
+          decisionId: response.decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+        getDecisionAudit(session, {
+          decisionId: response.decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+      ]);
+      setHistory(nextHistory);
+      setAudit(nextAudit);
+      setPhase("committed");
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("ready");
+    }
+  }
+
+  const premiseCandidate = candidate?.draft.premiseCandidates[0];
+  const aiProvenance =
+    candidate?.provenance.origin === "ai_assisted"
+      ? candidate.provenance
+      : undefined;
+  const editable =
+    phase === "candidate" ||
+    phase === "manual-edit" ||
+    phase === "ai-unavailable";
+
+  return (
+    <section
+      aria-labelledby="decision-forge-title"
+      className={`decision-forge decision-${phase}`}
+    >
+      <header className="decision-forge-heading">
+        <div>
+          <p className="zone-label shared">Facilitator · Decision forge</p>
+          <h2 id="decision-forge-title">Turn evidence into commitment</h2>
+        </div>
+        <div className="forge-state">
+          <span>{decision?.status ?? "CANDIDATE"}</span>
+          <small>Human authority required</small>
+        </div>
+      </header>
+
+      {phase === "idle" ? (
+        <div className="forge-launch">
+          <div className="synthesis-orbit" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div>
+            <strong>Synthesize the shared state</strong>
+            <p>
+              GPT-5.6 reads only approved shared Evidence. It proposes; you
+              edit, confirm, and commit.
+            </p>
+          </div>
+          <button
+            className="forge-primary"
+            onClick={() => void synthesizeAi()}
+            type="button"
+          >
+            Generate Decision candidate
+          </button>
+        </div>
+      ) : null}
+
+      {phase === "synthesizing" ? (
+        <div className="synthesis-stage" role="status">
+          <div className="synthesis-wave" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+          <strong>Assembling a grounded Decision candidate…</strong>
+          <small>Shared evidence only · No canonical writes</small>
+        </div>
+      ) : null}
+
+      {phase === "ai-unavailable" ? (
+        <div className="forge-recovery" role="alert">
+          <strong>Decision synthesis is temporarily unavailable</strong>
+          <p>
+            Approved Evidence remains intact. Retry AI or edit a manual draft
+            through the same confirmation and commit path.
+          </p>
+          <div>
+            <button onClick={() => void synthesizeAi()} type="button">
+              Retry synthesis
+            </button>
+            <button onClick={startManualEdit} type="button">
+              Edit manual draft
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {phase === "manual-edit" ? (
+        <div className="manual-candidate-intro">
+          <span>Manual fallback</span>
+          <p>
+            Edit every field first. “Human authored” is recorded only when you
+            submit this draft.
+          </p>
+        </div>
+      ) : null}
+
+      {candidate !== undefined || phase === "manual-edit" ? (
+        <div className="candidate-workbench">
+          <div className="candidate-provenance">
+            <span
+              className={
+                aiProvenance === undefined ? "human-label" : "ai-label"
+              }
+            >
+              {aiProvenance === undefined ? "Human authored" : "AI proposed"}
+            </span>
+            {aiProvenance === undefined ? null : (
+              <>
+                <span>{aiProvenance.model}</span>
+                <span>
+                  Confidence {Math.round(aiProvenance.confidence * 100)}%
+                </span>
+                <span>
+                  Source {aiProvenance.inputReferenceIds[0]?.slice(0, 14)}…
+                </span>
+              </>
+            )}
+          </div>
+          {aiProvenance === undefined ? null : (
+            <p className="candidate-reason">
+              <strong>Why this candidate</strong>
+              {aiProvenance.reason}
+            </p>
+          )}
+          <div className="candidate-fields">
+            <label>
+              Decision title
+              <input
+                onChange={(event) => setDraftField("title", event.target.value)}
+                readOnly={!editable}
+                value={draft.title}
+              />
+            </label>
+            <label>
+              Outcome
+              <textarea
+                onChange={(event) =>
+                  setDraftField("outcome", event.target.value)
+                }
+                readOnly={!editable}
+                rows={3}
+                value={draft.outcome}
+              />
+            </label>
+            <label className="candidate-premise-field">
+              <span>
+                Candidate premise
+                <small>Inference · confirmation required</small>
+              </span>
+              <textarea
+                onChange={(event) =>
+                  setDraftField("premise", event.target.value)
+                }
+                readOnly={!editable}
+                rows={3}
+                value={draft.premise}
+              />
+              <span className="source-link">
+                ↳ Evidence {evidence.evidenceId.slice(0, 18)}…
+              </span>
+            </label>
+            <div className="candidate-split">
+              <label>
+                Retained dissent
+                <textarea
+                  onChange={(event) =>
+                    setDraftField("dissentReason", event.target.value)
+                  }
+                  readOnly={!editable}
+                  rows={3}
+                  value={draft.dissentReason}
+                />
+              </label>
+              <label>
+                Bounded Action
+                <textarea
+                  onChange={(event) =>
+                    setDraftField("actionScope", event.target.value)
+                  }
+                  readOnly={!editable}
+                  rows={3}
+                  value={draft.actionScope}
+                />
+              </label>
+            </div>
+            <label>
+              Monitor condition
+              <textarea
+                onChange={(event) =>
+                  setDraftField("monitorCondition", event.target.value)
+                }
+                readOnly={!editable}
+                rows={2}
+                value={draft.monitorCondition}
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
+
+      {phase === "manual-edit" ? (
+        <button
+          className="forge-primary full"
+          onClick={() => void createManualCandidate()}
+          type="button"
+        >
+          Create human-authored candidate
+        </button>
+      ) : null}
+
+      {phase === "candidate" && premiseCandidate !== undefined ? (
+        <div className="candidate-actions">
+          <button
+            className="confirm-premise"
+            onClick={() => void disposePremise("confirmed")}
+            type="button"
+          >
+            Confirm edited premise
+          </button>
+          <button
+            className="reject-premise"
+            onClick={() => void disposePremise("rejected")}
+            type="button"
+          >
+            Reject premise
+          </button>
+        </div>
+      ) : null}
+
+      {phase === "confirming" || phase === "saving" ? (
+        <p className="forge-status" role="status">
+          Recording the facilitator action…
+        </p>
+      ) : null}
+
+      {phase === "premise-confirmed" ? (
+        <div className="confirmation-stripe" role="status">
+          <span>Human confirmed</span>
+          <strong>Premise, dissent, and Action are now canonical.</strong>
+          <button onClick={() => void saveDraft()} type="button">
+            Save Decision draft
+          </button>
+        </div>
+      ) : null}
+
+      {phase === "premise-rejected" ? (
+        <div className="rejection-stripe" role="status">
+          <strong>Premise rejected</strong>
+          <p>No linked premise, dissent, Action, or Decision was published.</p>
+          <button onClick={startManualEdit} type="button">
+            Edit a manual alternative
+          </button>
+        </div>
+      ) : null}
+
+      {phase === "draft" && decision !== undefined ? (
+        <div className="lifecycle-gate">
+          <div>
+            <span>Revision 1 · immutable DRAFT</span>
+            <strong>All 5 readiness conditions are assembled</strong>
+          </div>
+          <button onClick={() => void markReady()} type="button">
+            Validate and mark ready
+          </button>
+        </div>
+      ) : null}
+
+      {phase === "ready" && decision !== undefined ? (
+        <div className="commit-gate">
+          <div className="commit-lock" aria-hidden="true">
+            ◇
+          </div>
+          <div>
+            <span>DECISION_READY</span>
+            <strong>Commitment requires one explicit facilitator action</strong>
+            <p>AI cannot press this control or create a committed revision.</p>
+          </div>
+          <button onClick={() => void commit()} type="button">
+            Commit Decision
+          </button>
+        </div>
+      ) : null}
+
+      {phase === "committing" ? (
+        <div className="commit-transition" role="status">
+          <span aria-hidden="true">◇</span>
+          Freezing the committed revision…
+        </div>
+      ) : null}
+
+      {phase === "committed" && decision !== undefined ? (
+        <div className="committed-decision" aria-live="polite">
+          <div className="commit-seal" aria-hidden="true">
+            <span>✓</span>
+          </div>
+          <div>
+            <p className="zone-label shared">Human committed</p>
+            <h3>{decision.snapshot.title}</h3>
+            <p>{decision.snapshot.outcome}</p>
+          </div>
+          <span className="revision-marker">
+            Revision {decision.activeRevision} · COMMITTED
+          </span>
+          <div className="lineage-strip">
+            {history?.revisions.map((revision, index) => (
+              <div key={revision.revisionId}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{revision.snapshot.status}</strong>
+                <small>
+                  {revision.previousRevisionId === undefined
+                    ? "Origin revision"
+                    : `From ${revision.previousRevisionId.slice(0, 10)}…`}
+                </small>
+              </div>
+            ))}
+          </div>
+          <div className="audit-line">
+            {audit?.entries.map((entry) => (
+              <span key={entry.auditId}>
+                {entry.eventType.replace("Decision", "")}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {error === undefined ? null : (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function WorkspaceShell({
   meeting,
   session,
@@ -386,6 +1138,7 @@ function WorkspaceShell({
     "ai_assisted" | "human_selected"
   >();
   const [evidence, setEvidence] = useState<SharedEvidence>();
+  const [sharedDecision, setSharedDecision] = useState<DecisionView>();
   const [error, setError] = useState<string>();
   const [selectedSnippet, setSelectedSnippet] = useState(
     SYNTHETIC_EXACT_SNIPPET,
@@ -401,11 +1154,19 @@ function WorkspaceShell({
 
   useEffect(() => {
     const controller = new AbortController();
-    void listSharedEvidence(session, meeting.meetingId, controller.signal)
-      .then((state) => {
-        setPosition(state.position);
-        onPositionChange(state.position);
-        setEvidence(state.evidence.at(-1));
+    void Promise.all([
+      listSharedEvidence(session, meeting.meetingId, controller.signal),
+      listSharedDecisions(session, meeting.meetingId, controller.signal),
+    ])
+      .then(([evidenceState, decisionState]) => {
+        const nextPosition =
+          evidenceState.position >= decisionState.position
+            ? evidenceState.position
+            : decisionState.position;
+        setPosition(nextPosition);
+        onPositionChange(nextPosition);
+        setEvidence(evidenceState.evidence.at(-1));
+        setSharedDecision(decisionState.decisions.at(-1));
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
@@ -800,19 +1561,33 @@ function WorkspaceShell({
               </p>
             </article>
           )}
-          <div className="readiness-card">
-            <div>
-              <span className="source-type">Decision readiness</span>
-              <strong>
-                {evidence === undefined
-                  ? "0 of 5 conditions assembled"
-                  : "1 of 5 conditions assembled"}
-              </strong>
+          {meeting.role === "facilitator" && evidence !== undefined ? (
+            <FacilitatorDecisionPanel
+              evidence={evidence}
+              existingDecision={sharedDecision}
+              meeting={meeting}
+              onDecisionChange={setSharedDecision}
+              onPositionChange={advancePosition}
+              position={position}
+              session={session}
+            />
+          ) : sharedDecision?.status === "COMMITTED" ? (
+            <SharedDecisionCard decision={sharedDecision} />
+          ) : (
+            <div className="readiness-card">
+              <div>
+                <span className="source-type">Decision readiness</span>
+                <strong>
+                  {evidence === undefined
+                    ? "0 of 5 conditions assembled"
+                    : "1 of 5 conditions assembled"}
+                </strong>
+              </div>
+              <span className="readiness-ring">
+                {evidence === undefined ? "0%" : "20%"}
+              </span>
             </div>
-            <span className="readiness-ring">
-              {evidence === undefined ? "0%" : "20%"}
-            </span>
-          </div>
+          )}
         </article>
       </section>
     </main>

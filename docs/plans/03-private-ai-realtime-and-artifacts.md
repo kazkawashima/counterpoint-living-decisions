@@ -53,11 +53,11 @@ text/manual degraded path.
 
 ### A5 — Shared Decision synthesis
 
-- [ ] Generate candidate propositions/premises/evidence links/dissent/Actions
+- [x] Generate candidate propositions/premises/evidence links/dissent/Actions
       from shared context.
-- [ ] Require human confirmation/rejection for canonical material.
-- [ ] Show source references, confidence, reason, model, and origin.
-- [ ] Keep manual draft editing available.
+- [x] Require human confirmation/rejection for canonical material.
+- [x] Show source references, confidence, reason, model, and origin.
+- [x] Keep manual draft editing available.
 
 ### A6 — Realtime client-secret path
 

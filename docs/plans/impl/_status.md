@@ -4,8 +4,9 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**M1 Foundation, permissioned disclosure, and A3/A4 private AI assistance are
-complete; shared Decision synthesis is next.**
+**M1 Foundation, permissioned disclosure, private/shared AI assistance, and
+the deterministic Decision commitment slice are complete; production runtime
+and post-commit monitoring are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -101,11 +102,31 @@ The canonical implementation-facing artifacts are:
 - Browser proof covers AI-assisted owner-only origin, exact preview and
   approval, isolated dependency failure/manual recovery, mobile rejection, and
   reduced motion. Screenshots and reel clips are current.
+- A5 shared-only Decision synthesis with strict structured output, source
+  validation, model/reason/confidence provenance, capped retry, deterministic
+  fixtures, and a successful live `gpt-5.6-sol` synthetic smoke.
+- Facilitator-private candidate persistence and idempotent replay happen before
+  provider invocation; shared event records never contain model metadata or
+  rejected candidate material.
+- Explicit candidate confirmation/rejection materializes canonical premises,
+  dissent, and bounded Actions only after facilitator action. Manual authoring
+  uses the same confirmation boundary and records truthful origin.
+- L6 Decision lifecycle through DRAFT, derived five-condition readiness,
+  facilitator-only `DECISION_READY`, explicit COMMITTED revision 2, immutable
+  history, and participant-readable audit lineage.
+- Shared Decision hydration survives reload and is visible to assigned
+  participants without facilitator controls; participant-visible positions
+  preserve idempotent historical receipts.
+- Browser proof covers AI candidate provenance, premise editing, readiness,
+  explicit commit, reload persistence, separate-participant visibility,
+  responsive mobile layout, and reduced motion. Five current screenshots and
+  one candidate-to-commit reel clip accompany the test.
 
 ## In progress
 
-- Complete the facilitator, shared-display, history, and audit role surfaces.
-- Assemble shared Decision inputs and the deterministic commit UI.
+- Complete the versioned capability surface, realtime resume path, and
+  production Compose runtime.
+- Extend the committed Decision into monitoring and external-event review.
 
 ## Not started
 
@@ -114,11 +135,12 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue A5 in
-[`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md):
-add shared-only Decision-state candidate synthesis, then connect it to the L6
-deterministic draft/confirmation/commit slice. AI output must remain a
-human-confirmed candidate and the manual draft path must remain available.
+Continue the shortest production-like path across L3/L7 and D1 in
+[`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md) and
+[`04-commitment-and-living-decision.md`](../04-commitment-and-living-decision.md):
+add monitoring registration/state, then package the verified local path in
+Compose with health checks and persistent volumes. Keep Realtime and external
+ingestion behind explicit ports while those slices remain incomplete.
 
 ## Open gates
 
