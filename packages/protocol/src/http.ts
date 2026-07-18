@@ -522,6 +522,251 @@ export type RejectDisclosureResponse = z.infer<
   typeof RejectDisclosureResponseSchema
 >;
 
+const ProvenanceValueSchema = z.string().trim().min(1).max(256);
+const ConciseReasonSchema = z.string().trim().min(1).max(1_000);
+
+export const DecisionSynthesisAssistanceSchema = z.enum([
+  "ai_preferred",
+  "manual",
+]);
+export const SharedDecisionCandidateOriginSchema = z.enum([
+  "ai_assisted",
+  "human_authored",
+]);
+export const AiAssistedDecisionCandidateProvenanceSchema = z.strictObject({
+  origin: z.literal("ai_assisted"),
+  model: ProvenanceValueSchema,
+  operation: ProvenanceValueSchema,
+  promptVersion: ProvenanceValueSchema,
+  schemaVersion: ProvenanceValueSchema,
+  inputReferenceIds: z.array(EvidenceIdSchema).min(1),
+  generatedAt: UtcIsoTimestampSchema,
+  confidence: z.number().min(0).max(1),
+  reason: ConciseReasonSchema,
+});
+export const HumanAuthoredDecisionCandidateProvenanceSchema = z.strictObject({
+  origin: z.literal("human_authored"),
+});
+export const SharedDecisionCandidateProvenanceSchema = z.discriminatedUnion(
+  "origin",
+  [
+    AiAssistedDecisionCandidateProvenanceSchema,
+    HumanAuthoredDecisionCandidateProvenanceSchema,
+  ],
+);
+export const SharedDecisionPremiseInputSchema = z.strictObject({
+  statement: NonEmptyTextSchema,
+  evidenceReferenceIds: z.array(EvidenceIdSchema).min(1),
+});
+export const SharedDecisionActionInputSchema = z.strictObject({
+  ownerParticipantId: ParticipantIdSchema,
+  scope: z.array(NonEmptyTextSchema).min(1),
+});
+export const SharedDecisionDissentInputSchema = z.strictObject({
+  reason: NonEmptyTextSchema,
+  retained: z.boolean(),
+});
+export const SharedDecisionPremiseCandidateSchema =
+  SharedDecisionPremiseInputSchema.extend({
+    candidateId: OpaqueIdSchema,
+    confidence: z.number().min(0).max(1),
+    reason: NonEmptyTextSchema,
+  });
+export const SharedDecisionActionCandidateSchema =
+  SharedDecisionActionInputSchema.extend({
+    candidateId: OpaqueIdSchema,
+  });
+export const SharedDecisionDissentCandidateSchema =
+  SharedDecisionDissentInputSchema.extend({
+    candidateId: OpaqueIdSchema,
+  });
+export const SharedDecisionCandidateMonitorConditionSchema = z.strictObject({
+  description: NonEmptyTextSchema,
+});
+export const SharedDecisionCandidateDraftSchema = z.strictObject({
+  title: TitleSchema,
+  outcome: NonEmptyTextSchema,
+  premiseCandidates: z.array(SharedDecisionPremiseCandidateSchema).min(1),
+  dissentCandidates: z.array(SharedDecisionDissentCandidateSchema),
+  actionCandidates: z.array(SharedDecisionActionCandidateSchema),
+  monitorCondition: SharedDecisionCandidateMonitorConditionSchema,
+});
+export const ManualSharedDecisionDraftInputSchema = z.strictObject({
+  title: TitleSchema,
+  outcome: NonEmptyTextSchema,
+  premises: z.array(SharedDecisionPremiseInputSchema).min(1),
+  dissent: z.array(SharedDecisionDissentInputSchema),
+  actions: z.array(SharedDecisionActionInputSchema),
+  monitorCondition: SharedDecisionCandidateMonitorConditionSchema,
+});
+export const SharedDecisionSynthesisCandidateSchema = z.strictObject({
+  candidateId: OpaqueIdSchema,
+  provenance: SharedDecisionCandidateProvenanceSchema,
+  draft: SharedDecisionCandidateDraftSchema,
+});
+export const AiPreferredSharedDecisionSynthesisRequestSchema = z.strictObject({
+  ...MeetingMutationShape,
+  assistance: z.literal("ai_preferred"),
+});
+export const ManualSharedDecisionSynthesisRequestSchema = z.strictObject({
+  ...MeetingMutationShape,
+  assistance: z.literal("manual"),
+  draft: ManualSharedDecisionDraftInputSchema,
+});
+export const SynthesizeSharedDecisionRequestSchema = z.discriminatedUnion(
+  "assistance",
+  [
+    AiPreferredSharedDecisionSynthesisRequestSchema,
+    ManualSharedDecisionSynthesisRequestSchema,
+  ],
+);
+export const SynthesizeSharedDecisionResponseSchema = z.strictObject({
+  ...MeetingMutationReceiptShape,
+  candidate: SharedDecisionSynthesisCandidateSchema,
+});
+export const SharedDecisionSynthesisRequestSchema =
+  SynthesizeSharedDecisionRequestSchema;
+export const SharedDecisionSynthesisResponseSchema =
+  SynthesizeSharedDecisionResponseSchema;
+
+export const ConfirmedPremiseCandidateDispositionSchema = z.strictObject({
+  candidateId: OpaqueIdSchema,
+  disposition: z.literal("confirmed"),
+  premise: SharedDecisionPremiseInputSchema,
+});
+export const RejectedPremiseCandidateDispositionSchema = z.strictObject({
+  candidateId: OpaqueIdSchema,
+  disposition: z.literal("rejected"),
+  reason: NonEmptyTextSchema.optional(),
+});
+export const PremiseCandidateDispositionSchema = z.discriminatedUnion(
+  "disposition",
+  [
+    ConfirmedPremiseCandidateDispositionSchema,
+    RejectedPremiseCandidateDispositionSchema,
+  ],
+);
+export const DispositionSharedDecisionCandidateRequestSchema = z
+  .strictObject({
+    ...MeetingMutationShape,
+    candidateId: OpaqueIdSchema,
+    title: TitleSchema,
+    outcome: NonEmptyTextSchema,
+    premiseDispositions: z.array(PremiseCandidateDispositionSchema).min(1),
+    dissent: z.array(SharedDecisionDissentInputSchema),
+    actions: z.array(SharedDecisionActionInputSchema),
+    monitorCondition: SharedDecisionCandidateMonitorConditionSchema,
+    reason: NonEmptyTextSchema.optional(),
+  })
+  .superRefine(({ premiseDispositions }, context) => {
+    const candidateIds = premiseDispositions.map(
+      ({ candidateId }) => candidateId,
+    );
+    if (new Set(candidateIds).size !== candidateIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "premise candidate dispositions must be unique",
+        path: ["premiseDispositions"],
+      });
+    }
+  });
+export const DispositionSharedDecisionCandidateResponseSchema = z.strictObject({
+  ...MeetingMutationReceiptShape,
+  candidateId: OpaqueIdSchema,
+  premiseDispositions: z.array(
+    z.strictObject({
+      candidateId: OpaqueIdSchema,
+      disposition: z.enum(["confirmed", "rejected"]),
+    }),
+  ),
+  premises: z.array(SharedPremiseSchema),
+  dissent: z.array(SharedDissentSchema),
+  actions: z.array(SharedActionSchema),
+});
+export const SharedDecisionCandidateDispositionRequestSchema =
+  DispositionSharedDecisionCandidateRequestSchema;
+export const SharedDecisionCandidateDispositionResponseSchema =
+  DispositionSharedDecisionCandidateResponseSchema;
+
+export type DecisionSynthesisAssistance = z.infer<
+  typeof DecisionSynthesisAssistanceSchema
+>;
+export type SharedDecisionCandidateOrigin = z.infer<
+  typeof SharedDecisionCandidateOriginSchema
+>;
+export type AiAssistedDecisionCandidateProvenance = z.infer<
+  typeof AiAssistedDecisionCandidateProvenanceSchema
+>;
+export type HumanAuthoredDecisionCandidateProvenance = z.infer<
+  typeof HumanAuthoredDecisionCandidateProvenanceSchema
+>;
+export type SharedDecisionCandidateProvenance = z.infer<
+  typeof SharedDecisionCandidateProvenanceSchema
+>;
+export type SharedDecisionPremiseInput = z.infer<
+  typeof SharedDecisionPremiseInputSchema
+>;
+export type SharedDecisionActionInput = z.infer<
+  typeof SharedDecisionActionInputSchema
+>;
+export type SharedDecisionDissentInput = z.infer<
+  typeof SharedDecisionDissentInputSchema
+>;
+export type SharedDecisionPremiseCandidate = z.infer<
+  typeof SharedDecisionPremiseCandidateSchema
+>;
+export type SharedDecisionActionCandidate = z.infer<
+  typeof SharedDecisionActionCandidateSchema
+>;
+export type SharedDecisionDissentCandidate = z.infer<
+  typeof SharedDecisionDissentCandidateSchema
+>;
+export type SharedDecisionCandidateMonitorCondition = z.infer<
+  typeof SharedDecisionCandidateMonitorConditionSchema
+>;
+export type SharedDecisionCandidateDraft = z.infer<
+  typeof SharedDecisionCandidateDraftSchema
+>;
+export type ManualSharedDecisionDraftInput = z.infer<
+  typeof ManualSharedDecisionDraftInputSchema
+>;
+export type SharedDecisionSynthesisCandidate = z.infer<
+  typeof SharedDecisionSynthesisCandidateSchema
+>;
+export type AiPreferredSharedDecisionSynthesisRequest = z.infer<
+  typeof AiPreferredSharedDecisionSynthesisRequestSchema
+>;
+export type ManualSharedDecisionSynthesisRequest = z.infer<
+  typeof ManualSharedDecisionSynthesisRequestSchema
+>;
+export type SynthesizeSharedDecisionRequest = z.infer<
+  typeof SynthesizeSharedDecisionRequestSchema
+>;
+export type SynthesizeSharedDecisionResponse = z.infer<
+  typeof SynthesizeSharedDecisionResponseSchema
+>;
+export type SharedDecisionSynthesisRequest = SynthesizeSharedDecisionRequest;
+export type SharedDecisionSynthesisResponse = SynthesizeSharedDecisionResponse;
+export type ConfirmedPremiseCandidateDisposition = z.infer<
+  typeof ConfirmedPremiseCandidateDispositionSchema
+>;
+export type RejectedPremiseCandidateDisposition = z.infer<
+  typeof RejectedPremiseCandidateDispositionSchema
+>;
+export type PremiseCandidateDisposition = z.infer<
+  typeof PremiseCandidateDispositionSchema
+>;
+export type DispositionSharedDecisionCandidateRequest = z.infer<
+  typeof DispositionSharedDecisionCandidateRequestSchema
+>;
+export type DispositionSharedDecisionCandidateResponse = z.infer<
+  typeof DispositionSharedDecisionCandidateResponseSchema
+>;
+export type SharedDecisionCandidateDispositionRequest =
+  DispositionSharedDecisionCandidateRequest;
+export type SharedDecisionCandidateDispositionResponse =
+  DispositionSharedDecisionCandidateResponse;
+
 export const InferenceDispositionSchema = z.enum(["confirmed", "rejected"]);
 export const DispositionConfirmedInferenceRequestSchema = z.strictObject({
   ...MeetingMutationShape,
