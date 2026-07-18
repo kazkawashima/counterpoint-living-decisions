@@ -22,6 +22,8 @@ import {
   RejectDisclosureRequestSchema,
   RoleProjectionQuerySchema,
   SaveDecisionDraftRequestSchema,
+  StartDecisionMonitoringRequestSchema,
+  StartDecisionMonitoringResponseSchema,
   type LoginRequest,
 } from "@counterpoint/protocol";
 
@@ -33,6 +35,33 @@ const meetingMutation = {
 };
 
 const sourceRange = { start: 0, end: 12 };
+const monitoringDecision = {
+  decisionId: "decision-1",
+  status: "MONITORING",
+  activeRevision: 2,
+  activeRevisionId: "decision-revision-2",
+  snapshot: {
+    title: "Conditional rollout",
+    outcome: "Proceed only after the listed controls are complete.",
+    status: "MONITORING",
+    premiseIds: ["premise-1"],
+    evidenceIds: ["evidence-1"],
+    dissentIds: ["dissent-1"],
+    actionIds: ["action-1"],
+    monitorCondition: {
+      description: "Watch regulatory changes.",
+      registrationId: "monitor-registration-1",
+    },
+  },
+  readiness: {
+    outcome: true,
+    premiseIds: true,
+    evidenceIds: true,
+    actionIds: true,
+    monitorCondition: true,
+  },
+  updatedAt: "2026-07-19T12:00:00.000Z",
+} as const;
 
 const mutationExamples = [
   {
@@ -140,6 +169,10 @@ const mutationExamples = [
     schema: CommitDecisionRequestSchema,
     value: { ...meetingMutation, decisionId: "decision-1" },
   },
+  {
+    schema: StartDecisionMonitoringRequestSchema,
+    value: { ...meetingMutation, decisionId: "decision-1" },
+  },
 ] as const;
 
 describe("strict v1 HTTP protocol", () => {
@@ -176,6 +209,7 @@ describe("strict v1 HTTP protocol", () => {
     const forbiddenAuthorityFields = {
       actor: { kind: "participant", participantId: "participant-1" },
       actorId: "actor-1",
+      capability: "decision:commit",
       participantId: "participant-1",
       ownerParticipantId: "participant-1",
       capabilities: ["decision:commit"],
@@ -205,6 +239,34 @@ describe("strict v1 HTTP protocol", () => {
       RoleProjectionQuerySchema.safeParse({
         meetingId: "meeting-1",
         role: "facilitator",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      StartDecisionMonitoringRequestSchema.safeParse({
+        ...meetingMutation,
+        decisionId: "decision-1",
+        registrationId: "client-chosen-registration",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("returns the server-derived monitor registration in a strict response", () => {
+    const response = {
+      meetingId: "meeting-1",
+      position: 5,
+      correlationId: "correlation-1",
+      decision: monitoringDecision,
+      monitorRegistrationId: "monitor-registration-1",
+    };
+
+    expect(
+      StartDecisionMonitoringResponseSchema.safeParse(response).success,
+    ).toBe(true);
+    expect(
+      StartDecisionMonitoringResponseSchema.safeParse({
+        ...response,
+        revision: { version: 3 },
       }).success,
     ).toBe(false);
   });

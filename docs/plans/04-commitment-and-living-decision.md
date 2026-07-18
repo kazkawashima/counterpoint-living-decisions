@@ -20,8 +20,8 @@ history.
 - [x] Validate Decision outcome, confirmed premises, evidence references,
       dissent, Actions, owners, and monitor condition.
 - [x] Create immutable committed revision.
-- [ ] Register one regulatory-change monitor.
-- [ ] Transition `COMMITTED → MONITORING`.
+- [x] Register one regulatory-change monitor.
+- [x] Transition `COMMITTED → MONITORING`.
 - [x] Render source-to-Decision audit lineage.
 
 ### D2 — Signed webhook

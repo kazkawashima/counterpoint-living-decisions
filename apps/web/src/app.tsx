@@ -32,6 +32,7 @@ import {
   rejectDisclosure,
   saveDecisionDraft,
   storeSession,
+  startDecisionMonitoring,
   synthesizeSharedDecisionCandidate,
   type StoredSession,
 } from "./api.js";
@@ -448,19 +449,23 @@ function FacilitatorDecisionPanel({
     | "draft"
     | "idle"
     | "manual-edit"
+    | "monitoring"
     | "premise-confirmed"
     | "premise-rejected"
     | "ready"
     | "saving"
+    | "starting-monitor"
     | "synthesizing"
   >(
-    existingDecision?.status === "COMMITTED"
-      ? "committed"
-      : existingDecision?.status === "DECISION_READY"
-        ? "ready"
-        : existingDecision?.status === "DRAFT"
-          ? "draft"
-          : "idle",
+    existingDecision?.status === "MONITORING"
+      ? "monitoring"
+      : existingDecision?.status === "COMMITTED"
+        ? "committed"
+        : existingDecision?.status === "DECISION_READY"
+          ? "ready"
+          : existingDecision?.status === "DRAFT"
+            ? "draft"
+            : "idle",
   );
   const [candidate, setCandidate] =
     useState<SharedDecisionSynthesisCandidate>();
@@ -488,6 +493,7 @@ function FacilitatorDecisionPanel({
     commit: crypto.randomUUID(),
     confirm: crypto.randomUUID(),
     manualCandidate: crypto.randomUUID(),
+    monitor: crypto.randomUUID(),
     ready: crypto.randomUUID(),
     reject: crypto.randomUUID(),
     save: crypto.randomUUID(),
@@ -495,7 +501,10 @@ function FacilitatorDecisionPanel({
   });
 
   useEffect(() => {
-    if (existingDecision?.status !== "COMMITTED") {
+    if (
+      existingDecision?.status !== "COMMITTED" &&
+      existingDecision?.status !== "MONITORING"
+    ) {
       return;
     }
     const controller = new AbortController();
@@ -779,6 +788,34 @@ function FacilitatorDecisionPanel({
     } catch (cause) {
       setError(messageFor(cause));
       setPhase("ready");
+    }
+  }
+
+  async function startMonitoring() {
+    if (decision === undefined) {
+      return;
+    }
+    setPhase("starting-monitor");
+    setError(undefined);
+    try {
+      const response = await startDecisionMonitoring(session, {
+        decisionId: decision.decisionId,
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.monitor,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(response.position);
+      setDecision(response.decision);
+      onDecisionChange(response.decision);
+      const nextAudit = await getDecisionAudit(session, {
+        decisionId: response.decision.decisionId,
+        meetingId: meeting.meetingId,
+      });
+      setAudit(nextAudit);
+      setPhase("monitoring");
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("committed");
     }
   }
 
@@ -1067,13 +1104,23 @@ function FacilitatorDecisionPanel({
         </div>
       ) : null}
 
-      {phase === "committed" && decision !== undefined ? (
+      {phase === "starting-monitor" ? (
+        <div className="commit-transition" role="status">
+          <span aria-hidden="true">◎</span>
+          Registering the Decision monitor…
+        </div>
+      ) : null}
+
+      {(phase === "committed" || phase === "monitoring") &&
+      decision !== undefined ? (
         <div className="committed-decision" aria-live="polite">
           <div className="commit-seal" aria-hidden="true">
             <span>✓</span>
           </div>
           <div>
-            <p className="zone-label shared">Human committed</p>
+            <p className="zone-label shared">
+              {phase === "monitoring" ? "Monitoring active" : "Human committed"}
+            </p>
             <h3>{decision.snapshot.title}</h3>
             <p>{decision.snapshot.outcome}</p>
           </div>
@@ -1100,6 +1147,27 @@ function FacilitatorDecisionPanel({
               </span>
             ))}
           </div>
+          {phase === "committed" ? (
+            <button
+              className="monitor-button"
+              onClick={() => void startMonitoring()}
+              type="button"
+            >
+              Start Decision monitor
+            </button>
+          ) : (
+            <div className="monitor-active">
+              <span>◎ Monitoring</span>
+              <small>
+                Registration{" "}
+                {decision.snapshot.monitorCondition.registrationId?.slice(
+                  0,
+                  18,
+                )}
+                …
+              </small>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -1571,7 +1639,8 @@ function WorkspaceShell({
               position={position}
               session={session}
             />
-          ) : sharedDecision?.status === "COMMITTED" ? (
+          ) : sharedDecision?.status === "COMMITTED" ||
+            sharedDecision?.status === "MONITORING" ? (
             <SharedDecisionCard decision={sharedDecision} />
           ) : (
             <div className="readiness-card">

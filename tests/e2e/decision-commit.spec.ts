@@ -158,6 +158,19 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${screenshotDirectory}/2026-07-19-committed-decision-desktop.png`,
   });
 
+  await facilitatorPage
+    .getByRole("button", { name: "Start Decision monitor" })
+    .click();
+  await expect(facilitatorPage.getByText("Monitoring active")).toBeVisible();
+  await expect(
+    facilitatorPage.locator(".audit-line").getByText("MonitoringStarted"),
+  ).toBeVisible();
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${screenshotDirectory}/2026-07-19-monitoring-active-desktop.png`,
+  });
+
   await facilitatorPage.reload();
   const reloadedMeeting = facilitatorPage
     .getByRole("article")
@@ -166,6 +179,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     facilitatorPage.getByText("Revision 2 · COMMITTED"),
   ).toBeVisible();
+  await expect(facilitatorPage.getByText("Monitoring active")).toBeVisible();
 
   const video = facilitatorPage.video();
   await facilitatorContext.close();
@@ -197,6 +211,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     participantPage.getByText("5 / 5 readiness checks"),
   ).toBeVisible();
+  await expect(participantPage.getByText("MONITORING")).toBeVisible();
   await expect(
     participantPage.getByRole("button", {
       name: "Generate Decision candidate",

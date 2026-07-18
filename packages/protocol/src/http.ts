@@ -847,6 +847,15 @@ export const CommitDecisionResponseSchema = z.strictObject({
   decision: DecisionSchema,
   revision: DecisionRevisionSchema,
 });
+export const StartDecisionMonitoringRequestSchema = z.strictObject({
+  ...MeetingMutationShape,
+  decisionId: DecisionIdSchema,
+});
+export const StartDecisionMonitoringResponseSchema = z.strictObject({
+  ...MeetingMutationReceiptShape,
+  decision: DecisionSchema,
+  monitorRegistrationId: MonitorRegistrationIdSchema,
+});
 export const DecisionHistoryQuerySchema = z.strictObject({
   meetingId: MeetingIdSchema,
   decisionId: DecisionIdSchema,
@@ -888,6 +897,12 @@ export type MarkDecisionReadyResponse = z.infer<
 export type CommitDecisionRequest = z.infer<typeof CommitDecisionRequestSchema>;
 export type CommitDecisionResponse = z.infer<
   typeof CommitDecisionResponseSchema
+>;
+export type StartDecisionMonitoringRequest = z.infer<
+  typeof StartDecisionMonitoringRequestSchema
+>;
+export type StartDecisionMonitoringResponse = z.infer<
+  typeof StartDecisionMonitoringResponseSchema
 >;
 export type DecisionHistoryQuery = z.infer<typeof DecisionHistoryQuerySchema>;
 export type DecisionHistoryResponse = z.infer<

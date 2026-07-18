@@ -1906,6 +1906,37 @@ button:disabled {
   font-size: 0.5rem;
 }
 
+.monitor-button,
+.monitor-active {
+  min-height: 2.8rem;
+  grid-column: 1 / -1;
+}
+
+.monitor-button {
+  border: 1px solid rgba(131, 230, 189, 0.42);
+  color: #0d1b13;
+  background: var(--mint);
+  cursor: pointer;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.monitor-active {
+  display: flex;
+  padding: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(131, 230, 189, 0.34);
+  color: var(--mint);
+  background: rgba(131, 230, 189, 0.055);
+  font-family: ui-monospace, monospace;
+  font-size: 0.58rem;
+}
+
+.monitor-active small {
+  color: var(--muted);
+}
+
 .audit-line span + span::before {
   position: absolute;
   top: 50%;

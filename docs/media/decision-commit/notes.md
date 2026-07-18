@@ -10,12 +10,14 @@ appears in the material.
 | Grounded AI Decision candidate | Desktop, 1440×900 | Establish that the model sees approved shared Evidence only. Hold briefly on the AI-proposed label, model, confidence, source link, reason, and editable premise. |
 | Human-ready commit gate | Desktop, 1440×900 | Cut after premise confirmation and DRAFT creation. Emphasize that AI cannot press the explicit facilitator-only commit control. |
 | Committed revision and audit lineage | Desktop, 1440×900 | Hero frame for the commitment moment: human seal, revision 2, immutable DRAFT-to-COMMITTED lineage, and Drafted/MarkedReady/Committed audit trail. |
+| Active Decision monitor | Desktop, 1440×900 | Continue the post-meeting arc with a server-derived monitor registration, MONITORING state, and MonitoringStarted audit entry while revision 2 remains immutable. |
 | Participant shared Decision | Desktop, 1440×900 | Prove that a separate participant receives the committed shared state without facilitator controls or private candidate metadata. |
 | Participant shared Decision | Mobile, 390×844, reduced motion | Responsive and accessibility proof for the same committed state without motion dependence. |
 
 The clip under `docs/media/clips/decision-commit/` records the complete
-candidate-to-commit interaction, including explicit premise confirmation,
-readiness validation, commitment animation, and persistence after reload.
+candidate-to-monitor interaction, including explicit premise confirmation,
+readiness validation, commitment animation, monitor registration, and
+persistence after reload.
 
 Useful narration:
 

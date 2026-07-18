@@ -45,6 +45,7 @@ export {
   commitDecision,
   markDecisionReady,
   saveDecisionDraft,
+  startDecisionMonitoring,
   type CommitDecisionInput,
   type CommitDecisionResult,
   type DecisionDependencies,
@@ -55,6 +56,8 @@ export {
   type MarkDecisionReadyResult,
   type SaveDecisionDraftInput,
   type SaveDecisionDraftResult,
+  type StartDecisionMonitoringInput,
+  type StartDecisionMonitoringResult,
 } from "./decisions.js";
 export {
   dispositionDecisionCandidate,

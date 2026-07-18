@@ -76,7 +76,7 @@ function completeFlagshipEvents(): readonly DomainEvent[] {
   const monitoring = transitionDecision(committed, {
     to: "MONITORING",
     authority: system,
-    monitorRegistrationSucceeded: true,
+    monitorRegistrationId: monitorRegistrationId("monitor-eu-regulation"),
   });
   const invalidationSuggestionId = suggestionId(
     "suggestion-regulatory-invalidation",

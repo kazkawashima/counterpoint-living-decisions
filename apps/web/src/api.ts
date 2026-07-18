@@ -17,6 +17,7 @@ import {
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
   SaveDecisionDraftResponseSchema,
+  StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
   type AssignedMeeting,
   type ApproveDisclosureResponse,
@@ -39,6 +40,7 @@ import {
   type RejectDisclosureResponse,
   type SaveDecisionDraftRequest,
   type SaveDecisionDraftResponse,
+  type StartDecisionMonitoringResponse,
   type SynthesizeSharedDecisionRequest,
   type SynthesizeSharedDecisionResponse,
   type TextRange,
@@ -57,6 +59,7 @@ export type {
   MarkDecisionReadyResponse,
   SaveDecisionDraftRequest,
   SaveDecisionDraftResponse,
+  StartDecisionMonitoringResponse,
   SynthesizeSharedDecisionRequest,
   SynthesizeSharedDecisionResponse,
 };
@@ -140,7 +143,6 @@ export interface SaveDecisionDraftClientInput extends MeetingMutationInput {
   readonly evidenceIds: readonly string[];
   readonly monitorCondition: {
     readonly description: string;
-    readonly registrationId?: string;
   };
   readonly outcome: string;
   readonly premiseIds: readonly string[];
@@ -526,6 +528,21 @@ export async function commitDecision(
     session,
   );
   return CommitDecisionResponseSchema.parse(body);
+}
+
+export async function startDecisionMonitoring(
+  session: StoredSession,
+  input: DecisionLifecycleClientInput,
+): Promise<StartDecisionMonitoringResponse> {
+  const body = await request(
+    "/api/v1/decisions/monitoring",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return StartDecisionMonitoringResponseSchema.parse(body);
 }
 
 export async function getDecisionHistory(

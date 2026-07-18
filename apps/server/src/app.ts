@@ -22,6 +22,7 @@ import {
   rejectDisclosure,
   resolveMeetingAuthorization,
   saveDecisionDraft,
+  startDecisionMonitoring,
   userAuthorizationContext,
   type DecisionCandidateFailure,
   type DecisionFailure,
@@ -84,6 +85,8 @@ import {
   SaveDecisionDraftResponseSchema,
   SynthesizeSharedDecisionRequestSchema,
   SynthesizeSharedDecisionResponseSchema,
+  StartDecisionMonitoringRequestSchema,
+  StartDecisionMonitoringResponseSchema,
   type ErrorCode,
 } from "@counterpoint/protocol";
 
@@ -342,6 +345,18 @@ async function participantVisiblePositionAt(
       (event.visibility === "shared" ||
         event.ownerParticipantId === participantId),
   ).length;
+}
+
+async function decisionMutationOccurredAt(
+  runtime: ServerRuntime,
+  meetingScope: string,
+  key: string,
+): Promise<string> {
+  const records = await runtime.decisions.events.load(meetingScope);
+  return (
+    records.find(({ event }) => event.idempotencyKey === key)?.event
+      .occurredAt ?? runtime.clock.now()
+  );
 }
 
 function disclosureFailureResponse(
@@ -1277,11 +1292,6 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         meetingId: request.value.meetingId,
         monitorCondition: {
           description: request.value.monitorCondition.description,
-          ...(request.value.monitorCondition.registrationId === undefined
-            ? {}
-            : {
-                registrationId: request.value.monitorCondition.registrationId,
-              }),
         },
         outcome: request.value.outcome,
         premiseIds: request.value.premiseIds,
@@ -1396,6 +1406,60 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     );
   });
 
+  app.post("/api/v1/decisions/monitoring", async (context) => {
+    const request = await parseJson(
+      context,
+      StartDecisionMonitoringRequestSchema,
+    );
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === "MonitoringStarted",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const result = await startDecisionMonitoring(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        correlationId: context.get("correlationId"),
+        decisionId: request.value.decisionId,
+        expectedPosition: resolved.globalPosition,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(context, result);
+    }
+    return context.json(
+      StartDecisionMonitoringResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(
+          result.decision,
+          await decisionMutationOccurredAt(
+            runtime,
+            request.value.meetingId,
+            request.value.idempotencyKey,
+          ),
+        ),
+        meetingId: request.value.meetingId,
+        monitorRegistrationId: result.monitorRegistrationId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+    );
+  });
+
   app.get(
     "/api/v1/meetings/:meetingId/decisions/:decisionId/history",
     async (context) => {
@@ -1478,6 +1542,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
           "DecisionCommitted",
           "DecisionDrafted",
           "DecisionMarkedReady",
+          "MonitoringStarted",
         ].includes(event.eventType)
       ) {
         return [];

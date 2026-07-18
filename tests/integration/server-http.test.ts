@@ -28,6 +28,7 @@ import {
   ReadinessResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   SaveDecisionDraftResponseSchema,
+  StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
 } from "@counterpoint/protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -992,6 +993,88 @@ describe("Node HTTP flagship shell", () => {
         ({ eventType }) => eventType,
       ),
     ).toEqual(["DecisionDrafted", "DecisionMarkedReady", "DecisionCommitted"]);
+
+    const monitoringResponse = await app.request(
+      "/api/v1/decisions/monitoring",
+      {
+        body: JSON.stringify({
+          decisionId: draft.decision.decisionId,
+          expectedPosition: committed.position,
+          idempotencyKey: "monitor-shared-decision",
+          meetingId,
+        }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(monitoringResponse.status).toBe(200);
+    const monitoring = StartDecisionMonitoringResponseSchema.parse(
+      await monitoringResponse.json(),
+    );
+    expect(monitoring.decision).toMatchObject({
+      activeRevision: 2,
+      status: "MONITORING",
+    });
+    expect(monitoring.decision.snapshot.monitorCondition.registrationId).toBe(
+      monitoring.monitorRegistrationId,
+    );
+
+    const monitoringReplayResponse = await app.request(
+      "/api/v1/decisions/monitoring",
+      {
+        body: JSON.stringify({
+          decisionId: draft.decision.decisionId,
+          expectedPosition: committed.position,
+          idempotencyKey: "monitor-shared-decision",
+          meetingId,
+        }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(monitoringReplayResponse.status).toBe(200);
+    expect(await monitoringReplayResponse.json()).toEqual(
+      expect.objectContaining({
+        decision: monitoring.decision,
+        monitorRegistrationId: monitoring.monitorRegistrationId,
+        position: monitoring.position,
+      }),
+    );
+
+    const monitoredHistoryResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions/${draft.decision.decisionId}/history`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    const monitoredHistory = DecisionHistoryResponseSchema.parse(
+      await monitoredHistoryResponse.json(),
+    );
+    expect(monitoredHistory.decision.status).toBe("MONITORING");
+    expect(
+      monitoredHistory.revisions.map(({ snapshot }) => snapshot.status),
+    ).toEqual(["DRAFT", "COMMITTED"]);
+
+    const monitoredAuditResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions/audit?decisionId=${draft.decision.decisionId}`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(
+      DecisionAuditResponseSchema.parse(
+        await monitoredAuditResponse.json(),
+      ).entries.map(({ eventType }) => eventType),
+    ).toEqual([
+      "DecisionDrafted",
+      "DecisionMarkedReady",
+      "DecisionCommitted",
+      "MonitoringStarted",
+    ]);
 
     const staleReady = await app.request("/api/v1/decisions/ready", {
       body: JSON.stringify({

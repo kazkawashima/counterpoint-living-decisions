@@ -18,6 +18,7 @@ import type {
   DecisionId,
   DecisionRevisionId,
   ExternalEventId,
+  MonitorRegistrationId,
   NonEmptyText,
   ParticipantId,
   PremiseId,
@@ -48,7 +49,7 @@ export interface DecisionTransitionRequest {
   readonly authority: DecisionAuthority;
   readonly readiness?: DecisionReadiness;
   readonly explicitCommit?: boolean;
-  readonly monitorRegistrationSucceeded?: boolean;
+  readonly monitorRegistrationId?: MonitorRegistrationId;
   readonly invalidationSuggestionRecorded?: boolean;
   readonly suggestionReferenceIds?: readonly string[];
   readonly affectedPremiseIds?: readonly PremiseId[];
@@ -208,9 +209,17 @@ export function transitionDecision(
   } else if (from === "COMMITTED" && to === "MONITORING") {
     requireSystem(request.authority);
     requireCondition(
-      request.monitorRegistrationSucceeded === true,
-      "Monitoring requires successful monitor registration",
+      request.monitorRegistrationId !== undefined,
+      "Monitoring requires a server-derived monitor registration ID",
     );
+    return createDecision({
+      ...decision,
+      monitorCondition: {
+        ...decision.monitorCondition,
+        registrationId: request.monitorRegistrationId,
+      },
+      status: "MONITORING",
+    });
   } else if (from === "MONITORING" && to === "AT_RISK") {
     requireSystem(request.authority);
     requireCondition(

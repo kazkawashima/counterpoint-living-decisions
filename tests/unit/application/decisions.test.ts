@@ -4,6 +4,7 @@ import {
   commitDecision,
   markDecisionReady,
   saveDecisionDraft,
+  startDecisionMonitoring,
   type DecisionDependencies,
   type DecisionDraftFields,
 } from "../../../packages/application/src/index.js";
@@ -269,6 +270,14 @@ describe("Decision lifecycle application layer", () => {
       }),
     ).resolves.toEqual({ code: "FORBIDDEN", kind: "failed" });
     await expect(
+      startDecisionMonitoring(deps, participantContext(), {
+        decisionId: "decision-hidden",
+        expectedPosition: 0,
+        idempotencyKey: "participant-monitoring",
+        meetingId: MEETING_ID,
+      }),
+    ).resolves.toEqual({ code: "FORBIDDEN", kind: "failed" });
+    await expect(
       saveDecisionDraft(deps, facilitatorContext(OTHER_MEETING_ID), {
         ...draftFields(),
         changeReason: "Cross-meeting attempt",
@@ -415,6 +424,39 @@ describe("Decision lifecycle application layer", () => {
       replayed: true,
     });
 
+    const monitoringInput = {
+      decisionId: firstDraft.decision.id,
+      expectedPosition: 7,
+      idempotencyKey: "idempotent-monitoring",
+      meetingId: MEETING_ID,
+    };
+    const firstMonitoring = await startDecisionMonitoring(
+      deps,
+      facilitatorContext(),
+      monitoringInput,
+    );
+    const replayedMonitoring = await startDecisionMonitoring(
+      deps,
+      facilitatorContext(),
+      monitoringInput,
+    );
+    expect(firstMonitoring).toMatchObject({
+      decision: {
+        activeRevision: 2,
+        monitorCondition: {
+          registrationId: "monitor-registration-1",
+        },
+        status: "MONITORING",
+      },
+      kind: "monitoring_started",
+      monitorRegistrationId: "monitor-registration-1",
+      replayed: false,
+    });
+    expect(replayedMonitoring).toEqual({
+      ...firstMonitoring,
+      replayed: true,
+    });
+
     const records = await deps.events.load(MEETING_ID);
     expect(
       records.filter(({ event }) => event.eventType === "DecisionDrafted"),
@@ -425,12 +467,29 @@ describe("Decision lifecycle application layer", () => {
     expect(
       records.filter(({ event }) => event.eventType === "DecisionCommitted"),
     ).toHaveLength(1);
+    const monitoringRecords = records.filter(
+      ({ event }) => event.eventType === "MonitoringStarted",
+    );
+    expect(monitoringRecords).toHaveLength(1);
+    expect(monitoringRecords[0]?.event).toMatchObject({
+      actor: { kind: "system" },
+      payload: {
+        decision: {
+          activeRevision: 2,
+          monitorCondition: {
+            registrationId: "monitor-registration-1",
+          },
+        },
+        monitorRegistrationId: "monitor-registration-1",
+      },
+    });
     const projection = await deps.projections.get({
       meetingId: MEETING_ID,
       ownerParticipantId: FACILITATOR_ID,
       projection: "meeting",
     });
-    expect(projection?.shared.decisions[0]?.status).toBe("COMMITTED");
+    expect(projection?.shared.decisions[0]?.status).toBe("MONITORING");
+    expect(projection?.shared.decisionRevisions).toHaveLength(2);
   });
 
   it("appends immutable DRAFT revisions with an unbroken lineage", async () => {

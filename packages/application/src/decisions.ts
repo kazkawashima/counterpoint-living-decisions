@@ -98,6 +98,10 @@ export interface CommitDecisionInput extends DecisionMutationInput {
   readonly explicitCommit: boolean;
 }
 
+export interface StartDecisionMonitoringInput extends DecisionMutationInput {
+  readonly decisionId: string;
+}
+
 export type DecisionFailure =
   | {
       readonly actualPosition: number;
@@ -147,6 +151,17 @@ export type CommitDecisionResult =
       readonly position: number;
       readonly replayed: boolean;
       readonly revision: DecisionRevision;
+    }
+  | DecisionFailure;
+
+export type StartDecisionMonitoringResult =
+  | {
+      readonly correlationId: string;
+      readonly decision: Decision;
+      readonly kind: "monitoring_started";
+      readonly monitorRegistrationId: ReturnType<typeof monitorRegistrationId>;
+      readonly position: number;
+      readonly replayed: boolean;
     }
   | DecisionFailure;
 
@@ -973,5 +988,134 @@ export async function commitDecision(
     position: committed.position,
     replayed: appended.kind === "replayed",
     revision: committed.payload.revision,
+  };
+}
+
+export async function startDecisionMonitoring(
+  dependencies: DecisionDependencies,
+  context: UserAuthorizationContext,
+  input: StartDecisionMonitoringInput,
+): Promise<StartDecisionMonitoringResult> {
+  const authorizationFailure = authorizeFacilitatorMutation(context, input);
+  if (authorizationFailure !== undefined) {
+    return authorizationFailure;
+  }
+
+  let targetDecisionId: ReturnType<typeof decisionId>;
+  let commandIdempotencyKey: ReturnType<typeof idempotencyKey>;
+  let expectedPosition: ReturnType<typeof meetingPosition>;
+  let fingerprint: string;
+  try {
+    targetDecisionId = decisionId(input.decisionId);
+    commandIdempotencyKey = idempotencyKey(input.idempotencyKey);
+    expectedPosition = meetingPosition(input.expectedPosition);
+    fingerprint = await hashValue(
+      dependencies.hash,
+      stableSerialize({
+        command: "start-decision-monitoring",
+        decisionId: input.decisionId,
+        meetingId: input.meetingId,
+      }),
+    );
+  } catch (error) {
+    if (error instanceof DomainValueError) {
+      return failed("VALIDATION_FAILED");
+    }
+    throw error;
+  }
+
+  const loaded = await loadState(dependencies, input.meetingId);
+  const prior = idempotentRecord(loaded.records, input.idempotencyKey);
+  if (prior !== undefined) {
+    const replay = await appendMutation(
+      dependencies,
+      input,
+      fingerprint,
+      [prior.event],
+      context.participantId,
+    );
+    if (replay.kind === "failed") {
+      return replay;
+    }
+    const started = eventAt(replay.records, "MonitoringStarted");
+    if (started === undefined) {
+      return failed("IDEMPOTENCY_CONFLICT");
+    }
+    return {
+      correlationId: started.correlationId,
+      decision: started.payload.decision,
+      kind: "monitoring_started",
+      monitorRegistrationId: started.payload.monitorRegistrationId,
+      position: started.position,
+      replayed: true,
+    };
+  }
+
+  const current = loaded.projection.shared.decisions.find(
+    ({ id }) => id === targetDecisionId,
+  );
+  if (current === undefined) {
+    return failed("DECISION_NOT_FOUND");
+  }
+
+  let monitoringDecision: Decision;
+  let registrationId: ReturnType<typeof monitorRegistrationId>;
+  let occurredAt: ReturnType<typeof timestamp>;
+  try {
+    registrationId = monitorRegistrationId(
+      dependencies.ids.next("monitor-registration"),
+    );
+    monitoringDecision = transitionDecision(current, {
+      authority: { kind: "system" },
+      monitorRegistrationId: registrationId,
+      to: "MONITORING",
+    });
+    occurredAt = timestamp(dependencies.clock.now());
+  } catch (error) {
+    const failure = transitionFailure(error);
+    if (failure !== undefined) {
+      return failure;
+    }
+    throw error;
+  }
+
+  const correlation = commandCorrelationId(dependencies, input);
+  const event: EventOf<"MonitoringStarted"> = {
+    actor: { kind: "system" },
+    correlationId: correlation,
+    eventId: eventId(dependencies.ids.next("event")),
+    eventType: "MonitoringStarted",
+    idempotencyKey: commandIdempotencyKey,
+    meetingId: meetingId(input.meetingId),
+    occurredAt,
+    payload: {
+      decision: monitoringDecision,
+      monitorRegistrationId: registrationId,
+    },
+    position: meetingPosition(expectedPosition + 1),
+    schemaVersion: schemaVersion(1),
+    visibility: "shared",
+  };
+  const appended = await appendMutation(
+    dependencies,
+    input,
+    fingerprint,
+    [event],
+    context.participantId,
+  );
+  if (appended.kind === "failed") {
+    return appended;
+  }
+  const started = eventAt(appended.records, "MonitoringStarted");
+  if (started === undefined) {
+    throw new Error("Monitoring start append returned no MonitoringStarted");
+  }
+  return {
+    correlationId: started.correlationId,
+    decision: started.payload.decision,
+    kind: "monitoring_started",
+    monitorRegistrationId: started.payload.monitorRegistrationId,
+    position: started.position,
+    replayed: appended.kind === "replayed",
   };
 }

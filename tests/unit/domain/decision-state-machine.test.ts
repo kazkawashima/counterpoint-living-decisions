@@ -8,6 +8,7 @@ import {
   decisionTransitionMatrix,
   externalEventId,
   holdAffectedActions,
+  monitorRegistrationId,
   newReconsiderationTask,
   nextDecisionRevision,
   nonEmptyText,
@@ -40,6 +41,7 @@ const ai: DecisionAuthority = {
   kind: "ai",
   model: nonEmptyText("gpt-5.6"),
 };
+const registrationId = monitorRegistrationId("monitor-registration-1");
 
 const statuses = Object.keys(
   decisionTransitionMatrix,
@@ -84,7 +86,7 @@ const validCases: readonly {
     request: {
       to: "MONITORING",
       authority: system,
-      monitorRegistrationSucceeded: true,
+      monitorRegistrationId: registrationId,
     },
   },
   {
@@ -240,6 +242,20 @@ describe("Decision 8x8 lifecycle matrix", () => {
     expect(decision.activeRevision).toBe(1);
     expect(result.activeRevision).toBe(2);
     expect(result.activeRevisionId).toBe(ids.revision2);
+  });
+
+  it("stores the typed monitor registration on the Decision without a new revision", () => {
+    const committed = flagshipDecision("COMMITTED");
+    const result = transitionDecision(committed, {
+      authority: system,
+      monitorRegistrationId: registrationId,
+      to: "MONITORING",
+    });
+
+    expect(result.monitorCondition.registrationId).toBe(registrationId);
+    expect(result.activeRevision).toBe(committed.activeRevision);
+    expect(result.activeRevisionId).toBe(committed.activeRevisionId);
+    expect(committed.monitorCondition.registrationId).toBeUndefined();
   });
 });
 

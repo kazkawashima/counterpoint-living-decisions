@@ -125,6 +125,10 @@ The canonical implementation-facing artifacts are:
   built React and API from one origin on `0.0.0.0`, waits for readiness,
   persists SQLite and artifacts in a named volume, and starts without an
   OpenAI key.
+- D1 monitor registration generates the typed registration ID server-side,
+  appends a shared system-authored `MonitoringStarted` event, preserves the
+  immutable committed revision, supports exact idempotent replay, and
+  transitions the shared Decision from `COMMITTED` to `MONITORING`.
 
 ## In progress
 
