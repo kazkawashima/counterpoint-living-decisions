@@ -97,6 +97,10 @@ product in the reel:
    `REVIEW_REQUIRED`.
 8. Revision history opens rather than overwriting the old Decision.
 
+The reel MUST label the time jump and injected regulatory event as a staged
+demo story. The visual must not imply that continuous live monitoring elapsed
+during the recording.
+
 Motion is explanatory. It must not imply that private content crossed the
 boundary before approval or that AI made the human decision.
 

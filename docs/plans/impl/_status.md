@@ -38,6 +38,12 @@ scenarios.
 
 ## Open gates
 
-- User decisions UD-01 through UD-07 are recorded but do not block Plan 01.
+- Closed: UD-01 Work & Productivity, UD-03 USD 25/day judge cap, and UD-06
+  explicitly labeled demo-story treatment.
+- Partially closed: UD-02 public at submission; final project license awaits
+  dependency/submission audit.
+- Provisional: UD-04 continues Counterpoint pending name clearance.
+- Open: UD-05 final message hierarchy and UD-07 credential path.
+- ER-07 preview inspection is scheduled for 2026-07-20.
 - External rechecks are performed at their named implementation/submission
   gates.

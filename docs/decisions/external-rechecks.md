@@ -16,6 +16,9 @@ the named gate.
 | ER-08 | Official private-repository sharing recipients and procedure | Before inviting judge accounts | Confirmed addresses/procedure |
 | ER-09 | GitHub Actions permissions and Cloudflare deployment credentials | Before CI deploy workflow | Least-privilege deployment setup |
 | ER-10 | Counterpoint trademark and relevant domain availability | Before public name lock | Search record and recommendation for UD-04 |
+| ER-11 | Direct/transitive dependency and bundled-media licenses, notices, copyleft/source obligations, and compatibility with the intended project license | Before making the repository public | Machine-readable inventory, third-party notices, and project-license recommendation |
 
 Do not convert an unverified topic statement into a current fact. Record the
 date, exact source, and observed value when each item is closed.
+
+ER-07 is scheduled for product-owner inspection on 2026-07-20.

@@ -6,6 +6,9 @@
 
 **Category descriptor:** The commitment layer for agent-native teams.
 
+**MVP submission category:** Work & Productivity. A later office/home/team-
+resident agent may span categories, but that does not change this submission.
+
 **One-sentence contract:**
 
 > Counterpoint connects participant-owned private context to shared decision

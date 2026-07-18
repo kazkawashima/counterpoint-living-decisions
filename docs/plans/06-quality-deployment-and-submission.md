@@ -51,16 +51,21 @@ app, repository, README, reel, Codex evidence, and Devpost copy agree.
 - [ ] Explain Codex contribution and important human design decisions.
 - [ ] Provide clean setup, tests, sample users without public judge credential,
       known limitations, and degraded mode.
+- [ ] Generate direct/transitive dependency license inventory and
+      third-party notices, including bundled media and generated assets.
+- [ ] Resolve copyleft, source-disclosure, attribution, and redistribution
+      obligations before recommending the project license.
 - [ ] Distinguish pre-existing topic references from greenfield Build Week code.
 - [ ] Add “Work completed during Build Week.”
 - [ ] Identify the primary `/feedback` Session ID at final submission time.
 
 ### Q5 — Reel production
 
-- [ ] Close UD-05 and UD-06.
+- [ ] Close UD-05; apply the approved UD-06 demo-story treatment.
 - [ ] Lock a sub-three-minute storyboard after ER-01 verifies the exact limit.
 - [ ] Use one flagship: problem → disclosure → commitment → time jump/event →
       review → implementation evidence.
+- [ ] Explicitly label the time jump and injected event as a staged demo story.
 - [ ] Include spoken English narration and optional subtitles.
 - [ ] Explain substantive GPT-5.6 and Codex roles.
 - [ ] Export and watch the exact public upload end to end.
@@ -68,8 +73,11 @@ app, repository, README, reel, Codex evidence, and Devpost copy agree.
 
 ### Q6 — Devpost submission
 
-- [ ] Close UD-01, UD-02, UD-04, and UD-07.
-- [ ] Complete ER-01, ER-02, ER-07, ER-08, and ER-10.
+- [ ] Use the decided Work & Productivity category from UD-01.
+- [ ] Complete the remaining license portion of UD-02 after ER-11, then make
+      the repository public for submission.
+- [ ] Finalize UD-04 after ER-10 and UD-07 after ER-07.
+- [ ] Complete ER-01, ER-02, ER-07, ER-08, ER-10, and ER-11.
 - [ ] Prepare English title, description, category, repository, demo URL,
       testing instructions, video, and Session ID.
 - [ ] Verify repository and hosted access from logged-out/incognito paths.

@@ -10,81 +10,91 @@ crossed without a decision.
 
 ## UD-01 — Submission category
 
-- **Decision needed:** Submit Counterpoint to **Work & Productivity**, or choose
-  another category.
-- **Current recommendation:** Work & Productivity.
+- **Status:** Decided on 2026-07-19.
+- **Decision:** Submit the MVP to **Work & Productivity**.
 - **Why:** The confirmed product serves team decision work; Education and
   Developer Tools correspond to alternative products that are no longer the
-  implementation target.
-- **Blocks:** Devpost final submission copy and category-specific positioning.
-- **Does not block:** Product implementation.
-- **Answer:** Pending.
+  implementation target. A future office/home/team-resident agent may span
+  categories, but that broader evolution does not change the MVP category.
+- **Answer:** Work & Productivity.
 
 ## UD-02 — Repository visibility and final license
 
-- **Decision needed:** Keep the repository private for judging, or make the
-  submission commit public; if public, choose a license.
-- **Current default:** Private, All Rights Reserved, as confirmed in topic `14`.
-- **Trade-off:** Private protects commercialization but requires verified judge
-  access. Public reduces repository-access friction but makes the submitted
-  expression available under the selected terms.
-- **Blocks:** Final repository sharing and submission tag procedure.
+- **Status:** Visibility decided; project license pending.
+- **Decision:** Make the repository public for submission to reduce judging
+  access failures.
+- **Commercial intent:** Preserve the option to commercialize a substantially
+  revised product later.
+- **License gate:** Before switching the repository to public, inventory direct
+  and transitive dependencies plus bundled media, record their licenses and
+  notices, identify redistribution/source-disclosure obligations, and then
+  choose the project license or an All Rights Reserved distribution posture
+  compatible with the official submission rules.
+- **Blocks:** Public visibility switch and final project-license declaration.
 - **Does not block:** Development.
-- **Answer:** Pending.
+- **Answer:** Public at submission. Final license follows the dependency and
+  submission-requirement audit.
 
 ## UD-03 — Judge-mode spend envelope
 
-- **Decision needed:** Maximum daily spend and the derived limits for meetings,
-  concurrent Realtime sessions, Realtime minutes, generations, and tokens.
-- **Current recommendation:** Set the currency cap first; derive all technical
-  limits conservatively from measured flagship usage.
+- **Status:** Decided on 2026-07-19.
+- **Decision:** Enforce an application-side hard cap of **USD 25 per rolling
+  24-hour period** for judge mode.
+- **Provider backstop:** The API-provider budget alert is currently **USD 50**.
+  It is an alert, not the product's enforcement boundary.
+- **Derived limits:** Set meeting, concurrent Realtime, Realtime-minute,
+  generation, and token limits conservatively from measured flagship usage so
+  their combined worst case cannot exceed the USD 25 application cap.
 - **Why:** These limits determine the maximum financial exposure of leaked
   judge credentials.
-- **Blocks:** Production judge-mode enablement.
-- **Does not block:** Limit framework implementation with placeholder config.
-- **Answer:** Pending.
+- **Blocks:** Production judge-mode enablement until the hard cap and derived
+  limits are implemented and tested.
+- **Answer:** USD 25 per rolling 24 hours; USD 50 provider alert as secondary
+  warning.
 
 ## UD-04 — Public-facing name clearance
 
-- **Decision needed:** Keep **Counterpoint** after trademark/domain review, or
-  select a replacement public name.
-- **Current default:** Continue using Counterpoint internally and in working
-  assets.
+- **Status:** Provisional decision.
+- **Decision:** Continue using **Counterpoint** as the working name.
+- **Final gate:** Lock the public name only after trademark/domain review.
 - **Blocks:** Final logo lockup, domain purchase, video title card, and Devpost
   title.
 - **Does not block:** Product implementation.
-- **Answer:** Pending.
+- **Answer:** Continue provisionally.
 
 ## UD-05 — Final submission message hierarchy
 
+- **Status:** Open; current language is an unapproved placeholder.
 - **Decision needed:** Approve or revise the descriptor and primary tagline.
-- **Current recommendation:**
+- **Current working placeholders only:**
   - Descriptor: “The commitment layer for agent-native teams.”
   - Tagline: “Independent minds. Shared commitment.”
   - Hook: “Decisions should know when they are no longer true.”
 - **Blocks:** Final landing copy, reel narration, README hero, and Devpost copy.
 - **Does not block:** UI layout using replaceable copy tokens.
-- **Answer:** Pending.
+- **Answer:** Revise later; do not treat the current hierarchy as approved.
 
 ## UD-06 — Reel narrative treatment
 
-- **Decision needed:** Approve the final treatment for the time jump between
-  Commitment and the regulatory-change event.
-- **Current recommendation:** A visible “Later: regulation changed” transition,
-  then the demo event injection, followed by a clear human-review beat.
-- **Blocks:** Final storyboard and recording.
-- **Does not block:** Capture of development screenshots and clips.
-- **Answer:** Pending.
+- **Status:** Decided on 2026-07-19.
+- **Decision:** Approve the visible “Later: regulation changed” transition,
+  demo event injection, and clear human-review beat.
+- **Required disclosure:** Narration or on-screen copy must explicitly identify
+  the time jump and injected event as a staged demo story, not a claim of
+  continuous real-world monitoring during the recording.
+- **Answer:** Approved with explicit demo-story labeling.
 
 ## UD-07 — Judge credential delivery path
 
+- **Status:** Pending preview inspection scheduled for 2026-07-20.
 - **Decision needed:** Choose the non-public credential handoff after the actual
   Devpost submission preview is inspected.
 - **Preferred order:** Private Testing Instructions if verified non-public;
   otherwise the officially approved private repository or organizer channel.
 - **Blocks:** Final credential handoff.
 - **Does not block:** Authentication or judge-account implementation.
-- **Answer:** Pending until external verification.
+- **Answer:** Expect Testing Instructions to work; product owner will verify the
+  preview and logged-out view on 2026-07-20.
 
 ## How to answer
 

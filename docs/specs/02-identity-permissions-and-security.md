@@ -99,6 +99,12 @@ Security rules:
 - Ordinary users cannot select or inherit judge mode.
 - Hard limits bound account, IP, meeting count, concurrent sessions, Realtime
   seconds, generations, tokens, and daily spend.
+- The application-side currency boundary is USD 25 per rolling 24-hour period.
+  It is enforced before new billable work.
+- The provider's USD 50 budget alert is a secondary warning and MUST NOT be
+  treated as enforcement of the USD 25 product boundary.
+- Secondary limits are derived from measured flagship usage so their combined
+  worst case remains within the currency boundary.
 - Hitting any limit fails closed with an explicit cap error and no new OpenAI
   request.
 

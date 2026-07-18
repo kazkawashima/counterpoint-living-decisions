@@ -11,7 +11,7 @@ parity, persistent data, and completed high-risk security gates.
 - [Security specification](../specs/02-identity-permissions-and-security.md)
 - [Operations specification](../specs/07-operations-observability-and-resilience.md)
 - External rechecks ER-05, ER-06, and ER-09
-- User decision UD-03 before production judge enablement
+- UD-03: USD 25 rolling-24-hour hard cap and USD 50 provider alert
 - Plan 04 exit gate
 
 ## Work packages
@@ -47,7 +47,9 @@ parity, persistent data, and completed high-risk security gates.
 
 - [ ] Implement durable account/IP/meeting/concurrency/time/token/generation/
       currency limits.
-- [ ] Derive production values from UD-03 and measured flagship usage.
+- [ ] Enforce the USD 25 rolling-24-hour currency boundary before billable work.
+- [ ] Treat the USD 50 provider alert as secondary warning only.
+- [ ] Derive secondary production limits from measured flagship usage.
 - [ ] Check limits before billable work.
 - [ ] Fail closed with `USAGE_LIMIT_REACHED`.
 - [ ] Keep manual degraded mode available.

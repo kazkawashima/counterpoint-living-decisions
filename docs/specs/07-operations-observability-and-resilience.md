@@ -68,6 +68,11 @@ Limits are configuration, enforced before external AI work:
 - input/output tokens
 - daily currency-equivalent ceiling
 
+The judge-mode currency ceiling is USD 25 per rolling 24 hours. The existing
+USD 50 API-provider budget alert is a secondary operator warning, not an
+enforcement substitute. Secondary technical limits are calculated from
+measured flagship usage to fit inside the USD 25 ceiling.
+
 Limit counters are durable enough to survive runtime restarts. When a limit is
 reached:
 
