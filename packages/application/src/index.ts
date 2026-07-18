@@ -42,6 +42,21 @@ export {
   type StableHashFunction,
 } from "./disclosures.js";
 export {
+  commitDecision,
+  markDecisionReady,
+  saveDecisionDraft,
+  type CommitDecisionInput,
+  type CommitDecisionResult,
+  type DecisionDependencies,
+  type DecisionDraftFields,
+  type DecisionFailure,
+  type DecisionHashFunction,
+  type MarkDecisionReadyInput,
+  type MarkDecisionReadyResult,
+  type SaveDecisionDraftInput,
+  type SaveDecisionDraftResult,
+} from "./decisions.js";
+export {
   createMeeting,
   joinMeetingByCode,
   listAssignedMeetings,
