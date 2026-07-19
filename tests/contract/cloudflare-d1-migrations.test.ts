@@ -32,6 +32,7 @@ const expectedMigrationNames = [
   "0007_judge_managed_realtime_calls.sql",
   "0008_hosted_flagship_seed.sql",
   "0009_judge_managed_realtime_start_claims.sql",
+  "0010_judge_managed_ai_operation_claims.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -135,6 +136,22 @@ const expectedTablesAfterMigration = [
     "sessions",
     "users",
   ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_ai_operation_claims",
+    "judge_managed_realtime_calls",
+    "judge_managed_realtime_start_claims",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
 ] as const;
 
 const expectedTableColumns = {
@@ -174,6 +191,15 @@ const expectedTableColumns = {
     "appended_at",
   ],
   events: ["meeting_id", "position", "payload_json", "appended_at"],
+  judge_managed_ai_operation_claims: [
+    "claim_key_hash",
+    "request_fingerprint",
+    "operation",
+    "model",
+    "pricing_version",
+    "created_at_epoch",
+    "expires_at_epoch",
+  ],
   judge_managed_realtime_calls: [
     "managed_call_id",
     "reservation_id",
@@ -420,6 +446,7 @@ describe("Cloudflare D1 migrations", () => {
     const expectedTableNames = Object.keys(expectedTableColumns).sort();
     const sharedTableNames = expectedTableNames.filter(
       (name) =>
+        name !== "judge_managed_ai_operation_claims" &&
         name !== "judge_managed_realtime_calls" &&
         name !== "judge_managed_realtime_start_claims" &&
         name !== "judge_usage_reservations",
@@ -455,6 +482,7 @@ describe("Cloudflare D1 migrations", () => {
 
       expect(explicitIndexNames(database)).toEqual([
         "audit_history_meeting_position",
+        "judge_managed_ai_operation_claims_expiry",
         "judge_managed_realtime_calls_active_expiry",
         "judge_managed_realtime_calls_owner",
         "judge_managed_realtime_start_claims_expiry",
@@ -470,6 +498,7 @@ describe("Cloudflare D1 migrations", () => {
       expect(triggerNames(database)).toEqual([
         "event_appends_complete_range",
         "events_contiguous_position",
+        "judge_managed_ai_operation_claims_key_immutable",
         "judge_managed_realtime_calls_owner_immutable",
         "judge_managed_realtime_calls_reservation_guard",
         "judge_managed_realtime_calls_terminal",
@@ -497,6 +526,105 @@ describe("Cloudflare D1 migrations", () => {
           'Synthetic migration contract'
         );
       `);
+      database.exec(`
+        INSERT INTO judge_managed_ai_operation_claims (
+          claim_key_hash,
+          request_fingerprint,
+          operation,
+          model,
+          pricing_version,
+          created_at_epoch,
+          expires_at_epoch
+        ) VALUES (
+          'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          'private_disclosure',
+          'gpt-5.6-sol',
+          'openai-2026-07-20',
+          100000,
+          100300
+        );
+      `);
+      expect(() =>
+        database.exec(`
+          INSERT INTO judge_managed_ai_operation_claims (
+            claim_key_hash,
+            request_fingerprint,
+            operation,
+            model,
+            pricing_version,
+            created_at_epoch,
+            expires_at_epoch
+          ) VALUES (
+            'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            'private_disclosure',
+            'gpt-5.6-sol',
+            'openai-2026-07-20',
+            100000,
+            100300
+          );
+        `),
+      ).toThrow();
+      expect(() =>
+        database.exec(`
+          UPDATE judge_managed_ai_operation_claims
+          SET claim_key_hash =
+            'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+          WHERE operation = 'private_disclosure';
+        `),
+      ).toThrow("counterpoint_managed_ai_claim_key_immutable");
+      for (const invalidValues of [
+        {
+          claimKeyHash:
+            "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          createdAtEpoch: "100000",
+          expiresAtEpoch: "99999",
+          operation: "private disclosure",
+          requestFingerprint:
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        },
+        {
+          claimKeyHash:
+            "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          createdAtEpoch: "'not-an-integer'",
+          expiresAtEpoch: "100300",
+          operation: "private_disclosure",
+          requestFingerprint:
+            "sha256:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        },
+        {
+          claimKeyHash:
+            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          createdAtEpoch: "9007199254740992",
+          expiresAtEpoch: "9007199254740992",
+          operation: "private_disclosure",
+          requestFingerprint:
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        },
+      ]) {
+        expect(() =>
+          database.exec(`
+            INSERT INTO judge_managed_ai_operation_claims (
+              claim_key_hash,
+              request_fingerprint,
+              operation,
+              model,
+              pricing_version,
+              created_at_epoch,
+              expires_at_epoch
+            ) VALUES (
+              '${invalidValues.claimKeyHash}',
+              '${invalidValues.requestFingerprint}',
+              '${invalidValues.operation}',
+              'gpt-5.6-sol',
+              'openai-2026-07-20',
+              ${invalidValues.createdAtEpoch},
+              ${invalidValues.expiresAtEpoch}
+            );
+          `),
+        ).toThrow();
+      }
 
       expect(() =>
         database.exec(`

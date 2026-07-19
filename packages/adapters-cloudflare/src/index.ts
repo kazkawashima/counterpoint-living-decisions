@@ -11,6 +11,12 @@ export {
   D1SessionRepository,
 } from "./d1-auth.js";
 export {
+  D1ManagedAiOperationClaimRepository,
+  type ManagedAiOperationClaim,
+  type ManagedAiOperationClaimRelease,
+  type ManagedAiOperationClaimResult,
+} from "./d1-managed-ai-operation-claims.js";
+export {
   D1ManagedRealtimeCallOwnershipRepository,
   type ManagedRealtimeCallChannel,
   type ManagedRealtimeCallOwner,

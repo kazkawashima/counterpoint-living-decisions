@@ -51,6 +51,7 @@ const EXPECTED_D1_MIGRATIONS = [
   "0007_judge_managed_realtime_calls.sql",
   "0008_hosted_flagship_seed.sql",
   "0009_judge_managed_realtime_start_claims.sql",
+  "0010_judge_managed_ai_operation_claims.sql",
 ] as const;
 
 interface JudgeWorkerBindings {
