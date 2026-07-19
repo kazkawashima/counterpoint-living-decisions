@@ -66,10 +66,10 @@ history.
 
 ### D7 — Guided flagship
 
-- [ ] Add concise stage cues from private evidence through review.
-- [ ] Seed synthetic regulatory event and expected affected region.
-- [ ] Make reset deterministic and meeting-scoped.
-- [ ] Rehearse the value arc within the reel target.
+- [x] Add concise stage cues from private evidence through review.
+- [x] Seed synthetic regulatory event and expected affected region.
+- [x] Make reset deterministic and meeting-scoped.
+- [x] Rehearse the value arc within the reel target.
 
 ## Verification
 

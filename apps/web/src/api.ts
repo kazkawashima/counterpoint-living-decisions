@@ -6,6 +6,7 @@ import {
   DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
+  FacilitatorDemoResetResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
@@ -36,6 +37,7 @@ import {
   type DecisionJsonExportResponse,
   type DispositionSharedDecisionCandidateRequest,
   type DispositionSharedDecisionCandidateResponse,
+  type FacilitatorDemoResetResponse,
   type LoginResponse,
   type InjectDemoRegulatoryChangeResponse,
   type ListSharedDecisionsResponse,
@@ -67,6 +69,7 @@ export type {
   DecisionHistoryQuery,
   DecisionHistoryResponse,
   DecisionJsonExportResponse,
+  FacilitatorDemoResetResponse,
   InjectDemoRegulatoryChangeResponse,
   ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
@@ -665,6 +668,21 @@ export async function injectDemoRegulatoryChange(
     session,
   );
   return InjectDemoRegulatoryChangeResponseSchema.parse(body);
+}
+
+export async function resetDemoMeeting(
+  session: StoredSession,
+  input: MeetingMutationInput,
+): Promise<FacilitatorDemoResetResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/demo/reset`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return FacilitatorDemoResetResponseSchema.parse(body);
 }
 
 export async function getDecisionHistory(

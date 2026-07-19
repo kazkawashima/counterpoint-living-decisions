@@ -101,6 +101,14 @@ export {
   type RegulatoryChangeInput,
 } from "./external-events.js";
 export {
+  resetDemoMeeting,
+  type DemoResetDependencies,
+  type DemoResetFailure,
+  type DemoResetHashFunction,
+  type ResetDemoMeetingInput,
+  type ResetDemoMeetingResult,
+} from "./demo-reset.js";
+export {
   evaluateAssumptionInvalidation,
   listAssumptionInvalidationEvaluations,
   type AssumptionInvalidationCandidate,

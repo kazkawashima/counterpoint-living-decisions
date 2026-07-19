@@ -8,6 +8,8 @@ import {
   DecisionJsonExportQuerySchema,
   DecisionJsonExportResponseSchema,
   DispositionConfirmedInferenceRequestSchema,
+  FacilitatorDemoResetRequestSchema,
+  FacilitatorDemoResetResponseSchema,
   FacilitatorInvalidationReviewRequestSchema,
   HealthRequestSchema,
   HealthResponseSchema,
@@ -42,6 +44,8 @@ import {
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
   type DecisionJsonExportResponse,
+  type FacilitatorDemoResetRequest,
+  type FacilitatorDemoResetResponse,
   type FacilitatorInvalidationReviewRequest,
   type FacilitatorInvalidationReviewResponse,
   type LoginRequest,
@@ -263,6 +267,10 @@ const mutationExamples = [
       reason: "The reviewed Decision is no longer viable.",
     },
   },
+  {
+    schema: FacilitatorDemoResetRequestSchema,
+    value: meetingMutation,
+  },
 ] as const;
 
 describe("strict v1 HTTP protocol", () => {
@@ -422,6 +430,41 @@ describe("strict v1 HTTP protocol", () => {
         idempotencyKey: "demo-event-1",
         actor: { kind: "system" },
         description: request.description,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps facilitator demo reset meeting-scoped and explicitly completed", () => {
+    const request = FacilitatorDemoResetRequestSchema.parse(meetingMutation);
+    expectTypeOf(request).toEqualTypeOf<FacilitatorDemoResetRequest>();
+
+    expect(
+      FacilitatorDemoResetRequestSchema.safeParse({
+        ...meetingMutation,
+        seedName: "flagship",
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      meetingId: "meeting-1",
+      position: 6,
+      correlationId: "correlation-1",
+      resetRequestId: "reset-request-1",
+      resetStatus: "completed",
+    } as const;
+    const parsed = FacilitatorDemoResetResponseSchema.parse(response);
+    expectTypeOf(parsed).toEqualTypeOf<FacilitatorDemoResetResponse>();
+
+    expect(
+      FacilitatorDemoResetResponseSchema.safeParse({
+        ...response,
+        resetStatus: "requested",
+      }).success,
+    ).toBe(false);
+    expect(
+      FacilitatorDemoResetResponseSchema.safeParse({
+        ...response,
+        completedAt: "2026-07-19T12:00:00.000Z",
       }).success,
     ).toBe(false);
   });

@@ -4,9 +4,10 @@ Updated: 2026-07-19
 
 ## Current phase
 
-**Foundation, permissioned disclosure, private/shared AI assistance, Decision
-commitment, production-like Compose, monitoring, external-event receipt, and
-GPT-5.6 invalidation evaluation are complete; human review is next.**
+**The complete local guided flagship is implemented from private evidence
+through permission, Commitment, external change, human review, revision,
+export, and deterministic meeting reset. Realtime resume and hosted judge mode
+are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -175,11 +176,24 @@ The canonical implementation-facing artifacts are:
   and filtered audit lineage. Browser proof covers resolution choices,
   before/after editing, recommit, export, reload, participant desktop, and
   mobile reduced motion with five screenshots and one clip.
+- D7 adds a state-derived five-stage guide from Context through Review. The
+  staged regulatory control names the expected synthetic EU premise/Action
+  impact before injection, and the full lifecycle E2E verifies every cue.
+- Facilitator-only demo reset atomically records deterministic request/completed
+  lineage, clears private/shared projections for only the target meeting,
+  preserves membership and the synthetic seed, supports exact idempotent
+  replay, and rejects participant authority.
+- Browser proof covers the two-step reset confirmation, restored Context,
+  cleared shared Evidence, participant control absence, desktop, mobile, and
+  reduced motion. The rehearsed reel map targets 2 minutes 30 seconds with
+  explicit synthetic-story labeling.
 
 ## In progress
 
-- Assemble the guided D7 flagship and verification copy.
-- Complete the versioned capability surface and realtime resume path.
+- Complete the L3 versioned capability surface, scoped realtime subscriptions,
+  and resume from last-seen meeting position.
+- Continue the A6 Realtime client-secret path without exposing the standard
+  provider key.
 
 ## Not started
 
@@ -188,10 +202,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue D7 in
-[`04-commitment-and-living-decision.md`](../04-commitment-and-living-decision.md):
-turn the implemented private-to-shared-to-living-Decision path into the
-timed, deterministic flagship flow and capture the remaining guided copy.
+Continue L3 in
+[`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md): implement
+meeting-scoped realtime projection subscriptions and deterministic resume from
+the last participant-visible position, then connect that hub to A6 without
+changing the completed text flagship semantics.
 
 ## Open gates
 

@@ -19,6 +19,7 @@ import {
   DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
+  FacilitatorDemoResetResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -217,6 +218,127 @@ describe("Node HTTP flagship shell", () => {
     expect(ErrorEnvelopeSchema.parse(await afterLogout.json())).toMatchObject({
       code: "AUTHENTICATION_REQUIRED",
     });
+  });
+
+  it("lets only the facilitator reset one staged meeting deterministically", async () => {
+    const { app, runtime } = await fixture();
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const participant = await login(app, "safety", "counterpoint-safety");
+    const facilitatorHeaders = {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const participantHeaders = {
+      authorization: `Bearer ${participant.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const targetMeetingId = "meeting-global-ai-rollout";
+
+    const otherMeetingResponse = await app.request("/api/v1/meetings", {
+      body: JSON.stringify({
+        idempotencyKey: "reset-scope-other-meeting",
+        purpose: "Reset scope control",
+        users: [
+          { role: "facilitator", userId: "product" },
+          { role: "participant", userId: "safety" },
+          { role: "participant", userId: "legal" },
+        ],
+      }),
+      headers: facilitatorHeaders,
+      method: "POST",
+    });
+    expect(otherMeetingResponse.status).toBe(201);
+    const otherMeeting = CreateMeetingResponseSchema.parse(
+      await otherMeetingResponse.json(),
+    );
+    const otherRecordsBefore = await runtime.decisions.events.load(
+      otherMeeting.meetingId,
+    );
+
+    const privateSource = await app.request(
+      "/api/v1/disclosures/sources/text",
+      {
+        body: JSON.stringify({
+          expectedPosition: 0,
+          idempotencyKey: "reset-private-source",
+          meetingId: targetMeetingId,
+          text: "Synthetic private content that reset must not carry forward.",
+          title: "Reset boundary source",
+        }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(privateSource.status).toBe(201);
+
+    const resetBody = {
+      expectedPosition: 0,
+      idempotencyKey: "reset-http-flagship",
+      meetingId: targetMeetingId,
+    };
+    const participantReset = await app.request(
+      `/api/v1/meetings/${targetMeetingId}/demo/reset`,
+      {
+        body: JSON.stringify({ ...resetBody, expectedPosition: 1 }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(participantReset.status).toBe(403);
+
+    const resetResponse = await app.request(
+      `/api/v1/meetings/${targetMeetingId}/demo/reset`,
+      {
+        body: JSON.stringify(resetBody),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(resetResponse.status).toBe(200);
+    const reset = FacilitatorDemoResetResponseSchema.parse(
+      await resetResponse.json(),
+    );
+    expect(reset).toMatchObject({
+      meetingId: targetMeetingId,
+      resetRequestId: `demo-reset:${targetMeetingId}:reset-http-flagship`,
+      resetStatus: "completed",
+    });
+
+    const replayResponse = await app.request(
+      `/api/v1/meetings/${targetMeetingId}/demo/reset`,
+      {
+        body: JSON.stringify(resetBody),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(replayResponse.status).toBe(200);
+    expect(
+      FacilitatorDemoResetResponseSchema.parse(await replayResponse.json()),
+    ).toMatchObject({
+      meetingId: reset.meetingId,
+      position: reset.position,
+      resetRequestId: reset.resetRequestId,
+      resetStatus: "completed",
+    });
+
+    const targetRecords = await runtime.decisions.events.load(targetMeetingId);
+    expect(targetRecords.map(({ event }) => event.eventType)).toEqual([
+      "ArtifactRegistered",
+      "DemoResetRequested",
+      "DemoResetCompleted",
+    ]);
+    expect(await runtime.decisions.events.load(otherMeeting.meetingId)).toEqual(
+      otherRecordsBefore,
+    );
+    const resetProjection = await runtime.decisions.projections.get({
+      meetingId: targetMeetingId,
+      ownerParticipantId: "participant-product",
+      projection: "meeting",
+    });
+    expect(resetProjection?.privateWorkspaces).toEqual([]);
+    expect(resetProjection?.shared.evidence).toEqual([]);
+    expect(resetProjection?.shared.decisions).toEqual([]);
   });
 
   it("lets only the configured facilitator create a 3–8 user meeting", async () => {

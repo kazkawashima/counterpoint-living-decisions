@@ -26,6 +26,7 @@ import {
   receiveRegulatoryChange,
   recommitDecision,
   rejectDecision,
+  resetDemoMeeting,
   resolveMeetingAuthorization,
   reviewInvalidation,
   saveDecisionDraft,
@@ -74,6 +75,8 @@ import {
   DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
+  FacilitatorDemoResetRequestSchema,
+  FacilitatorDemoResetResponseSchema,
   HealthResponseSchema,
   InjectDemoRegulatoryChangeRequestSchema,
   InjectDemoRegulatoryChangeResponseSchema,
@@ -2146,6 +2149,68 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       );
     },
   );
+
+  app.post("/api/v1/meetings/:meetingId/demo/reset", async (context) => {
+    const request = await parseJson(context, FacilitatorDemoResetRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === "DemoResetRequested",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const priorResetRequest = (
+      await runtime.decisions.events.load(request.value.meetingId)
+    ).find(
+      ({ event }) =>
+        event.eventType === "DemoResetRequested" &&
+        String(event.idempotencyKey) === String(request.value.idempotencyKey),
+    );
+    const result = await resetDemoMeeting(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        expectedPosition:
+          priorResetRequest === undefined
+            ? resolved.globalPosition
+            : priorResetRequest.position - 1,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+        seedName: "flagship",
+      },
+    );
+    if (result.kind === "failed") {
+      if (result.code === "CONFLICT") {
+        return errorResponse(context, "CONFLICT", {
+          actualPosition: result.actualPosition,
+          expectedPosition: result.expectedPosition,
+        });
+      }
+      return errorResponse(context, result.code);
+    }
+    return context.json(
+      FacilitatorDemoResetResponseSchema.parse({
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        resetRequestId: result.resetRequestId,
+        resetStatus: "completed",
+      }),
+    );
+  });
 
   app.get(
     "/api/v1/meetings/:meetingId/decisions/:decisionId/history",

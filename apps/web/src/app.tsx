@@ -37,6 +37,7 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  resetDemoMeeting,
   reviewInvalidation,
   resolveDecisionReview,
   saveDecisionDraft,
@@ -1582,6 +1583,10 @@ function FacilitatorDecisionPanel({
                 Injects one synthetic regulatory event. It does not confirm a
                 review or change this Decision automatically.
               </p>
+              <small>
+                Expected demo impact · European Union · first confirmed regional
+                premise and its linked Action
+              </small>
               <button
                 disabled={receivingExternalEvent}
                 onClick={() => void injectRegulatoryEvent()}
@@ -2075,6 +2080,10 @@ function WorkspaceShell({
   const [sharedInvalidation, setSharedInvalidation] =
     useState<InvalidationEvaluation>();
   const [error, setError] = useState<string>();
+  const [resetState, setResetState] = useState<
+    "confirming" | "idle" | "resetting" | "succeeded"
+  >("idle");
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const [selectedSnippet, setSelectedSnippet] = useState(
     SYNTHETIC_EXACT_SNIPPET,
   );
@@ -2085,6 +2094,7 @@ function WorkspaceShell({
     proposeManual: crypto.randomUUID(),
     register: crypto.randomUUID(),
     reject: crypto.randomUUID(),
+    reset: crypto.randomUUID(),
   });
 
   useEffect(() => {
@@ -2240,6 +2250,88 @@ function WorkspaceShell({
     }
   }
 
+  async function resetStagedMeeting() {
+    setResetState("resetting");
+    setError(undefined);
+    try {
+      const reset = await resetDemoMeeting(session, {
+        expectedPosition: position,
+        idempotencyKey: commandKeys.current.reset,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(reset.position);
+      setPhase("idle");
+      setPreview(undefined);
+      setProposalOrigin(undefined);
+      setEvidence(undefined);
+      setSharedDecision(undefined);
+      setSharedExternalEvent(undefined);
+      setSharedInvalidation(undefined);
+      setSelectedSnippet(SYNTHETIC_EXACT_SNIPPET);
+      commandKeys.current = {
+        approve: crypto.randomUUID(),
+        preview: crypto.randomUUID(),
+        proposeAi: crypto.randomUUID(),
+        proposeManual: crypto.randomUUID(),
+        register: crypto.randomUUID(),
+        reject: crypto.randomUUID(),
+        reset: crypto.randomUUID(),
+      };
+      setWorkspaceEpoch((current) => current + 1);
+      setResetState("succeeded");
+    } catch (cause) {
+      setError(messageFor(cause));
+      setResetState("confirming");
+    }
+  }
+
+  const stageLabels = [
+    "01 Context",
+    "02 Permission",
+    "03 Commitment",
+    "04 Risk",
+    "05 Review",
+  ] as const;
+  let completedStage = 0;
+  let currentStage: number | undefined = 1;
+  let stageCue =
+    "Capture independent context. Nothing crosses into the shared room.";
+  if (phase !== "idle" || preview !== undefined) {
+    completedStage = 1;
+    currentStage = 2;
+    stageCue =
+      "Preview the exact excerpt. Owner approval is required before sharing.";
+  }
+  if (evidence !== undefined) {
+    completedStage = 2;
+    currentStage = 3;
+    stageCue =
+      "Assemble a grounded Decision, then require an explicit human commit.";
+  }
+  if (
+    sharedDecision?.status === "COMMITTED" ||
+    sharedDecision?.status === "MONITORING"
+  ) {
+    completedStage = 3;
+    currentStage = 4;
+    stageCue =
+      "The committed revision is immutable while the external monitor watches for change.";
+  }
+  if (sharedInvalidation !== undefined) {
+    completedStage = 4;
+    currentStage = 5;
+    stageCue =
+      "Review the AI advisory against the event, premise, Evidence, and affected Action.";
+  }
+  if (sharedInvalidation?.review !== undefined) {
+    completedStage = 5;
+    currentStage = undefined;
+    stageCue =
+      (sharedDecision?.activeRevision ?? 0) > 2
+        ? "Human review is resolved. Revision history and current state remain exportable."
+        : "Human review is recorded. The Action hold and reconsideration task are now shared.";
+  }
+
   return (
     <main className="workspace-shell">
       <header className="topbar workspace-topbar">
@@ -2251,18 +2343,76 @@ function WorkspaceShell({
             <small>Staged synthetic demo story</small>
           </span>
         </div>
-        <button className="quiet-button" onClick={onBack} type="button">
-          ← Meetings
-        </button>
+        <div className="workspace-actions">
+          {meeting.role === "facilitator" ? (
+            resetState === "confirming" || resetState === "resetting" ? (
+              <div className="reset-confirmation" role="group">
+                <span>Only this staged meeting will be cleared.</span>
+                <button
+                  className="reset-confirm-button"
+                  disabled={resetState === "resetting"}
+                  onClick={() => void resetStagedMeeting()}
+                  type="button"
+                >
+                  {resetState === "resetting"
+                    ? "Resetting meeting…"
+                    : "Confirm meeting reset"}
+                </button>
+                <button
+                  disabled={resetState === "resetting"}
+                  onClick={() => setResetState("idle")}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                className="reset-demo-button"
+                onClick={() => setResetState("confirming")}
+                type="button"
+              >
+                Reset staged demo
+              </button>
+            )
+          ) : null}
+          <button className="quiet-button" onClick={onBack} type="button">
+            ← Meetings
+          </button>
+        </div>
       </header>
 
       <nav className="progress-rail" aria-label="Flagship progress">
-        <span className="complete">01 Context</span>
-        <span className="current">02 Permission</span>
-        <span>03 Commitment</span>
-        <span>04 Risk</span>
-        <span>05 Review</span>
+        {stageLabels.map((label, index) => {
+          const stage = index + 1;
+          return (
+            <span
+              aria-current={stage === currentStage ? "step" : undefined}
+              className={
+                stage <= completedStage
+                  ? "complete"
+                  : stage === currentStage
+                    ? "current"
+                    : undefined
+              }
+              key={label}
+            >
+              {label}
+            </span>
+          );
+        })}
       </nav>
+      <div className="flagship-cue" role="status">
+        <span>
+          {currentStage === undefined
+            ? "Flagship arc complete"
+            : `Current stage ${currentStage} of 5`}
+        </span>
+        <strong>{stageCue}</strong>
+        {resetState === "succeeded" ? (
+          <small>Meeting reset complete · synthetic Context restored</small>
+        ) : null}
+      </div>
 
       <section className="workspace-grid">
         <article className="private-zone">
@@ -2521,6 +2671,7 @@ function WorkspaceShell({
               existingDecision={sharedDecision}
               existingExternalEvent={sharedExternalEvent}
               existingInvalidation={sharedInvalidation}
+              key={workspaceEpoch}
               meeting={meeting}
               onDecisionChange={setSharedDecision}
               onExternalEventChange={setSharedExternalEvent}

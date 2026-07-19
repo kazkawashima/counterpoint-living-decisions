@@ -20,6 +20,7 @@ import {
   ParticipantIdSchema,
   PremiseIdSchema,
   ReconsiderationTaskIdSchema,
+  ResetRequestIdSchema,
   ServerDerivedActorSchema,
   SourceArtifactIdSchema,
   UserIdSchema,
@@ -912,6 +913,15 @@ export const InjectDemoRegulatoryChangeRequestSchema = z.strictObject({
 });
 export const InjectDemoRegulatoryChangeResponseSchema =
   RegulatoryChangeWebhookResponseSchema;
+export const DemoResetStatusSchema = z.literal("completed");
+export const FacilitatorDemoResetRequestSchema = z.strictObject({
+  ...MeetingMutationShape,
+});
+export const FacilitatorDemoResetResponseSchema = z.strictObject({
+  ...MeetingMutationReceiptShape,
+  resetRequestId: ResetRequestIdSchema,
+  resetStatus: DemoResetStatusSchema,
+});
 export const ReconsiderationTaskSchema = z.strictObject({
   reconsiderationTaskId: ReconsiderationTaskIdSchema,
   decisionId: DecisionIdSchema,
@@ -1267,6 +1277,13 @@ export type InjectDemoRegulatoryChangeRequest = z.infer<
 >;
 export type InjectDemoRegulatoryChangeResponse = z.infer<
   typeof InjectDemoRegulatoryChangeResponseSchema
+>;
+export type DemoResetStatus = z.infer<typeof DemoResetStatusSchema>;
+export type FacilitatorDemoResetRequest = z.infer<
+  typeof FacilitatorDemoResetRequestSchema
+>;
+export type FacilitatorDemoResetResponse = z.infer<
+  typeof FacilitatorDemoResetResponseSchema
 >;
 export type InvalidationEvaluation = z.infer<
   typeof InvalidationEvaluationSchema

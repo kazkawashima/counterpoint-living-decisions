@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -93,6 +93,12 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await facilitatorMeeting
     .getByRole("button", { name: "Open workspace" })
     .click();
+  await expect(
+    facilitatorPage
+      .getByRole("navigation", { name: "Flagship progress" })
+      .getByText("01 Context"),
+  ).toHaveAttribute("aria-current", "step");
+  await expect(facilitatorPage.getByText("Current stage 1 of 5")).toBeVisible();
 
   await facilitatorPage
     .getByRole("button", { name: "Prepare grounded sharing preview" })
@@ -100,10 +106,12 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     facilitatorPage.getByRole("heading", { name: "Review the exact payload" }),
   ).toBeVisible();
+  await expect(facilitatorPage.getByText("Current stage 2 of 5")).toBeVisible();
   await facilitatorPage
     .getByRole("button", { name: "Approve exact excerpt" })
     .click();
   await expect(facilitatorPage.getByText("Permission recorded")).toBeVisible();
+  await expect(facilitatorPage.getByText("Current stage 3 of 5")).toBeVisible();
 
   await facilitatorPage
     .getByRole("button", { name: "Generate Decision candidate" })
@@ -182,6 +190,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     .getByRole("button", { name: "Start Decision monitor" })
     .click();
   await expect(facilitatorPage.getByText("Monitoring active")).toBeVisible();
+  await expect(facilitatorPage.getByText("Current stage 4 of 5")).toBeVisible();
   await expect(
     facilitatorPage.locator(".audit-line").getByText("MonitoringStarted"),
   ).toBeVisible();
@@ -208,6 +217,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     facilitatorPage.getByText("REVIEW_REQUIRED has not been confirmed"),
   ).toBeVisible();
+  await expect(facilitatorPage.getByText("Current stage 5 of 5")).toBeVisible();
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -274,6 +284,9 @@ test("facilitator commits a grounded Decision that participants can revisit", as
       .locator(".audit-line")
       .getByText("ReconsiderationTaskCreated"),
   ).toBeVisible();
+  await expect(
+    facilitatorPage.getByText("Flagship arc complete"),
+  ).toBeVisible();
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -316,6 +329,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     facilitatorPage.getByText("Revision 3 is now active"),
   ).toBeVisible();
   await expect(
+    facilitatorPage.getByText(
+      "Human review is resolved. Revision history and current state remain exportable.",
+    ),
+  ).toBeVisible();
+  await expect(
     facilitatorPage.locator(".audit-line").getByText("RevisionCommitted"),
   ).toBeVisible();
   await resolutionWorkbench
@@ -349,9 +367,12 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   ).toContainText("External event received");
 
   const video = facilitatorPage.video();
+  const clipPath = `${clipDirectory}/2026-07-19-candidate-to-commit.webm`;
+  const saveVideo = video?.saveAs(clipPath);
   await facilitatorContext.close();
-  await video?.saveAs(`${clipDirectory}/2026-07-19-candidate-to-commit.webm`);
-  await video?.saveAs(
+  await saveVideo;
+  await copyFile(
+    clipPath,
     `${resolutionClipDirectory}/2026-07-19-review-required-to-recommit.webm`,
   );
 
