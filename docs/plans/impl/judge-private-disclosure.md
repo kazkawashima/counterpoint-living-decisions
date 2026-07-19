@@ -73,19 +73,19 @@ OpenAI Responses structured outputs, Zod, Vitest, Miniflare, Playwright.
 - Test: `tests/cloudflare/d1-managed-ai-operation-claims.test.ts`
 - Test: `tests/contract/cloudflare-d1-migrations.test.ts`
 
-- [ ] Write a failing Cloudflare test for a content-free claim repository with
+- [x] Write a failing Cloudflare test for a content-free claim repository with
       `claimed`, exact `replayed`, changed-fingerprint `conflict`, atomic
       concurrent winner, scoped release before provider work, and expiry reuse.
-- [ ] Run:
+- [x] Run:
       `npx vitest run --config vitest.cloudflare.config.ts tests/cloudflare/d1-managed-ai-operation-claims.test.ts`
       and verify the repository/import is missing.
-- [ ] Add strict migration `0010` and a
+- [x] Add strict migration `0010` and a
       `D1ManagedAiOperationClaimRepository` whose `claim()` is one conditional
       D1 insert and whose `release()` deletes only an exact
-      claim-key/request-fingerprint pair.
-- [ ] Add migration-order/schema assertions and append `0010` to
+      claim-key/request-fingerprint/generation tuple.
+- [x] Add migration-order/schema assertions and append `0010` to
       `EXPECTED_D1_MIGRATIONS`.
-- [ ] Re-run the targeted Cloudflare and contract migration tests to GREEN.
+- [x] Re-run the targeted Cloudflare and contract migration tests to GREEN.
 
 ## Task 2 — Metered private-disclosure adapter and pricing
 
@@ -99,20 +99,20 @@ OpenAI Responses structured outputs, Zod, Vitest, Miniflare, Playwright.
   `tests/unit/adapters-openai/private-disclosure.test.ts`
 - Test: `tests/unit/worker/judge-structured-ai.test.ts`
 
-- [ ] Write a failing adapter test proving a successful proposal returns
+- [x] Write a failing adapter test proving a successful proposal returns
       accumulated input/output usage and attempt count without adding usage to
       the public disclosure DTO or domain event.
-- [ ] Run the adapter test and verify the metering result is absent.
-- [ ] Extend the concrete adapter-only `PrivateDisclosureProposal` with a
+- [x] Run the adapter test and verify the metering result is absent.
+- [x] Extend the concrete adapter-only `PrivateDisclosureProposal` with a
       content-free billing record. Do not widen
       `DisclosureCandidateProposer` or public protocol schemas.
-- [ ] Write failing pricing/envelope tests for supported GPT-5.6 model IDs,
+- [x] Write failing pricing/envelope tests for supported GPT-5.6 model IDs,
       safe integer micro-USD rounding, reserved upper bounds, source length,
       and actual usage never exceeding the reservation.
-- [ ] Add shared global judge limits, the private-disclosure reserved envelope,
+- [x] Add shared global judge limits, the private-disclosure reserved envelope,
       pricing-version constants, and actual-usage calculation in
       `judge-structured-ai.ts`.
-- [ ] Re-run both targeted test files to GREEN.
+- [x] Re-run both targeted test files to GREEN.
 
 ## Task 3 — Request-scoped judge disclosure orchestration
 
@@ -128,23 +128,23 @@ OpenAI Responses structured outputs, Zod, Vitest, Miniflare, Playwright.
   `tests/unit/worker/worker-flagship-http.test.ts` if a focused Worker HTTP
   test file is needed; otherwise use the new orchestrator test.
 
-- [ ] Write failing tests proving:
+- [x] Write failing tests proving:
       claim → reserve → proposer → finalize order; 429 before proposer on
       denial; exact replay invokes only a replay-only proposer; changed
       fingerprint conflicts; pre-provider failure releases claim/reservation;
       provider-started failure finalizes the full envelope; and claim/ledger
       inputs contain no private text.
-- [ ] Run the new unit test and verify the orchestrator is missing.
-- [ ] Implement a request-scoped proposer decorator. It receives only
+- [x] Run the new unit test and verify the orchestrator is missing.
+- [x] Implement a request-scoped proposer decorator. It receives only
       server-resolved user/session/participant/meeting/IP scope, the parsed
       request, claim repository, usage limiter, and concrete metered proposer.
-- [ ] Integrate it into the Worker `propose-disclosure` branch after fresh
+- [x] Integrate it into the Worker `propose-disclosure` branch after fresh
       meeting authorization. Catch provider errors and return
       `OPENAI_UNAVAILABLE`; return `USAGE_LIMIT_REACHED` with only the exhausted
       dimension.
-- [ ] Make disabled/unconfigured `ai_preferred` fail closed instead of using
+- [x] Make disabled/unconfigured `ai_preferred` fail closed instead of using
       caller manual fields while reporting `ai_assisted`.
-- [ ] Re-run targeted unit/application tests to GREEN.
+- [x] Re-run targeted unit/application tests to GREEN.
 
 ## Task 4 — Worker feature gate and provider-free integration proof
 
@@ -161,23 +161,23 @@ OpenAI Responses structured outputs, Zod, Vitest, Miniflare, Playwright.
 - Test: `tests/contract/cloudflare-config.test.ts`
 - Test: `tests/contract/cloudflare-deploy-config.test.ts`
 
-- [ ] Write failing Worker integration cases using an injected metered fake:
+- [x] Write failing Worker integration cases using an injected metered fake:
       judge success and ledger settlement; concurrent duplicate suppression;
       changed payload conflict; exhausted limit with zero proposer calls;
       ordinary-user denial; manual zero-ledger behavior; disabled/unconfigured
       fail-closed behavior; and no private content in claim/usage rows.
-- [ ] Run the focused Cloudflare test and verify the live judge dependency is
+- [x] Run the focused Cloudflare test and verify the live judge dependency is
       not wired.
-- [ ] Add the disabled-by-default ordinary gate and construct live dependencies
+- [x] Add the disabled-by-default ordinary gate and construct live dependencies
       only when the gate, allowlist, key Secret, IP HMAC Secret, and canonical
       `CF-Connecting-IP` are all valid.
-- [ ] Keep local `OPENAI_MODE=deterministic` behavior available for
+- [x] Keep local `OPENAI_MODE=deterministic` behavior available for
       provider-free flagship testing, but never treat it as metered production
       evidence.
-- [ ] Render preview/production deployment configs with both judge route gates
+- [x] Render preview/production deployment configs with both judge route gates
       disabled. Extend config tests so judge Secrets can never become ordinary
       vars.
-- [ ] Run Wrangler type generation/check and focused Cloudflare/config tests to
+- [x] Run Wrangler type generation/check and focused Cloudflare/config tests to
       GREEN. Do not register a remote Secret or enable a route.
 
 ## Task 5 — Verification and canonical status
@@ -187,18 +187,27 @@ OpenAI Responses structured outputs, Zod, Vitest, Miniflare, Playwright.
 - Modify: `docs/plans/05-cloudflare-judge-mode-and-security.md`
 - Modify: `docs/plans/impl/_status.md`
 
-- [ ] Run targeted tests, then:
+- [x] Run targeted tests, then:
       `npm run format:check`, `npm run lint`, `npm run typecheck`,
       `npm test`, `npm run contract`, `npm run test:cloudflare`,
       `npm run build`, `npm run test:architecture`,
       `npm run security:secrets`, `npm run env:check`, and
       `npm run cloudflare:config:check`.
-- [ ] Run the Worker browser E2E because Worker wiring changed. UI files do not
+- [x] Run the Worker browser E2E because Worker wiring changed. UI files do not
       change in this slice, so no new screenshot is required.
-- [ ] Record what is proven and keep these gates open: measured production
+- [x] Record what is proven and keep these gates open: measured production
       limits, shared-decision/invalidation judge billing, successful approved
       provider lifecycle, hosted security rerun, remote deployment, and route
       enablement.
-- [ ] Request independent spec-compliance review, then code-quality review.
+- [x] Request independent spec-compliance review, then code-quality review.
       Resolve every Critical/Important finding and re-run affected tests.
-- [ ] Commit only the reviewed, verified files.
+- [x] Commit only the reviewed, verified files.
+
+## Completion record
+
+Tasks 1–5 are complete for the local, provider-free implementation boundary.
+The route remains disabled in base, preview, and production configuration. No
+remote Secret was registered, no provider request was made, and no deployment
+or repository-visibility mutation occurred. The open gates listed in Task 5
+remain deployment or later billable-path work rather than incomplete work in
+this slice.

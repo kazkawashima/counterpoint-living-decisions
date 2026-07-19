@@ -632,13 +632,13 @@ The canonical implementation-facing artifacts are:
   no account, IP, meeting, reservation, provider, credential, or content
   fields and remains available while provider access and the managed-call
   route are disabled.
-- C4 is not complete: broader judge billable-path coverage, measured flagship
-  limits, and structured judge AI routes remain.
+- C4 is not complete: broader judge billable-path coverage and measured
+  flagship limits remain.
   The managed realtime route adapter now includes explicit duplicate-start and
   changed-payload unit coverage, a four-case Worker gate suite, and Cloudflare
   integration coverage; it remains disabled by default.
-  Full hosted security-matrix rerun, approved provider enablement, and
-  structured judge AI remain later slices.
+  Full hosted security-matrix rerun and approved provider enablement remain
+  later slices.
 - The real Worker-to-Durable-Object binding now has a provider-free integration
   proof in addition to the synthetic-controller path. The request reaches the
   registered `JUDGE_REALTIME_CALLS` namespace, observes the DO's
@@ -683,19 +683,32 @@ The canonical implementation-facing artifacts are:
   dedicated screenshots are recorded under
   `docs/media/screenshots/judge-usage/`; reel production remains outside the
   active product-visibility goal.
-- The current regular baseline is 648 Vitest tests and the contract project
-  passes 117 tests, with typecheck, formatting,
-  architecture, secret scan, generated Worker types, environment, and
-  Cloudflare configuration checks passing. Repository-wide ESLint is now green;
-  the final 20 fixture-only findings were removed with explicit Promise mocks,
-  strict response parsing, and safe unknown-JSON narrowing without changing
-  behavior. The full Cloudflare pool passes 10 files and 93 tests. The
-  Worker-specific browser E2E passes against Wrangler, and the changed Realtime
-  browser file passes all four cases. After fixing one strict locator and
-  assigning the evidence-heavy Decision case a 120-second capture budget, the
-  complete browser suite passes all 16 cases in one run. Reel shooting and
-  reel-material organization remain deferred from the active goal; product
-  visibility stays the priority.
+- Judge-funded private-disclosure structured output now uses a separate
+  disabled-by-default Worker gate and one content-free D1 claim before the
+  shared usage reservation. Exact replay never invokes the provider twice,
+  changed source content conflicts, and a generation-bound release cannot
+  remove a newer claim. Manual and ordinary-user paths remain provider- and
+  ledger-free.
+- The bounded OpenAI adapter reports content-free per-attempt token usage only
+  to the Worker orchestrator. The path reserves USD 5.50 and at most two
+  generations inside the fixed USD 25 rolling-24-hour limits before provider
+  work; trustworthy usage settles actual calculated cost, while missing,
+  malformed, or provider-started failure usage settles the full reservation.
+  Preview and production render with the route and provider mode disabled and
+  never render either judge Secret as an ordinary variable.
+- Provider-free integration proves claim, reservation, settlement, replay,
+  duplicate suppression, conflict, exhausted-budget, ordinary-user, manual,
+  unsafe-configuration, and D1 privacy behavior. Independent spec and quality
+  review found and closed all Critical/Important findings. No provider request,
+  Secret registration, remote mutation, or UI change occurred in this slice.
+- The current regular baseline is 698 Vitest tests, the contract project passes
+  118 tests, and the Cloudflare pool passes 11 files and 101 tests. Formatting,
+  ESLint, typecheck, build, architecture, secret scan, environment, generated
+  Worker types, and Cloudflare configuration checks pass. The Worker-specific
+  browser E2E passes its external-style Wrangler journey, and the complete
+  browser suite passes all 16 cases in one run. Since no UI changed, no new
+  visual capture was retained. Reel shooting and reel-material organization
+  remain deferred from the active goal; product visibility stays the priority.
 
 ## Not started
 
@@ -709,9 +722,9 @@ credential-free judge browser path is implemented. The next visibility gate is
 an explicitly approved preview deployment, followed by logged-out/incognito
 and authenticated judge smoke. Before enabling provider work, measure the
 flagship to replace full-cap-per-attempt settlement with safe derived limits
-and complete the remaining billable structured-AI routes. The hosted C5
-security-matrix rerun and provider/deployment proof remain behind the approved
-remote boundary.
+and complete shared-Decision and invalidation structured-output billing. The
+hosted C5 security-matrix rerun and provider/deployment proof remain behind the
+approved remote boundary.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is

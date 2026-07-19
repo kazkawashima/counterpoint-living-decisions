@@ -280,6 +280,30 @@ C4 foundation notes:
   content, and reports deterministic min/max/p50/p95/p99 values. It does not
   derive or mutate production limits without the required approved-provider
   sample set.
+- Judge-funded private-disclosure structured output now crosses a separate
+  disabled-by-default `JUDGE_STRUCTURED_AI_ROUTE_ENABLED` gate. The Worker
+  requires the allowlisted judge, fresh meeting authorization, the judge
+  OpenAI Secret, a distinct IP-HMAC Secret, and canonical
+  `CF-Connecting-IP`. Preview and production render with this route and
+  provider mode disabled, and the renderer strips either Secret if supplied as
+  an ordinary variable.
+- Migration 0010 and the D1 managed-operation repository claim a content-free
+  operation fingerprint before usage reservation. Concurrent exact retries
+  share one claim and can replay only an already persisted application result;
+  changed source content conflicts, and stale release cannot remove a newer
+  claim generation.
+- The private-disclosure path reserves a conservative USD 5.50, two-generation
+  envelope inside the same product-wide USD 25 rolling-24-hour limits before
+  provider work. Trustworthy per-attempt token usage settles calculated cost;
+  missing or malformed usage and any provider-started failure settle the full
+  reservation. Source text, snippets, prompts, outputs, credentials, and
+  provider identifiers are excluded from claim and ledger rows.
+- Provider-free Worker integration proves success settlement, exact replay,
+  concurrent duplicate suppression, changed-source conflict, exhausted-budget
+  denial, ordinary-user denial, manual zero-ledger behavior, disabled and
+  unsafe configuration failure, and content-free D1 rows. Shared Decision and
+  invalidation structured-output billing, measured production limits, and a
+  successful approved-provider lifecycle remain open.
 
 ### C5 — Security hardening
 
