@@ -3,9 +3,10 @@
 Sources: `talk8.md`, `talk9.md`, and `talk11.md`.
 
 > **Strength of conclusion:** Counterpoint appears in related talk8/talk9/talk11
-> branches. The Living Decisions reframing appears only in talk11. The final
-> choice against the other candidates is still open, so this is a candidate
-> specification, not a final specification.
+> branches. The Living Decisions reframing appears only in talk11. That caveat
+> describes the source history; the current implementation decision selects
+> Counterpoint + Living Decisions as the MVP submission. `docs/specs/` remains
+> the source of truth for confirmed requirements.
 
 > **Integration status:** The talk6→talk7 Meeting State Model v0.2 and the
 > talk11 Living Decision state machine are not merged. The MVP below is a
@@ -36,7 +37,7 @@ review state when reality changes**. This shifts the product center from
 | Time-axis extension | Living Decision within the talk11 branch |
 | Internal design language | Cross-branch reading of Concept B: Context → Commitment |
 | Future vision | Talk11 proposal to keep Concept A brief |
-| Category fit | Work & Productivity, unresolved |
+| MVP submission category | Work & Productivity, decided 2026-07-19 |
 
 ## Core flow
 
@@ -100,17 +101,20 @@ the custom implementation on the Broker. The exact boundary is unresolved.
 
 Within the talk11 branch, Counterpoint + Living Decisions scored first (8.5) on
 ideology, OpenAI narrative, and long-term value. Misconception diagnosis + AI
-student may have stronger demo strength and completion probability; Executable
-Falsifier remains the safer deadline option. The user leaned toward Living
-Decisions, but the final commitment was not closed. Do not extend “overall first”
-to every branch or evaluation axis.
+student was recorded as potentially stronger on demo strength and completion
+probability; Executable Falsifier was the safer deadline option. The branch
+language had not closed the choice at that time, but the implementation
+decision on 2026-07-19 subsequently selected Living Decisions for the MVP. Do
+not extend “overall first” to every branch or evaluation axis.
 
-## Open before implementation
+## Current decisions and remaining gates
 
-1. Final submission candidate: Living / misconception diagnosis / Executable Falsifier.
-2. Final three-minute video structure, including time jump and event injection.
+1. The MVP submission is Counterpoint + Living Decisions.
+2. The three-minute reel must label the time jump and injected event explicitly
+   as a staged demo story. Final editing remains a later decision.
 3. Counterpoint trademark and domain check.
-4. Final category: Work & Productivity, Education, or Developer Tools.
+4. The MVP category is Work & Productivity. A future office-, home-, or
+   team-resident agent is outside this scope.
 5. Monitor adapter type; MVP allows one.
 6. Unified schema for State Model v0.2.0 and the Living Decision state machine.
 
@@ -119,4 +123,3 @@ to every branch or evaluation axis.
 - [State model](./11-state-model.md)
 - [MVP scope](./13-mvp-scope.md)
 - [Competition and naming](./04-competition-and-positioning.md)
-

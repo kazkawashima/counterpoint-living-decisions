@@ -39,15 +39,16 @@ always verify the current Devpost official rules and FAQ.
 - [20 — Ideas Archive](./20-ideas-archive.md)
 - [21 — Rejected and Deferred Ideas](./21-rejected-deferred.md)
 
-## Provisional submission candidate
+## Selected MVP submission
 
 > **Counterpoint — Living Decisions for Agent-Native Teams**
 
 Surface product: a constrained version of Concept C, converting a meeting into
 an auditable Decision / Commitment. The time axis is Living Decisions: monitor
 assumptions and reopen a decision when reality changes. The internal design
-language is Context → Commitment. This remains a branch-level candidate, not a
-proven final choice across all conversation branches.
+language is Context → Commitment. The source analysis remains branch-specific,
+but the implementation decision selects this product for the MVP submission in
+Work & Productivity.
 
 The central demo is:
 
@@ -60,4 +61,3 @@ Private context
 → Assumption invalidated
 → Decision reopened
 ```
-

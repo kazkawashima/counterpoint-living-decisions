@@ -3,7 +3,10 @@
 出典: `talk8.md`, `talk9.md`, `talk11.md`  
 進化の文脈: [10-product-evolution.md](./10-product-evolution.md)
 
-> **結論の強さ:** Counterpoint は talk8/talk9/talk11 の関連枝に現れる。Living Decisions への再定義は talk11枝のみ。talk11枝内でも他候補との最終選択は閉じていないため、本ファイルは確定仕様ではなく**候補仕様**である。
+> **結論の強さ:** Counterpoint は talk8/talk9/talk11 の関連枝に現れる。
+> Living Decisions への再定義は talk11枝のみ。これは会話資料の由来に
+> 関する限定であり、現在の実装判断では Counterpoint + Living Decisions
+> をMVP提出本体として選択済みである。確定要件は `docs/specs/` を正本とする。
 
 > **統合状態:** talk6→talk7枝の Meeting State Model v0.2 と、talk11枝の Living Decision state machine は未統合。以下のMVPは両者を統合した場合の**横断的設計案**である。
 
@@ -29,7 +32,7 @@
 | 時間軸拡張 | Living Decision（talk11枝内） |
 | 内部設計言語 | 構想B（Context → Commitment）という横断的解釈 |
 | 将来ビジョン | 構想Aを短く、というtalk11枝内提案 |
-| 部門感触 | Work & Productivity（未確定） |
+| MVP提出部門 | Work & Productivity（2026-07-19決定） |
 
 ---
 
@@ -102,7 +105,10 @@ DRAFT → DECISION READY → COMMITTED → MONITORING
 
 思想・OpenAI物語・長期価値という評価軸で **Counterpoint + Living Decisions が一位（8.5）**。
 
-同じtalk11枝内でも、デモ強度・完成確率では「誤概念診断＋AI生徒」が上回り得て、締切リスクでは Executable Falsifier が安全案として残る。ユーザーは Living Decisions（1）寄りだが、表現は「1か2か」となっており最終コミットは未閉鎖。
+同じtalk11枝内でも、デモ強度・完成確率では「誤概念診断＋AI生徒」が
+上回り得て、締切リスクでは Executable Falsifier が安全案として記録された。
+枝内の当時の表現は「1か2か」だったが、その後2026-07-19の実装判断で
+Living Decisions をMVP本体として選択した。
 
 したがって「総合一位」を全評価軸または全会話枝の結論へ拡張しない。
 
@@ -110,14 +116,16 @@ DRAFT → DECISION READY → COMMITTED → MONITORING
 
 ---
 
-## 未解決（実装前に閉じるべき）
+## 現在の決定と残るゲート
 
-1. 提出本体の最終確定（1 Living / 2 誤概念診断 / 3 Executable Falsifier）— **未確定**
-2. 3分動画の最終構成（time-jump / 外部イベント注入）
-3. Counterpoint 商標・ドメイン確認
-4. 部門最終決定（候補により W&P / Education / Dev Tools）
-5. 監視アダプタの種類（MVPは1つまで）
-6. 状態モデル v0.2.0 と Living Decision state machine の統合スキーマ
+1. MVP提出本体は Counterpoint + Living Decisions。
+2. 3分動画では time-jump と注入イベントを**明示的なデモ用ストーリー**
+   と表示する。最終編集構成は別途確定する。
+3. Counterpoint 商標・ドメイン確認。
+4. MVP提出部門は Work & Productivity。将来のオフィス／家庭／チーム
+   常駐型エージェントへの進化は別スコープ。
+5. 監視アダプタの種類（MVPは1つまで）。
+6. 状態モデル v0.2.0 と Living Decision state machine の統合スキーマ。
 
 ---
 

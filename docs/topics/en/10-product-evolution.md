@@ -137,18 +137,18 @@ Concept C / Meeting State Model ── observable small world from another branc
 The map shows reuse and containment, not the order in which decisions were
 made.
 
-## Unresolved questions
+## Current decision and remaining question
 
-- Final submission choice across all branches.
-- The talk11 choice among Living Decisions, misconception diagnosis, and
-  Executable Falsifier.
-- A unified schema for Meeting State Model v0.2 and the Living Decision state machine.
-- Final category: Work & Productivity, Education, or Developer Tools.
+- **Implementation decision on 2026-07-19:** Submit the Counterpoint + Living
+  Decisions MVP in **Work & Productivity**. A later office-, home-, or
+  team-resident agent may span categories, but that evolution does not change
+  the MVP category.
+- The implementation specification owns the remaining details of the unified
+  Meeting State Model v0.2 and Living Decision state machine.
 
 ## Related documents
 
 - [State model](./11-state-model.md)
-- [Provisional product candidate](./12-counterpoint-living-decisions.md)
+- [Selected MVP and source history](./12-counterpoint-living-decisions.md)
 - [MVP](./13-mvp-scope.md)
 - [Rejected and deferred ideas](./21-rejected-deferred.md)
-

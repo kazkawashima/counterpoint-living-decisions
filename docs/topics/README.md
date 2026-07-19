@@ -57,7 +57,7 @@ OpenAI Build Week 提出と新世代システム構築のため、`talk1.md`〜`
 | [04-competition-and-positioning.md](./04-competition-and-positioning.md) | 部門競争・命名階層・Judge vs User |
 | [05-risks-and-caveats.md](./05-risks-and-caveats.md) | 失格・減点・失敗モード |
 
-### プロダクト（提出候補）
+### プロダクト（選択済みMVPと由来）
 
 | ファイル | 内容 |
 |----------|------|
@@ -88,7 +88,7 @@ build_utterance_tree.py  … ツリー再生成スクリプト
 
 **優先順位:** 規約の最終判断は常に [openai.devpost.com](https://openai.devpost.com/) 原文。本ディレクトリは対話の抽出であり、ラベルが不足する箇所は確定情報として扱わない。
 
-## talk11枝の暫定提出候補（全体では未確定）
+## 選択済みMVP（talk11枝を由来とする）
 
 > **Counterpoint — Living Decisions for Agent-Native Teams**
 
@@ -98,10 +98,14 @@ build_utterance_tree.py  … ツリー再生成スクリプト
 - 将来ビジョン: 構想A（短く）
 - 詳細: [12-counterpoint-living-decisions.md](./12-counterpoint-living-decisions.md) / [13-mvp-scope.md](./13-mvp-scope.md)
 
-これは `talk4.md` と共有する52発話の後に分岐した `talk11.md` 内で、ユーザーが暫定的に1案へ寄せた結果である。次の候補は閉じていない。
+これは `talk4.md` と共有する52発話の後に分岐した `talk11.md` 内で、
+ユーザーが当初1案へ寄せた結果を由来とする。会話資料としては次の候補が
+記録されているが、2026-07-19の実装判断では 1 をMVP本体として選択し、
+Work & Productivity 部門へ提出する。
 
 1. Counterpoint + Living Decisions
 2. 誤概念診断 + AI生徒
 3. Executable Falsifier
 
-`talk11.md` は構造上長い枝の一つだが、**時間的に最新または全枝を上書きする正本とは証明できない**。
+`talk11.md` は構造上長い枝の一つであり、単独では全枝を上書きする正本とは
+証明できない。現在の確定要件は `docs/specs/` を正本とする。

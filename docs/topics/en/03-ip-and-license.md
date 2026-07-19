@@ -26,13 +26,22 @@ copyright was not assigned.
 
 ## Public vs private / license choice
 
+**Product decision on 2026-07-19:** Keep the repository private during
+development, then make it public at submission to reduce judging-access
+failures. Preserve the option to commercialize a substantially rebuilt product
+later. Do not choose the project license yet. Before the visibility switch,
+inventory direct and transitive dependencies and bundled media, identify
+notice, redistribution, and source-disclosure obligations, then select either
+a compatible project license or an All Rights Reserved distribution posture
+that also satisfies the official submission requirements.
+
 | Strategy | Recorded content | Type |
 |---|---|---|
 | During development | Start private with no license | Strategy |
-| Public at submission | May reduce judge-access friction; Apache-2.0 was proposed because of its explicit patent terms | Strategy, not a rule |
+| Public at submission | Switch to public to reduce judging-access failures; choose the license after the audit | Decision |
 | Preserve commercialization | Keep private and share with judges by email; recorded interpretation, re-check required | FAQ interpretation + strategy |
 | Hybrid | Keep the core proprietary; release an SDK, schema, or fixtures under Apache later | Strategy |
-| Warning | Avoid a public repository with no license | Strategy |
+| Warning | Do not switch to public without an explicit license or rights-reservation posture | Strategy |
 | After Apache | A license already granted cannot simply be taken back into exclusivity | General principle |
 
 The implementation requirements currently say to remain private and All Rights
@@ -68,4 +77,3 @@ crawling.
 
 - [Submission checklist](./02-submission-checklist.md)
 - [Risks and caveats](./05-risks-and-caveats.md)
-
