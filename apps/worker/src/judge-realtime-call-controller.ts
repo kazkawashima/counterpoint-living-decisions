@@ -838,7 +838,7 @@ export function createJudgeRealtimeUsageLimiter(
     readonly hashIp: (ipAddress: string) => Promise<string>;
     readonly ids: (namespace: string) => string;
   },
-): UsageLimiter {
+): D1UsageLimiter {
   return new D1UsageLimiter(database, {
     clock: options.clock,
     hashIp: options.hashIp,

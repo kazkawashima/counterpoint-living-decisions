@@ -26,6 +26,7 @@ import type { MeetingCoordinator } from "./meeting-coordinator.js";
 import { resolveJudgeIpReservationInput } from "./judge-ip-reservation.js";
 import { createJudgeRealtimeUsageLimiter } from "./judge-realtime-call-controller.js";
 import { handleJudgeManagedRealtimeHttp } from "./judge-managed-realtime-http.js";
+import { handleJudgeUsageSummaryHttp } from "./judge-usage-http.js";
 import type { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
 import {
   createWorkerFlagshipDependencies,
@@ -48,6 +49,7 @@ const EXPECTED_D1_MIGRATIONS = [
   "0006_judge_usage_reservations.sql",
   "0007_judge_managed_realtime_calls.sql",
   "0008_hosted_flagship_seed.sql",
+  "0009_judge_managed_realtime_start_claims.sql",
 ] as const;
 
 interface JudgeWorkerBindings {
@@ -387,6 +389,47 @@ export function createWorkerHandler(): ExportedHandler<Env> {
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/calls(?:\/([^/]+)\/(turn|transcript|terminate))?$/u.exec(
           url.pathname,
         );
+      const judgeUsageRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/judge\/usage$/u.exec(url.pathname);
+      if (request.method === "GET" && judgeUsageRoute?.[1] !== undefined) {
+        const correlationId = crypto.randomUUID();
+        let meetingId: string;
+        try {
+          meetingId = decodeURIComponent(judgeUsageRoute[1]);
+        } catch {
+          return apiErrorResponse("VALIDATION_FAILED", correlationId);
+        }
+        const ipReservation = await resolveJudgeIpReservationInput(
+          request,
+          env.JUDGE_IP_HMAC_SECRET,
+        );
+        if (ipReservation === undefined) {
+          return apiErrorResponse("REALTIME_UNAVAILABLE", correlationId);
+        }
+        const clock = { now: () => new Date().toISOString() };
+        const tokens = new WebCryptoSessionTokenIssuer();
+        const usage = createJudgeRealtimeUsageLimiter(env.DB, {
+          clock: clock.now,
+          hashIp: ipReservation.hashIp,
+          ids: (namespace) => `${namespace}-${crypto.randomUUID()}`,
+        });
+        return handleJudgeUsageSummaryHttp({
+          correlationId,
+          dependencies: {
+            authorizationPolicy: {
+              judgeManagedAiUserIds: new Set([judgeUserId(env) ?? ""]),
+            },
+            clock,
+            meetings: new D1MeetingRepository(env.DB),
+            sessions: new D1SessionRepository(env.DB),
+            tokens,
+          },
+          ipAddress: ipReservation.ipAddress,
+          meetingId,
+          request,
+          usage,
+        });
+      }
       if (request.method === "POST" && managedRealtimeCallRoute !== null) {
         const correlationId = crypto.randomUUID();
         if (!judgeManagedRealtimeRouteEnabled(env)) {

@@ -69,6 +69,22 @@ function request(
   );
 }
 
+function getRequest(
+  path: string,
+  bearerToken = JUDGE_BEARER,
+  includeIp = true,
+): WorkerRequest {
+  return workerRequest(
+    new Request(`https://198.51.100.44${path}`, {
+      headers: {
+        authorization: `Bearer ${bearerToken}`,
+        ...(includeIp ? { "CF-Connecting-IP": IP_ADDRESS } : {}),
+      },
+      method: "GET",
+    }),
+  );
+}
+
 function fakeControllerNamespace(): FakeControllerNamespace {
   return {
     get(reservationId) {
@@ -320,6 +336,56 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     expect(started).not.toHaveProperty("providerCallId");
     expect(started).not.toHaveProperty("safetyIdentifier");
 
+    const usagePath = `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/judge/usage`;
+    const usageSummary = await handler.fetch!(
+      getRequest(usagePath),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(usageSummary.status).toBe(200);
+    const usageBody = await jsonBody(usageSummary);
+    expect(usageBody).toMatchObject({
+      dimensions: {
+        account: { limit: 10, remaining: 9, used: 1 },
+        concurrency: { limit: 1, remaining: 0, used: 1 },
+        costMicroUsd: {
+          limit: 25_000_000,
+          remaining: 0,
+          used: 25_000_000,
+        },
+        generation: { limit: 3, remaining: 0, used: 3 },
+        ip: { limit: 10, remaining: 9, used: 1 },
+        meeting: { limit: 10, remaining: 9, used: 1 },
+        realtimeSeconds: { limit: 30, remaining: 0, used: 30 },
+        tokens: { limit: 1_200_000, remaining: 0, used: 1_200_000 },
+      },
+      rollingWindowSeconds: 86_400,
+    });
+    const serializedUsage = JSON.stringify(usageBody);
+    for (const privateValue of [
+      JUDGE_USER_ID,
+      JUDGE_BEARER,
+      IP_ADDRESS,
+      MEETING_ID,
+      STANDARD_KEY,
+    ]) {
+      expect(serializedUsage).not.toContain(privateValue);
+    }
+    const {
+      OPENAI_API_KEY_JUDGE: omittedStandardKey,
+      ...environmentWithoutStandardKey
+    } = environment;
+    void omittedStandardKey;
+    const degradedUsage = await handler.fetch!(
+      getRequest(usagePath),
+      {
+        ...environmentWithoutStandardKey,
+        JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+      },
+      {} as ExecutionContext,
+    );
+    expect(degradedUsage.status).toBe(200);
+
     const replay = await handler.fetch!(
       request(
         `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
@@ -344,6 +410,34 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       .bind(JUDGE_USER_ID, MEETING_ID)
       .first<{ readonly count: number }>();
     expect(reservationCount?.count).toBe(1);
+
+    const forbiddenUsage = await handler.fetch!(
+      getRequest(usagePath),
+      { ...environment, JUDGE_USER_ID: "different-judge" },
+      {} as ExecutionContext,
+    );
+    expect(forbiddenUsage.status).toBe(403);
+    await expect(jsonBody(forbiddenUsage)).resolves.toMatchObject({
+      code: "JUDGE_MODE_FORBIDDEN",
+    });
+    const unauthenticatedUsage = await handler.fetch!(
+      getRequest(usagePath, "unknown-bearer"),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(unauthenticatedUsage.status).toBe(401);
+    await expect(jsonBody(unauthenticatedUsage)).resolves.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    const missingIpUsage = await handler.fetch!(
+      getRequest(usagePath, JUDGE_BEARER, false),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(missingIpUsage.status).toBe(503);
+    await expect(jsonBody(missingIpUsage)).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
 
     const crossMeetingTurn = await handler.fetch!(
       request(

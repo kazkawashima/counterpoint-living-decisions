@@ -594,6 +594,25 @@ export const TerminateManagedRealtimeCallResponseSchema = z.strictObject({
   terminated: z.literal(true),
   ...RequiredCorrelationShape,
 });
+const JudgeUsageSummaryDimensionSchema = z.strictObject({
+  limit: z.number().int().nonnegative(),
+  remaining: z.number().int().nonnegative(),
+  used: z.number().int().nonnegative(),
+});
+export const JudgeUsageSummaryResponseSchema = z.strictObject({
+  dimensions: z.strictObject({
+    account: JudgeUsageSummaryDimensionSchema,
+    concurrency: JudgeUsageSummaryDimensionSchema,
+    costMicroUsd: JudgeUsageSummaryDimensionSchema,
+    generation: JudgeUsageSummaryDimensionSchema,
+    ip: JudgeUsageSummaryDimensionSchema,
+    meeting: JudgeUsageSummaryDimensionSchema,
+    realtimeSeconds: JudgeUsageSummaryDimensionSchema,
+    tokens: JudgeUsageSummaryDimensionSchema,
+  }),
+  rollingWindowSeconds: z.number().int().positive(),
+  ...RequiredCorrelationShape,
+});
 
 export type ManagedCallId = z.infer<typeof ManagedCallIdSchema>;
 export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
@@ -645,6 +664,9 @@ export type TerminateManagedRealtimeCallRequest = z.infer<
 >;
 export type TerminateManagedRealtimeCallResponse = z.infer<
   typeof TerminateManagedRealtimeCallResponseSchema
+>;
+export type JudgeUsageSummaryResponse = z.infer<
+  typeof JudgeUsageSummaryResponseSchema
 >;
 
 export const AcquireSharedFloorRequestSchema = z.strictObject({

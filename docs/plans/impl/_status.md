@@ -625,17 +625,22 @@ The canonical implementation-facing artifacts are:
   account, keyed-IP, meeting, concurrency, cost, generation, Realtime seconds,
   and tokens. It counts reservations at full estimate, finalized rows at actual
   usage, excludes releases, and exposes only used/limit/remaining. This closes
-  the storage/query foundation for operator visibility; an authenticated
-  operator HTTP/UI surface remains open.
+  the storage/query foundation for operator visibility. The Worker now exposes
+  it through a strict meeting-scoped GET boundary that re-authenticates the
+  Bearer session, assignment, and judge capability, then uses canonical
+  `CF-Connecting-IP` only to select the keyed-IP counter. The response contains
+  no account, IP, meeting, reservation, provider, credential, or content
+  fields and remains available while provider access and the managed-call
+  route are disabled.
 - C4 is not complete: broader judge billable-path coverage, measured flagship
-  limits, the web managed-call switch, structured judge AI routes, and broader
-  content-free operator visibility remain. The managed realtime route adapter
-  now includes explicit duplicate-start and changed-payload unit coverage,
-  a four-case Worker gate suite, and Cloudflare integration coverage; it remains
-  disabled by default.
+  limits, the web managed-call switch, and structured judge AI routes remain.
+  The managed realtime route adapter now includes explicit duplicate-start and
+  changed-payload unit coverage, a four-case Worker gate suite, and Cloudflare
+  integration coverage; it remains disabled by default.
   Full hosted security-matrix rerun, approved provider enablement, and
   structured judge AI remain later slices.
-- The current regular baseline is 631 Vitest tests, with typecheck, formatting,
+- The current regular baseline is 634 Vitest tests and the contract project
+  passes 116 tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted
   ESLint; repository-wide lint still reports 23 pre-existing errors in the
@@ -663,12 +668,10 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 by exposing the new content-free usage summary only through a
-strict authenticated operator boundary, then extend Worker proof to real
-Durable Object lifecycle behavior and measure the flagship to replace
-full-cap-per-attempt settlement with safe derived limits. The hosted C5
-security-matrix rerun and provider/deployment proof remain behind the approved
-remote boundary.
+Continue Plan 05 by extending Worker proof to real Durable Object lifecycle
+behavior, then measure the flagship to replace full-cap-per-attempt settlement
+with safe derived limits. The hosted C5 security-matrix rerun and
+provider/deployment proof remain behind the approved remote boundary.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is

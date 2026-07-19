@@ -37,6 +37,7 @@ import {
   IssueDisplayTokenResponseSchema,
   IssueRealtimeClientSecretRequestSchema,
   IssueRealtimeClientSecretResponseSchema,
+  JudgeUsageSummaryResponseSchema,
   JoinMeetingByCodeRequestSchema,
   ListAssignedMeetingsRequestSchema,
   LoginRequestSchema,
@@ -101,6 +102,7 @@ import {
   type IssueDisplayTokenResponse,
   type IssueRealtimeClientSecretRequest,
   type IssueRealtimeClientSecretResponse,
+  type JudgeUsageSummaryResponse,
   type LoginRequest,
   type ManagedCallId,
   type ResolveDecisionReviewRequest,
@@ -1342,6 +1344,43 @@ describe("strict v1 HTTP protocol", () => {
     expect(ManagedCallIdSchema.safeParse("").success).toBe(false);
     expect(ManagedCallIdSchema.safeParse("managed call 1").success).toBe(false);
     expect(ManagedCallIdSchema.safeParse("x".repeat(257)).success).toBe(false);
+  });
+
+  it("exposes only content-free judge usage dimensions", () => {
+    const response = {
+      correlationId: "correlation-judge-usage",
+      dimensions: {
+        account: { limit: 10, remaining: 9, used: 1 },
+        concurrency: { limit: 1, remaining: 0, used: 1 },
+        costMicroUsd: { limit: 25_000_000, remaining: 0, used: 25_000_000 },
+        generation: { limit: 3, remaining: 0, used: 3 },
+        ip: { limit: 10, remaining: 9, used: 1 },
+        meeting: { limit: 10, remaining: 9, used: 1 },
+        realtimeSeconds: { limit: 30, remaining: 0, used: 30 },
+        tokens: { limit: 1_200_000, remaining: 0, used: 1_200_000 },
+      },
+      rollingWindowSeconds: 86_400,
+    } as const;
+    const parsed = JudgeUsageSummaryResponseSchema.parse(response);
+    expectTypeOf(parsed).toEqualTypeOf<JudgeUsageSummaryResponse>();
+    expect(
+      JudgeUsageSummaryResponseSchema.safeParse({
+        ...response,
+        accountId: "private-account",
+      }).success,
+    ).toBe(false);
+    expect(
+      JudgeUsageSummaryResponseSchema.safeParse({
+        ...response,
+        ipHash: `hmac-sha256:${"a".repeat(64)}`,
+      }).success,
+    ).toBe(false);
+    expect(
+      JudgeUsageSummaryResponseSchema.safeParse({
+        ...response,
+        reservationId: "private-reservation",
+      }).success,
+    ).toBe(false);
   });
 
   it("binds one opaque utterance to each managed realtime speech turn", () => {

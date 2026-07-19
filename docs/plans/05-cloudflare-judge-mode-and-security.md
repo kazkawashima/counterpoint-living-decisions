@@ -119,7 +119,7 @@ defaults.
 - [ ] Check limits before billable work.
 - [ ] Fail closed with `USAGE_LIMIT_REACHED`.
 - [x] Keep manual degraded mode available.
-- [ ] Add operator visibility without private content.
+- [x] Add operator visibility without private content.
 
 C4 foundation notes:
 
@@ -238,8 +238,14 @@ C4 foundation notes:
   eight enforced dimensions. Reserved work reports its full estimate,
   finalized work reports actual usage, released work is excluded, and each
   dimension returns only used, limit, and remaining values. This is the
-  adapter foundation for operator visibility; an authenticated operator route
-  and UI remain open.
+  adapter foundation for operator visibility. A strict meeting-scoped GET
+  route re-authenticates the Bearer session, active assignment, and
+  `judge:managed-ai` capability, requires the canonical request IP only to
+  derive the existing keyed scope, and returns no account, IP, meeting,
+  reservation, provider, credential, or content fields. It remains readable
+  when provider access and the managed-call route are disabled, preserving
+  degraded-mode diagnostics without widening billable access. No public usage
+  UI is currently exposed.
 - Cloudflare-pool integration now exercises the enabled route with a synthetic
   controller: judge authentication, cross-meeting rejection, turn/transcript
   forwarding, duplicate-start reservation suppression, termination settlement,
