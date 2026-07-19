@@ -25,16 +25,19 @@ import type {
   UsageLimiter,
   UsageRequest,
 } from "@counterpoint/ports";
+import {
+  JUDGE_REALTIME_MAX_DURATION_SECONDS,
+  JUDGE_REALTIME_RESERVED_USAGE,
+  JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
+  JUDGE_REALTIME_RETRY_DELAY_SECONDS,
+} from "./judge-realtime-constants.js";
 
-export const JUDGE_REALTIME_MAX_DURATION_SECONDS = 30;
-export const JUDGE_REALTIME_RETRY_DELAY_SECONDS = 5;
-export const JUDGE_REALTIME_RESERVED_USAGE: UsageRequest = {
-  estimatedCostUsd: 25,
-  estimatedInputTokens: 800_000,
-  estimatedOutputTokens: 400_000,
-  generationCount: 3,
-  realtimeSeconds: JUDGE_REALTIME_MAX_DURATION_SECONDS,
-};
+export {
+  JUDGE_REALTIME_MAX_DURATION_SECONDS,
+  JUDGE_REALTIME_RESERVED_USAGE,
+  JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
+  JUDGE_REALTIME_RETRY_DELAY_SECONDS,
+} from "./judge-realtime-constants.js";
 
 const CALL_STATE_KEY = "judge-realtime-call";
 const MAX_OPAQUE_ID_LENGTH = 256;
@@ -848,7 +851,7 @@ export function createJudgeRealtimeUsageLimiter(
       ipRequestsPerWindow: 10,
       meetingRequestsPerWindow: 10,
       realtimeSecondsPerWindow: JUDGE_REALTIME_RESERVED_USAGE.realtimeSeconds,
-      reservationTtlSeconds: JUDGE_REALTIME_MAX_DURATION_SECONDS + 30,
+      reservationTtlSeconds: JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
       tokensPerWindow:
         JUDGE_REALTIME_RESERVED_USAGE.estimatedInputTokens +
         JUDGE_REALTIME_RESERVED_USAGE.estimatedOutputTokens,

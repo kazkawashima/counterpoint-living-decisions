@@ -478,11 +478,19 @@ The canonical implementation-facing artifacts are:
   active meeting assignment and allowlisted judge capability before resolving
   the handle, including revocation, assignment removal, cross-meeting, IDOR,
   and storage-failure fail-closed paths.
-- The controller remains intentionally not publicly routed. Remaining gates
-  are authenticated hosted API parity, integrating the completed IP/ownership
-  foundations into every public operation before Durable Object dispatch,
-  measured flagship limits, and settlement behavior that does not consume the
-  entire daily allowance for every attempt.
+- The Worker now contains a public managed-call adapter for start, turn,
+  transcript, and terminate. It re-authenticates the meeting and opaque
+  handle on every operation, creates the D1 reservation and ownership claim
+  before addressing the Durable Object, derives the provider safety identifier
+  server-side, and maps internal errors/pending transcripts to public DTOs
+  without provider or reservation identifiers. The route is still explicitly
+  disabled by the ordinary `JUDGE_MANAGED_REALTIME_ROUTE_ENABLED=disabled`
+  preview variable until measured limits and hosted proof close; verified IP
+  input remains mandatory even if a deployment enables the adapter.
+- Remaining gates are authenticated hosted API parity, Worker success/limit
+  integration against the public route, measured flagship limits, and
+  settlement behavior that does not consume the entire daily allowance for
+  every attempt.
 - Direct Worker judge client-secret issuance is now intentionally fail-closed,
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
@@ -536,12 +544,13 @@ The canonical implementation-facing artifacts are:
   shutdown runbook forbids schema down migration and secret-value inspection.
   No remote resource, secret, migration, deployment, or repository visibility
   changed during this preparation.
-- C4 is not complete: safe authenticated public route wiring with the completed
-  IP/ownership foundations, measured flagship limits, the web managed-call
-  switch, structured judge AI routes after hosted API parity,
-  `USAGE_LIMIT_REACHED` HTTP integration, and broader content-free operator
-  visibility remain.
-- The current regular baseline is 616 Vitest tests, with typecheck, lint,
+- C4 is not complete: hosted flagship API parity, public-route success and
+  `USAGE_LIMIT_REACHED` integration proof, measured flagship limits, the web
+  managed-call switch, structured judge AI routes after hosted API parity, and
+  broader content-free operator visibility remain. The route adapter itself
+  is covered by three unit cases plus a four-case Cloudflare Worker gate suite,
+  and remains disabled by default.
+- The current regular baseline is 619 Vitest tests, with typecheck, lint,
   formatting, architecture, secret scan, generated Worker types, environment,
   and Cloudflare configuration checks passing. Six new Cloudflare-native D1
   persistence/IDOR/race/termination cases passed before two additional
@@ -559,9 +568,10 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 by wiring the completed keyed-IP and opaque-ownership
-foundations into every start, turn, transcript, and terminate route before
-Durable Object dispatch. Complete the minimum hosted API parity needed by the
+Continue Plan 05 C4 by adding hosted Worker integration proof for the now
+feature-gated start, turn, transcript, and terminate adapter, including
+reservation-limit, cleanup, session-revocation, assignment-removal, and
+cross-meeting cases. Complete the minimum hosted API parity needed by the
 flagship, measure the flagship to replace full-cap-per-attempt settlement with
 safe derived limits, and only then enable the public route or switch the judge
 UI. Never accept reservation, provider call, participant, session, or

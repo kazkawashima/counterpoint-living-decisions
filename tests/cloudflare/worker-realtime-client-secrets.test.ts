@@ -29,6 +29,8 @@ type WorkerRequest = Parameters<
 >[0];
 
 function workerEnv(bindings: {
+  readonly JUDGE_IP_HMAC_SECRET?: string;
+  readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED?: string;
   readonly JUDGE_USER_ID?: string;
   readonly OPENAI_API_KEY_JUDGE?: string;
 }): Env {
@@ -246,5 +248,49 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
       code: "REALTIME_UNAVAILABLE",
     });
     expect(responseText).not.toContain(STANDARD_KEY);
+  });
+
+  it("keeps an explicitly enabled managed route fail-closed without verified IP input", async () => {
+    await seedJudgeFixture();
+    const response = await createWorkerHandler().fetch!(
+      new Request(
+        `https://counterpoint.test/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        {
+          body: JSON.stringify({
+            channel: "private",
+            meetingId: MEETING_ID,
+            sdpOffer: "v=0\r\ns=missing-ip-header\r\n",
+          }),
+          headers: {
+            authorization: `Bearer ${JUDGE_BEARER}`,
+            "content-type": "application/json",
+          },
+          method: "POST",
+        },
+      ) as unknown as WorkerRequest,
+      workerEnv({
+        JUDGE_IP_HMAC_SECRET: "judge-ip-secret-worker-c3-0123456789abcdef",
+        JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "enabled",
+        JUDGE_USER_ID,
+        OPENAI_API_KEY_JUDGE: STANDARD_KEY,
+      }),
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
+    const reservationCount = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM judge_usage_reservations
+          WHERE meeting_id = ? AND account_id = ?
+        `,
+      )
+      .bind(MEETING_ID, JUDGE_USER_ID)
+      .first<{ readonly count: number }>();
+    expect(reservationCount?.count).toBe(0);
   });
 });

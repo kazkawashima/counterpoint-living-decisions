@@ -208,13 +208,15 @@ C4 foundation notes:
   browser SDP response, and server-initiated close cannot duplicate settlement.
   Trustworthy measured telemetry is visible internally but is not yet used to
   lower the charged reservation.
-- The controller is not publicly routed yet. Keyed IP input and opaque
-  ownership foundations exist, but the remaining safe-route gates are
-  authenticated hosted API parity, wiring those checks into every public
-  operation before the Durable Object is addressed, measured production
-  limits, and bounded settlement. Until those gates close, judge client-secret
-  issuance and the public managed route remain fail-closed. No remote Secret
-  registration occurs.
+- The Worker now contains a feature-gated adapter for the public start, turn,
+  transcript, and terminate contracts. It authenticates and re-resolves the
+  meeting/handle on every request, reserves and claims ownership before DO
+  dispatch, derives provider safety metadata server-side, and strips internal
+  reservation/provider fields from public responses. The ordinary preview
+  variable `JUDGE_MANAGED_REALTIME_ROUTE_ENABLED` is `disabled`, verified
+  `CF-Connecting-IP` plus the distinct HMAC Secret is still mandatory, and the
+  route remains fail-closed until hosted parity proof, measured limits, and
+  bounded settlement are complete. No remote Secret registration occurs.
 
 ### C5 — Security hardening
 

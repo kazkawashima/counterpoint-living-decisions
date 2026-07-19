@@ -50,6 +50,7 @@
     },
   ],
   "vars": {
+    "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED": "disabled",
     "RUNTIME_MODE": "preview",
     "OPENAI_MODE": "disabled",
   },
