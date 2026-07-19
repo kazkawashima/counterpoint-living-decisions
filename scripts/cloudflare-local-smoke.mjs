@@ -71,8 +71,9 @@ async function waitForWorker() {
   throw new Error(`Wrangler did not become ready:\n${diagnostics}`);
 }
 
-async function expectJson(path, expectedStatus, check) {
+async function expectJson(path, expectedStatus, options, check) {
   const response = await fetch(`${externalHostBaseUrl}${path}`, {
+    ...options,
     signal: AbortSignal.timeout(5_000),
   });
   if (response.status !== expectedStatus) {
@@ -92,24 +93,64 @@ function expectValue(condition, message) {
 
 try {
   await waitForWorker();
-  await expectJson("/health", 200, (body) => {
+  await expectJson("/health", 200, {}, (body) => {
     expectValue(
       body.status === "ok" && body.protocolVersion === 1,
       "Health response did not match the protocol contract",
     );
   });
-  await expectJson("/ready", 200, (body) => {
+  await expectJson("/ready", 200, {}, (body) => {
     expectValue(
       body.status === "ready" && body.migrationsCurrent === true,
       "Cloudflare resources were not ready after local migrations",
     );
   });
-  await expectJson("/api/v1/meetings", 503, (body) => {
-    expectValue(
-      body.code === "ARTIFACT_STORAGE_UNAVAILABLE" && body.retryable === true,
-      "C1 API routes must fail closed instead of returning the SPA",
-    );
-  });
+  let bearerToken;
+  await expectJson(
+    "/api/v1/login",
+    200,
+    {
+      body: JSON.stringify({
+        password: "counterpoint-product",
+        userId: "product",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    },
+    (body) => {
+      expectValue(
+        typeof body.bearerToken === "string" && body.userId === "product",
+        "Hosted Worker login did not return the demo session contract",
+      );
+      bearerToken = body.bearerToken;
+    },
+  );
+  const authorization = { authorization: `Bearer ${bearerToken}` };
+  await expectJson(
+    "/api/v1/meetings",
+    200,
+    { headers: authorization },
+    (body) => {
+      expectValue(
+        body.meetings?.some(
+          (meeting) => meeting.meetingId === "meeting-global-ai-rollout",
+        ) === true,
+        "Hosted Worker did not expose the seeded flagship meeting",
+      );
+    },
+  );
+  await expectJson(
+    "/api/v1/meetings/meeting-global-ai-rollout/projection",
+    200,
+    { headers: authorization },
+    (body) => {
+      expectValue(
+        body.meeting?.purpose?.includes("Work & Productivity") === true &&
+          body.participant?.userId === "product",
+        "Hosted Worker did not expose the flagship projection",
+      );
+    },
+  );
 
   const page = await fetch(`${externalHostBaseUrl}/`, {
     signal: AbortSignal.timeout(5_000),
@@ -123,7 +164,7 @@ try {
   );
 
   console.log(
-    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, and API fail-closed.`,
+    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, login, meetings, and projection.`,
   );
 } finally {
   if (worker.exitCode === null) {

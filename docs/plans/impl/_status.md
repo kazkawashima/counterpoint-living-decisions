@@ -544,22 +544,34 @@ The canonical implementation-facing artifacts are:
   shutdown runbook forbids schema down migration and secret-value inspection.
   No remote resource, secret, migration, deployment, or repository visibility
   changed during this preparation.
-- C4 is not complete: hosted flagship API parity, public-route success and
-  `USAGE_LIMIT_REACHED` integration proof, measured flagship limits, the web
-  managed-call switch, structured judge AI routes after hosted API parity, and
-  broader content-free operator visibility remain. The route adapter itself
-  is covered by three unit cases plus a four-case Cloudflare Worker gate suite,
-  and remains disabled by default.
-- The current regular baseline is 619 Vitest tests, with typecheck, lint,
-  formatting, architecture, secret scan, generated Worker types, environment,
-  and Cloudflare configuration checks passing. Six new Cloudflare-native D1
+- The minimum hosted flagship read path is now wired: migration 0008 seeds
+  synthetic demo identities and the Work & Productivity flagship meeting;
+  Cloudflare scrypt authentication, persisted Bearer sessions, assigned
+  meetings, and role projection are served by the Worker. Two Cloudflare
+  integration cases use external-host-style URLs, and the local Wrangler smoke
+  reaches login, meetings, and projection through `0.0.0.0`.
+- C4 is not complete: judge billable-path reservation, `USAGE_LIMIT_REACHED`
+  integration proof, measured flagship limits, the web managed-call switch,
+  structured judge AI routes, and broader content-free operator visibility
+  remain. The managed realtime route adapter is covered by three unit cases
+  plus a four-case Cloudflare Worker gate suite, and remains disabled by
+  default. Full hosted flagship mutation parity remains a later slice.
+- The current regular baseline is 631 Vitest tests, with typecheck, formatting,
+  architecture, secret scan, generated Worker types, environment, and
+  Cloudflare configuration checks passing. The changed files pass targeted
+  ESLint; repository-wide lint still reports 23 pre-existing errors in the
+  managed-realtime unit fixture and is not claimed as green here. Six new
+  Cloudflare-native D1
   persistence/IDOR/race/termination cases passed before two additional
   reauthorization cases were added; rerunning those two was blocked by the
   execution environment's escalated usage limit. The focused security rerun
   passed 279 cases; its four WebSocket cases were blocked only because the
   sandbox denied their required `0.0.0.0` listen. The prior full baselines
   remain 283 focused security and 70 Cloudflare-native tests. No visible UI
-  changed, so no browser capture was required.
+  changed, so no browser capture was required. Reel shooting and reel-material
+  organization are deferred from the active goal; product visibility remains
+  the priority, while the AGENTS.md capture rule stays available for later UI
+  changes.
 
 ## Not started
 
@@ -568,17 +580,16 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 by adding hosted Worker integration proof for the now
+Continue Plan 05 by adding hosted Worker integration proof for the now
 feature-gated start, turn, transcript, and terminate adapter, including
 reservation-limit, cleanup, session-revocation, assignment-removal, and
-cross-meeting cases. Complete the minimum hosted API parity needed by the
-flagship, measure the flagship to replace full-cap-per-attempt settlement with
-safe derived limits, and only then enable the public route or switch the judge
-UI. Never accept reservation, provider call, participant, session, or
-key-source identity from the browser. The UI switch requires browser E2E
-coverage and saved reel screenshots. Apply the same reservation boundary to
-structured judge AI only after hosted API parity exists. Keep remote Secret
-registration and deployment mutation behind an explicit deployment boundary.
+cross-meeting cases. Then measure the flagship to replace
+full-cap-per-attempt settlement with safe derived limits and only then enable
+the public judge route or switch the judge UI. Never accept reservation,
+provider call, participant, session, or key-source identity from the browser.
+Keep remote Secret registration and deployment mutation behind an explicit
+deployment boundary. Reel production is intentionally outside this active
+slice until the hosted product path is demonstrably viewable.
 
 ## Open gates
 

@@ -74,7 +74,7 @@ describe("Cloudflare remote deployment smoke", () => {
     expect(() => validatedDeploymentOrigin(url)).toThrow();
   });
 
-  it("fails closed on parity-pending APIs and secret-shaped responses", async () => {
+  it("enforces the unauthenticated API boundary and rejects secret-shaped responses", async () => {
     const parityPending = successfulFetch();
     parityPending.mockImplementationOnce(() =>
       Promise.resolve(

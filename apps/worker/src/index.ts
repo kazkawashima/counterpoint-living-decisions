@@ -27,6 +27,10 @@ import { resolveJudgeIpReservationInput } from "./judge-ip-reservation.js";
 import { createJudgeRealtimeUsageLimiter } from "./judge-realtime-call-controller.js";
 import { handleJudgeManagedRealtimeHttp } from "./judge-managed-realtime-http.js";
 import type { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
+import {
+  createWorkerFlagshipDependencies,
+  handleWorkerFlagshipHttp,
+} from "./worker-flagship-http.js";
 
 export { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
 export { MeetingCoordinator } from "./meeting-coordinator.js";
@@ -43,6 +47,7 @@ const EXPECTED_D1_MIGRATIONS = [
   "0005_d1_append_guards.sql",
   "0006_judge_usage_reservations.sql",
   "0007_judge_managed_realtime_calls.sql",
+  "0008_hosted_flagship_seed.sql",
 ] as const;
 
 interface JudgeWorkerBindings {
@@ -52,7 +57,10 @@ interface JudgeWorkerBindings {
   readonly OPENAI_API_KEY_JUDGE?: string;
 }
 
-export type Env = Readonly<WorkerBindings & JudgeWorkerBindings>;
+export type Env = Readonly<
+  Omit<WorkerBindings, "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED"> &
+    JudgeWorkerBindings
+>;
 
 interface DependencyProbe {
   readonly available: boolean;
@@ -234,6 +242,42 @@ export function createWorkerHandler(): ExportedHandler<Env> {
       if (url.pathname === "/ready") {
         return readinessResponse(env);
       }
+      if (url.pathname === "/api/v1/health") {
+        return healthResponse();
+      }
+      if (url.pathname === "/api/v1/ready") {
+        return readinessResponse(env);
+      }
+      const flagshipProjectionRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/projection$/u.exec(url.pathname);
+      const flagshipOperation =
+        request.method === "POST" && url.pathname === "/api/v1/login"
+          ? "login"
+          : request.method === "POST" && url.pathname === "/api/v1/logout"
+            ? "logout"
+            : request.method === "GET" && url.pathname === "/api/v1/meetings"
+              ? "meetings"
+              : request.method === "GET" && flagshipProjectionRoute !== null
+                ? "projection"
+                : undefined;
+      if (flagshipOperation !== undefined) {
+        const correlationId = crypto.randomUUID();
+        let meetingId: string | undefined;
+        if (flagshipProjectionRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(flagshipProjectionRoute[1] ?? "");
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        return handleWorkerFlagshipHttp({
+          correlationId,
+          dependencies: createWorkerFlagshipDependencies(env),
+          ...(meetingId === undefined ? {} : { meetingId }),
+          operation: flagshipOperation,
+          request,
+        });
+      }
       const realtimeClientSecretRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/client-secrets$/u.exec(
           url.pathname,
@@ -258,10 +302,7 @@ export function createWorkerHandler(): ExportedHandler<Env> {
         } catch {
           return apiErrorResponse("VALIDATION_FAILED", correlationId);
         }
-        const operation =
-          managedRealtimeCallRoute[3] === undefined
-            ? "start"
-            : managedRealtimeCallRoute[3];
+        const operation = managedRealtimeCallRoute[3] ?? "start";
         if (
           operation !== "start" &&
           operation !== "turn" &&

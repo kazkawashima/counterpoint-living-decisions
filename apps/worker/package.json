@@ -10,6 +10,7 @@
     "@counterpoint/adapters-cloudflare": "0.0.0",
     "@counterpoint/adapters-openai": "0.0.0",
     "@counterpoint/application": "0.0.0",
+    "@counterpoint/domain": "0.0.0",
     "@counterpoint/http-api": "0.0.0",
     "@counterpoint/ports": "0.0.0",
     "@counterpoint/protocol": "0.0.0"

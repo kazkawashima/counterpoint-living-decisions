@@ -51,6 +51,11 @@ C2 runtime notes:
   path must fetch the same personalized snapshot through the authenticated
   Worker route when the shared HTTP runtime is wired. C2 does not expose the
   coordinator's internal routes or a public WebSocket endpoint.
+- The hosted read path is now wired for the first visible product slice:
+  synthetic D1 identities and a Work & Productivity flagship meeting are
+  seeded, and Worker login, assigned meetings, and role projection reuse the
+  application session and authorization boundaries. Full hosted mutation and
+  realtime parity remains in the later C3/C4 work.
 
 ### C3 — Judge-managed key path
 
@@ -287,9 +292,8 @@ C6 preparation notes:
   migration and strict Worker deployment. It does not register or receive
   `OPENAI_API_KEY_JUDGE`; that remains a separate C3/C4 production gate.
 - A bounded remote smoke now verifies health, migration readiness, the SPA, and
-  unauthenticated API parity. It intentionally blocks the current
-  parity-pending Worker. A complete authenticated flagship smoke still must be
-  added and run before this row can close.
+  the unauthenticated authentication boundary. A complete authenticated
+  flagship smoke still must be added and run before this row can close.
 - Credential-free deployment records contain the commit, target, Worker name,
   origin host, and hashes of the generated config and private deployment
   status. No real deployment record exists until an approved deployment runs.

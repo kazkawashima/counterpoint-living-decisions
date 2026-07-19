@@ -24,6 +24,7 @@ export {
 } from "./d1-usage-limiter.js";
 export { createKeyedIpHash, type KeyedIpHash } from "./keyed-ip-hash.js";
 export { R2ArtifactStore } from "./r2-artifacts.js";
+export { ScryptPasswordVerifier } from "./passwords.js";
 export { WebCryptoSessionTokenIssuer } from "./session-tokens.js";
 
 export const adaptersCloudflarePackage = "@counterpoint/adapters-cloudflare";

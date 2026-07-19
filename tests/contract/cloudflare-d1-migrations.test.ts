@@ -30,6 +30,7 @@ const expectedMigrationNames = [
   "0005_d1_append_guards.sql",
   "0006_judge_usage_reservations.sql",
   "0007_judge_managed_realtime_calls.sql",
+  "0008_hosted_flagship_seed.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -83,6 +84,20 @@ const expectedTablesAfterMigration = [
     "decision_revisions",
     "event_appends",
     "events",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_realtime_calls",
     "judge_usage_reservations",
     "meetings",
     "participant_assignments",
