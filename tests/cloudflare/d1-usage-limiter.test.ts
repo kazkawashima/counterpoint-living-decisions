@@ -37,6 +37,11 @@ const DEFAULT_REQUEST: UsageRequest = {
   realtimeSeconds: 1,
 };
 
+const SYNTHETIC_REQUEST_FINGERPRINT =
+  "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+const OTHER_SYNTHETIC_REQUEST_FINGERPRINT =
+  "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
 let idSequence = 0;
 
 class MutableClock implements Clock {
@@ -80,6 +85,16 @@ async function hashIp(ipAddress: string): Promise<string> {
     .join("")}`;
 }
 
+async function sha256Fingerprint(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 function subject(
   suffix: string,
   overrides: Partial<UsageSubject> = {},
@@ -96,8 +111,9 @@ function limiter(
   clock: Clock,
   limits: Partial<D1UsageLimiterLimits> = {},
   ids: IdGenerator = new UniqueIds(),
+  database: D1Database = env.DB,
 ): D1UsageLimiter {
-  return new D1UsageLimiter(env.DB, {
+  return new D1UsageLimiter(database, {
     clock,
     hashIp,
     ids,
@@ -105,6 +121,127 @@ function limiter(
     model: "gpt-synthetic",
     operation: "responses",
     pricingVersion: "2026-07-19",
+  });
+}
+
+function trackDatabaseSessions(database: D1Database): {
+  readonly database: D1Database;
+  readonly sessionCount: () => number;
+} {
+  let sessionCount = 0;
+  return {
+    database: new Proxy(database, {
+      get(target, property, receiver) {
+        if (property === "withSession") {
+          return (constraint?: string): D1DatabaseSession => {
+            sessionCount += 1;
+            return target.withSession(constraint);
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    }),
+    sessionCount: () => sessionCount,
+  };
+}
+
+function validationProbe(): {
+  readonly d1StatementCount: () => number;
+  readonly hashIpCount: () => number;
+  readonly usageLimiter: D1UsageLimiter;
+} {
+  let d1StatementCount = 0;
+  let hashIpCount = 0;
+  const session = env.DB.withSession("first-primary");
+  const trackedSession = new Proxy(session, {
+    get(target, property, receiver) {
+      if (property === "prepare") {
+        return (query: string): D1PreparedStatement => {
+          d1StatementCount += 1;
+          return target.prepare(query);
+        };
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+  const database = new Proxy(env.DB, {
+    get(target, property, receiver) {
+      if (property === "withSession") {
+        return (): D1DatabaseSession => trackedSession;
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+  const usageLimiter = new D1UsageLimiter(database, {
+    clock: new MutableClock(),
+    hashIp: async (ipAddress) => {
+      hashIpCount += 1;
+      return hashIp(ipAddress);
+    },
+    ids: new UniqueIds(),
+    limits: DEFAULT_LIMITS,
+    model: "gpt-synthetic",
+    operation: "responses",
+    pricingVersion: "2026-07-19",
+  });
+  return {
+    d1StatementCount: () => d1StatementCount,
+    hashIpCount: () => hashIpCount,
+    usageLimiter,
+  };
+}
+
+function failAfterCommittedReservationInsert(): D1Database {
+  let shouldFail = true;
+
+  const wrapStatement = (
+    statement: D1PreparedStatement,
+    isReservationInsert: boolean,
+  ): D1PreparedStatement =>
+    new Proxy(statement, {
+      get(target, property, receiver) {
+        if (property === "bind") {
+          return (...values: unknown[]) =>
+            wrapStatement(
+              target.bind(...values),
+              isReservationInsert,
+            );
+        }
+        if (property === "run" && isReservationInsert) {
+          return async () => {
+            const result = await target.run();
+            if (shouldFail) {
+              shouldFail = false;
+              throw new Error("synthetic response loss after durable insert");
+            }
+            return result;
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+
+  const session = env.DB.withSession("first-primary");
+  const wrappedSession = new Proxy(session, {
+    get(target, property, receiver) {
+      if (property === "prepare") {
+        return (query: string) =>
+          wrapStatement(
+            target.prepare(query),
+            query.includes("INSERT INTO judge_usage_reservations"),
+          );
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+
+  return new Proxy(env.DB, {
+    get(target, property, receiver) {
+      if (property === "withSession") {
+        return () => wrappedSession;
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
   });
 }
 
@@ -129,6 +266,368 @@ async function reservationRow(
 }
 
 describe("D1UsageLimiter", () => {
+  it.each([
+    ["malformed", ""],
+    ["content-bearing", "reservation user@example.com"],
+    ["oversized", "a".repeat(257)],
+  ])(
+    "rejects a %s caller reservation ID before hashing or D1 access",
+    async (_kind, reservationId) => {
+      const probe = validationProbe();
+
+      await expect(
+        probe.usageLimiter.reserveWithId(
+          {
+            requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+            reservationId,
+          },
+          subject("invalid-reservation-id"),
+          DEFAULT_REQUEST,
+        ),
+      ).rejects.toThrow("identity.reservationId");
+      expect(probe.hashIpCount()).toBe(0);
+      expect(probe.d1StatementCount()).toBe(0);
+    },
+  );
+
+  it.each([
+    ["malformed", "sha256:not-a-digest"],
+    ["non-lowercase", `sha256:${"A".repeat(64)}`],
+  ])(
+    "rejects a %s request fingerprint before hashing or D1 access",
+    async (_kind, requestFingerprint) => {
+      const probe = validationProbe();
+
+      await expect(
+        probe.usageLimiter.reserveWithId(
+          {
+            requestFingerprint,
+            reservationId: "caller-reservation-validation",
+          },
+          subject("invalid-request-fingerprint"),
+          DEFAULT_REQUEST,
+        ),
+      ).rejects.toThrow("identity.requestFingerprint");
+      expect(probe.hashIpCount()).toBe(0);
+      expect(probe.d1StatementCount()).toBe(0);
+    },
+  );
+
+  it("hashes generated request identities without changing reserve decisions", async () => {
+    const generatedRequestIds: string[] = [];
+    let sequence = 0;
+    const ids: IdGenerator = {
+      next(namespace) {
+        sequence += 1;
+        const value = `${namespace}-${String(sequence)}`;
+        if (namespace === "judge-usage-request") {
+          generatedRequestIds.push(value);
+        }
+        return value;
+      },
+    };
+    const usageLimiter = limiter(new MutableClock(), {}, ids);
+
+    const first = await usageLimiter.reserve(
+      subject("generated-first"),
+      DEFAULT_REQUEST,
+    );
+    const second = await usageLimiter.reserve(
+      subject("generated-second"),
+      DEFAULT_REQUEST,
+    );
+
+    expect(first).toEqual({
+      kind: "allowed",
+      reservationId: "judge-usage-reservation-1",
+    });
+    expect(second).toEqual({
+      kind: "allowed",
+      reservationId: "judge-usage-reservation-3",
+    });
+    const firstRow = await reservationRow("judge-usage-reservation-1");
+    const secondRow = await reservationRow("judge-usage-reservation-3");
+    expect(firstRow?.request_fingerprint).toBe(
+      await sha256Fingerprint(generatedRequestIds[0]!),
+    );
+    expect(secondRow?.request_fingerprint).toBe(
+      await sha256Fingerprint(generatedRequestIds[1]!),
+    );
+    expect(firstRow?.request_fingerprint).not.toBe(
+      secondRow?.request_fingerprint,
+    );
+    expect(JSON.stringify([firstRow, secondRow])).not.toContain(
+      generatedRequestIds[0],
+    );
+    expect(JSON.stringify([firstRow, secondRow])).not.toContain(
+      generatedRequestIds[1],
+    );
+  });
+
+  it("inserts the caller reservation ID", async () => {
+    const usageLimiter = limiter(new MutableClock());
+
+    const decision = await usageLimiter.reserveWithId(
+      {
+        requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+        reservationId: "caller-reservation-insert",
+      },
+      subject("named-insert"),
+      DEFAULT_REQUEST,
+    );
+
+    expect(decision).toEqual({
+      activeUntilEpoch: Date.parse(START) / 1_000 + 300,
+      kind: "allowed",
+      reservationId: "caller-reservation-insert",
+      reservedAtEpoch: Date.parse(START) / 1_000,
+    });
+    await expect(
+      reservationRow("caller-reservation-insert"),
+    ).resolves.toMatchObject({
+      request_fingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservation_id: "caller-reservation-insert",
+    });
+  });
+
+  it("recovers an exact durable insert after caller uncertainty", async () => {
+    const clock = new MutableClock();
+    const usageLimiter = limiter(
+      clock,
+      {},
+      new UniqueIds(),
+      failAfterCommittedReservationInsert(),
+    );
+    const identity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-uncertain",
+    };
+    const scopedSubject = subject("named-uncertain");
+
+    await expect(
+      usageLimiter.reserveWithId(identity, scopedSubject, DEFAULT_REQUEST),
+    ).rejects.toThrow("synthetic response loss after durable insert");
+    clock.advanceSeconds(120);
+
+    await expect(
+      usageLimiter.reserveWithId(identity, scopedSubject, DEFAULT_REQUEST),
+    ).resolves.toEqual({
+      activeUntilEpoch: Date.parse(START) / 1_000 + 300,
+      kind: "allowed",
+      reservationId: identity.reservationId,
+      reservedAtEpoch: Date.parse(START) / 1_000,
+    });
+    const rows = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT COUNT(*) AS count, MIN(reserved_at_epoch) AS reserved_at_epoch
+          FROM judge_usage_reservations
+          WHERE reservation_id = ?
+        `,
+      )
+      .bind(identity.reservationId)
+      .first<{ count: number; reserved_at_epoch: number }>();
+    expect(rows).toEqual({
+      count: 1,
+      reserved_at_epoch: Date.parse(START) / 1_000,
+    });
+  });
+
+  it("rejects a same-ID immutable-field collision", async () => {
+    const usageLimiter = limiter(new MutableClock());
+    const identity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-collision",
+    };
+
+    await expect(
+      usageLimiter.reserveWithId(
+        identity,
+        subject("named-collision"),
+        DEFAULT_REQUEST,
+      ),
+    ).resolves.toMatchObject({ kind: "allowed" });
+    await expect(
+      usageLimiter.reserveWithId(
+        identity,
+        subject("named-collision"),
+        {
+          ...DEFAULT_REQUEST,
+          estimatedOutputTokens: DEFAULT_REQUEST.estimatedOutputTokens + 1,
+        },
+      ),
+    ).rejects.toThrow("immutable fields");
+    await expect(
+      usageLimiter.reserveWithId(
+        {
+          ...identity,
+          requestFingerprint: OTHER_SYNTHETIC_REQUEST_FINGERPRINT,
+        },
+        subject("named-collision"),
+        DEFAULT_REQUEST,
+      ),
+    ).rejects.toThrow("immutable fields");
+    const count = await env.DB.withSession("first-primary")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM judge_usage_reservations WHERE reservation_id = ?",
+      )
+      .bind(identity.reservationId)
+      .first<{ count: number }>();
+    expect(count?.count).toBe(1);
+  });
+
+  it("finds only content-free reservation state", async () => {
+    const rawIp = "192.0.2.199";
+    const usageLimiter = limiter(new MutableClock());
+    const identity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-find",
+    };
+    const scopedSubject = subject("named-find", {
+      accountId: "account-find-owner",
+      ipAddress: rawIp,
+      meetingId: "meeting-find-owner",
+    });
+
+    await usageLimiter.reserveWithId(
+      identity,
+      scopedSubject,
+      {
+        estimatedCostUsd: 0.25,
+        estimatedInputTokens: 11,
+        estimatedOutputTokens: 7,
+        generationCount: 2,
+        realtimeSeconds: 3,
+      },
+    );
+
+    const found = await usageLimiter.findReservation(identity.reservationId);
+    expect(found).toMatchObject({
+      accountId: scopedSubject.accountId,
+      actualCostMicroUsd: undefined,
+      actualGenerationCount: undefined,
+      actualInputTokens: undefined,
+      actualOutputTokens: undefined,
+      actualRealtimeSeconds: undefined,
+      estimatedCostMicroUsd: 250_000,
+      estimatedGenerationCount: 2,
+      estimatedInputTokens: 11,
+      estimatedOutputTokens: 7,
+      estimatedRealtimeSeconds: 3,
+      ipHash: await hashIp(rawIp),
+      meetingId: scopedSubject.meetingId,
+      model: "gpt-synthetic",
+      operation: "responses",
+      pricingVersion: "2026-07-19",
+      requestFingerprint: identity.requestFingerprint,
+      reservationId: identity.reservationId,
+      status: "reserved",
+    });
+    expect(JSON.stringify(found)).not.toContain(rawIp);
+    expect(JSON.stringify(found)).not.toContain("content");
+    await expect(
+      usageLimiter.findReservation("missing-reservation"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("preserves trustworthy actuals when claim settlement was interrupted", async () => {
+    const clock = new MutableClock();
+    const usageLimiter = limiter(clock);
+    const identity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-settlement",
+    };
+    const scopedSubject = subject("named-settlement");
+    const reserved = await usageLimiter.reserveWithId(
+      identity,
+      scopedSubject,
+      {
+        ...DEFAULT_REQUEST,
+        estimatedCostUsd: 0.8,
+        estimatedInputTokens: 20,
+        estimatedOutputTokens: 10,
+      },
+    );
+    if (reserved.kind !== "allowed") {
+      throw new Error("Expected named reservation");
+    }
+    await usageLimiter.finalize(identity.reservationId, {
+      ...DEFAULT_REQUEST,
+      estimatedCostUsd: 0.2,
+      estimatedInputTokens: 3,
+      estimatedOutputTokens: 2,
+    });
+    clock.advanceSeconds(60);
+
+    await expect(
+      usageLimiter.reserveWithId(
+        identity,
+        scopedSubject,
+        {
+          ...DEFAULT_REQUEST,
+          estimatedCostUsd: 0.8,
+          estimatedInputTokens: 20,
+          estimatedOutputTokens: 10,
+        },
+      ),
+    ).resolves.toEqual(reserved);
+    await expect(
+      usageLimiter.findReservation(identity.reservationId),
+    ).resolves.toMatchObject({
+      actualCostMicroUsd: 200_000,
+      actualGenerationCount: 1,
+      actualInputTokens: 3,
+      actualOutputTokens: 2,
+      actualRealtimeSeconds: 1,
+      status: "finalized",
+    });
+  });
+
+  it("fails closed when an exact named reservation was released", async () => {
+    const tracked = trackDatabaseSessions(env.DB);
+    const usageLimiter = limiter(
+      new MutableClock(),
+      {},
+      new UniqueIds(),
+      tracked.database,
+    );
+    const identity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-released",
+    };
+    const scopedSubject = subject("named-released");
+
+    const reserved = await usageLimiter.reserveWithId(
+      identity,
+      scopedSubject,
+      DEFAULT_REQUEST,
+    );
+    if (reserved.kind !== "allowed") {
+      throw new Error("Expected named reservation");
+    }
+    await usageLimiter.release(identity.reservationId);
+
+    await expect(
+      usageLimiter.reserveWithId(
+        identity,
+        scopedSubject,
+        DEFAULT_REQUEST,
+      ),
+    ).rejects.toThrow("Released usage reservation cannot be recovered");
+    const rows = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT COUNT(*) AS count, MIN(status) AS status
+          FROM judge_usage_reservations
+          WHERE reservation_id = ?
+        `,
+      )
+      .bind(identity.reservationId)
+      .first<{ count: number; status: string }>();
+    expect(rows).toEqual({ count: 1, status: "released" });
+    expect(tracked.sessionCount()).toBe(1);
+  });
+
   it.each([
     {
       dimension: "account",

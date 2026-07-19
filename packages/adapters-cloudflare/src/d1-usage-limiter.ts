@@ -15,6 +15,8 @@ const ROLLING_WINDOW_SECONDS = 24 * 60 * 60;
 const RESERVATION_ID_NAMESPACE = "judge-usage-reservation";
 const REQUEST_FINGERPRINT_NAMESPACE = "judge-usage-request";
 const KEYED_IP_HASH_PATTERN = /^hmac-sha256:[a-f0-9]{64}$/u;
+const OPAQUE_RESERVATION_ID_PATTERN = /^[0-9A-Za-z._:/-]{1,256}$/u;
+const REQUEST_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 
 export interface D1UsageLimiterLimits {
   readonly accountRequestsPerWindow: number;
@@ -58,17 +60,64 @@ export interface D1UsageSummary {
   readonly rollingWindowSeconds: number;
 }
 
+export type D1NamedUsageDecision =
+  | {
+      readonly activeUntilEpoch: number;
+      readonly kind: "allowed";
+      readonly reservationId: string;
+      readonly reservedAtEpoch: number;
+    }
+  | Extract<UsageDecision, { kind: "denied" }>;
+
+export interface ManagedUsageReservation {
+  readonly accountId: string;
+  readonly activeUntilEpoch: number;
+  readonly actualCostMicroUsd: number | undefined;
+  readonly actualGenerationCount: number | undefined;
+  readonly actualInputTokens: number | undefined;
+  readonly actualOutputTokens: number | undefined;
+  readonly actualRealtimeSeconds: number | undefined;
+  readonly estimatedCostMicroUsd: number;
+  readonly estimatedGenerationCount: number;
+  readonly estimatedInputTokens: number;
+  readonly estimatedOutputTokens: number;
+  readonly estimatedRealtimeSeconds: number;
+  readonly finalizedAtEpoch: number | undefined;
+  readonly ipHash: string;
+  readonly meetingId: string;
+  readonly model: string;
+  readonly operation: string;
+  readonly pricingVersion: string;
+  readonly releasedAtEpoch: number | undefined;
+  readonly requestFingerprint: string;
+  readonly reservationId: string;
+  readonly reservedAtEpoch: number;
+  readonly status: "finalized" | "released" | "reserved";
+}
+
 interface StoredReservationRow {
+  readonly account_id: string;
+  readonly active_until_epoch: number;
   readonly actual_cost_micro_usd: number | null;
   readonly actual_generation_count: number | null;
   readonly actual_input_tokens: number | null;
   readonly actual_output_tokens: number | null;
   readonly actual_realtime_seconds: number | null;
+  readonly finalized_at_epoch: number | null;
+  readonly ip_hash: string;
+  readonly meeting_id: string;
+  readonly model: string;
+  readonly operation: string;
+  readonly pricing_version: string;
+  readonly released_at_epoch: number | null;
+  readonly request_fingerprint: string;
+  readonly reservation_id: string;
   readonly reserved_cost_micro_usd: number;
   readonly reserved_generation_count: number;
   readonly reserved_input_tokens: number;
   readonly reserved_output_tokens: number;
   readonly reserved_realtime_seconds: number;
+  readonly reserved_at_epoch: number;
   readonly status: "finalized" | "released" | "reserved";
 }
 
@@ -229,6 +278,27 @@ function requireNonEmpty(
   }
 }
 
+function requireOpaqueReservationId(value: unknown, label: string): string {
+  if (
+    typeof value !== "string" ||
+    !OPAQUE_RESERVATION_ID_PATTERN.test(value)
+  ) {
+    throw new TypeError(
+      `${label} must be 1..256 opaque metadata characters [0-9A-Za-z._:/-]`,
+    );
+  }
+  return value;
+}
+
+function requireRequestFingerprint(value: unknown, label: string): string {
+  if (typeof value !== "string" || !REQUEST_FINGERPRINT_PATTERN.test(value)) {
+    throw new TypeError(
+      `${label} must be a lowercase sha256 digest`,
+    );
+  }
+  return value;
+}
+
 function requireNonNegativeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new TypeError(`${label} must be a non-negative safe integer`);
@@ -310,6 +380,16 @@ function nextId(
   return value;
 }
 
+async function sha256Fingerprint(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 function normalizedAggregate(row: UsageAggregateRow): UsageAggregateRow {
   return {
     account_requests: requireNonNegativeInteger(
@@ -378,15 +458,114 @@ function isGlobalCostTriggerError(error: unknown): boolean {
   );
 }
 
+function isReservationIdentityCollision(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes("UNIQUE constraint failed") &&
+    (error.message.includes("judge_usage_reservations.reservation_id") ||
+      error.message.includes("judge_usage_reservations.request_fingerprint"))
+  );
+}
+
+function optionalNonNegativeInteger(
+  value: number | null,
+  label: string,
+): number | undefined {
+  return value === null ? undefined : requireNonNegativeInteger(value, label);
+}
+
+function managedReservation(
+  row: StoredReservationRow,
+): ManagedUsageReservation {
+  requireNonEmpty(row.reservation_id, "Stored reservation ID");
+  requireNonEmpty(row.request_fingerprint, "Stored request fingerprint");
+  requireNonEmpty(row.account_id, "Stored account ID");
+  if (!KEYED_IP_HASH_PATTERN.test(row.ip_hash)) {
+    throw new TypeError("Stored IP hash must be a keyed hmac-sha256 digest");
+  }
+  requireNonEmpty(row.meeting_id, "Stored meeting ID");
+  requireNonEmpty(row.operation, "Stored operation");
+  requireNonEmpty(row.model, "Stored model");
+  requireNonEmpty(row.pricing_version, "Stored pricing version");
+
+  return {
+    accountId: row.account_id,
+    activeUntilEpoch: requireNonNegativeInteger(
+      row.active_until_epoch,
+      "Stored active-until timestamp",
+    ),
+    actualCostMicroUsd: optionalNonNegativeInteger(
+      row.actual_cost_micro_usd,
+      "Stored actual cost",
+    ),
+    actualGenerationCount: optionalNonNegativeInteger(
+      row.actual_generation_count,
+      "Stored actual generation count",
+    ),
+    actualInputTokens: optionalNonNegativeInteger(
+      row.actual_input_tokens,
+      "Stored actual input tokens",
+    ),
+    actualOutputTokens: optionalNonNegativeInteger(
+      row.actual_output_tokens,
+      "Stored actual output tokens",
+    ),
+    actualRealtimeSeconds: optionalNonNegativeInteger(
+      row.actual_realtime_seconds,
+      "Stored actual Realtime seconds",
+    ),
+    estimatedCostMicroUsd: requireNonNegativeInteger(
+      row.reserved_cost_micro_usd,
+      "Stored estimated cost",
+    ),
+    estimatedGenerationCount: requireNonNegativeInteger(
+      row.reserved_generation_count,
+      "Stored estimated generation count",
+    ),
+    estimatedInputTokens: requireNonNegativeInteger(
+      row.reserved_input_tokens,
+      "Stored estimated input tokens",
+    ),
+    estimatedOutputTokens: requireNonNegativeInteger(
+      row.reserved_output_tokens,
+      "Stored estimated output tokens",
+    ),
+    estimatedRealtimeSeconds: requireNonNegativeInteger(
+      row.reserved_realtime_seconds,
+      "Stored estimated Realtime seconds",
+    ),
+    finalizedAtEpoch: optionalNonNegativeInteger(
+      row.finalized_at_epoch,
+      "Stored finalization timestamp",
+    ),
+    ipHash: row.ip_hash,
+    meetingId: row.meeting_id,
+    model: row.model,
+    operation: row.operation,
+    pricingVersion: row.pricing_version,
+    releasedAtEpoch: optionalNonNegativeInteger(
+      row.released_at_epoch,
+      "Stored release timestamp",
+    ),
+    requestFingerprint: row.request_fingerprint,
+    reservationId: row.reservation_id,
+    reservedAtEpoch: requireNonNegativeInteger(
+      row.reserved_at_epoch,
+      "Stored reservation timestamp",
+    ),
+    status: row.status,
+  };
+}
+
 export class D1UsageLimiter implements UsageLimiter {
   readonly #clock: Clock | (() => string);
-  readonly #database: D1Database;
   readonly #hashIp: (ipAddress: string) => Promise<string>;
   readonly #ids: IdGenerator | ((namespace: string) => string);
   readonly #limits: D1UsageLimiterLimits;
   readonly #model: string;
   readonly #operation: string;
   readonly #pricingVersion: string;
+  readonly #session: D1DatabaseSession;
 
   constructor(database: D1Database, options: D1UsageLimiterOptions) {
     requireNonEmpty(options.operation, "operation");
@@ -441,19 +620,57 @@ export class D1UsageLimiter implements UsageLimiter {
     }
 
     this.#clock = options.clock;
-    this.#database = database;
     this.#hashIp = options.hashIp;
     this.#ids = options.ids;
     this.#limits = limits;
     this.#model = options.model;
     this.#operation = options.operation;
     this.#pricingVersion = options.pricingVersion;
+    this.#session = database.withSession("first-primary");
   }
 
   async reserve(
     subject: UsageSubject,
     request: UsageRequest,
   ): Promise<UsageDecision> {
+    const reservationId = nextId(this.#ids, RESERVATION_ID_NAMESPACE);
+    const requestIdentity = nextId(
+      this.#ids,
+      REQUEST_FINGERPRINT_NAMESPACE,
+    );
+    const requestFingerprint = await sha256Fingerprint(requestIdentity);
+    const decision = await this.reserveWithId(
+      {
+        requestFingerprint,
+        reservationId,
+      },
+      subject,
+      request,
+    );
+    return decision.kind === "allowed"
+      ? { kind: "allowed", reservationId: decision.reservationId }
+      : decision;
+  }
+
+  async reserveWithId(
+    identity: {
+      readonly reservationId: string;
+      readonly requestFingerprint: string;
+    },
+    subject: UsageSubject,
+    request: UsageRequest,
+  ): Promise<D1NamedUsageDecision> {
+    if (typeof identity !== "object" || identity === null) {
+      throw new TypeError("identity must be an object");
+    }
+    requireOpaqueReservationId(
+      identity.reservationId,
+      "identity.reservationId",
+    );
+    requireRequestFingerprint(
+      identity.requestFingerprint,
+      "identity.requestFingerprint",
+    );
     if (typeof subject !== "object" || subject === null) {
       throw new TypeError("subject must be an object");
     }
@@ -474,10 +691,21 @@ export class D1UsageLimiter implements UsageLimiter {
       );
     }
 
-    const reservationId = nextId(this.#ids, RESERVATION_ID_NAMESPACE);
-    const requestFingerprint = nextId(this.#ids, REQUEST_FINGERPRINT_NAMESPACE);
     const cutoff = now - ROLLING_WINDOW_SECONDS;
-    const session = this.#database.withSession("first-primary");
+    const session = this.#session;
+    const existing = await this.#reservation(
+      session,
+      identity.reservationId,
+    );
+    if (existing !== undefined) {
+      return this.#recoverNamedReservation(
+        existing,
+        identity,
+        subject,
+        ipHash,
+        usage,
+      );
+    }
 
     try {
       const result = await session
@@ -488,8 +716,8 @@ export class D1UsageLimiter implements UsageLimiter {
           subject.meetingId,
           cutoff,
           now,
-          reservationId,
-          requestFingerprint,
+          identity.reservationId,
+          identity.requestFingerprint,
           subject.accountId,
           ipHash,
           subject.meetingId,
@@ -519,7 +747,12 @@ export class D1UsageLimiter implements UsageLimiter {
         )
         .run();
       if (result.meta.changes === 1) {
-        return { kind: "allowed", reservationId };
+        return {
+          activeUntilEpoch: activeUntil,
+          kind: "allowed",
+          reservationId: identity.reservationId,
+          reservedAtEpoch: now,
+        };
       }
       if (result.meta.changes !== 0) {
         throw new Error(
@@ -529,6 +762,21 @@ export class D1UsageLimiter implements UsageLimiter {
     } catch (error) {
       if (isGlobalCostTriggerError(error)) {
         return { kind: "denied", limit: "cost" };
+      }
+      if (isReservationIdentityCollision(error)) {
+        const durable = await this.#reservation(
+          session,
+          identity.reservationId,
+        );
+        if (durable !== undefined) {
+          return this.#recoverNamedReservation(
+            durable,
+            identity,
+            subject,
+            ipHash,
+            usage,
+          );
+        }
       }
       throw error;
     }
@@ -547,11 +795,22 @@ export class D1UsageLimiter implements UsageLimiter {
     return { kind: "denied", limit };
   }
 
+  async findReservation(
+    reservationId: string,
+  ): Promise<ManagedUsageReservation | undefined> {
+    requireNonEmpty(reservationId, "reservationId");
+    const row = await this.#reservation(
+      this.#session,
+      reservationId,
+    );
+    return row === undefined ? undefined : managedReservation(row);
+  }
+
   async finalize(reservationId: string, actual: UsageRequest): Promise<void> {
     requireNonEmpty(reservationId, "reservationId");
     const usage = normalizeUsage(actual, "actual");
     const now = unixSeconds(this.#clock);
-    const session = this.#database.withSession("first-primary");
+    const session = this.#session;
     const result = await session
       .prepare(
         `
@@ -614,7 +873,7 @@ export class D1UsageLimiter implements UsageLimiter {
   async release(reservationId: string): Promise<void> {
     requireNonEmpty(reservationId, "reservationId");
     const now = unixSeconds(this.#clock);
-    const session = this.#database.withSession("first-primary");
+    const session = this.#session;
     const result = await session
       .prepare(
         `
@@ -659,7 +918,7 @@ export class D1UsageLimiter implements UsageLimiter {
 
     const now = unixSeconds(this.#clock);
     const aggregate = await this.#usageAggregate(
-      this.#database.withSession("first-primary"),
+      this.#session,
       subject,
       ipHash,
       now,
@@ -794,6 +1053,14 @@ export class D1UsageLimiter implements UsageLimiter {
       .prepare(
         `
           SELECT
+            reservation_id,
+            request_fingerprint,
+            account_id,
+            ip_hash,
+            meeting_id,
+            operation,
+            model,
+            pricing_version,
             status,
             reserved_cost_micro_usd,
             actual_cost_micro_usd,
@@ -804,7 +1071,11 @@ export class D1UsageLimiter implements UsageLimiter {
             reserved_generation_count,
             actual_generation_count,
             reserved_realtime_seconds,
-            actual_realtime_seconds
+            actual_realtime_seconds,
+            reserved_at_epoch,
+            active_until_epoch,
+            finalized_at_epoch,
+            released_at_epoch
           FROM judge_usage_reservations
           WHERE reservation_id = ?
         `,
@@ -812,5 +1083,51 @@ export class D1UsageLimiter implements UsageLimiter {
       .bind(reservationId)
       .first<StoredReservationRow>();
     return row ?? undefined;
+  }
+
+  #recoverNamedReservation(
+    row: StoredReservationRow,
+    identity: {
+      readonly reservationId: string;
+      readonly requestFingerprint: string;
+    },
+    subject: UsageSubject,
+    ipHash: string,
+    usage: NormalizedUsage,
+  ): Extract<D1NamedUsageDecision, { kind: "allowed" }> {
+    if (
+      row.reservation_id !== identity.reservationId ||
+      row.request_fingerprint !== identity.requestFingerprint ||
+      row.account_id !== subject.accountId ||
+      row.ip_hash !== ipHash ||
+      row.meeting_id !== subject.meetingId ||
+      row.operation !== this.#operation ||
+      row.model !== this.#model ||
+      row.pricing_version !== this.#pricingVersion ||
+      row.reserved_cost_micro_usd !== usage.costMicroUsd ||
+      row.reserved_input_tokens !== usage.inputTokens ||
+      row.reserved_output_tokens !== usage.outputTokens ||
+      row.reserved_generation_count !== usage.generationCount ||
+      row.reserved_realtime_seconds !== usage.realtimeSeconds
+    ) {
+      throw new Error(
+        "Usage reservation ID collides with different immutable fields",
+      );
+    }
+    if (row.status === "released") {
+      throw new Error("Released usage reservation cannot be recovered");
+    }
+    return {
+      activeUntilEpoch: requireNonNegativeInteger(
+        row.active_until_epoch,
+        "Stored active-until timestamp",
+      ),
+      kind: "allowed",
+      reservationId: row.reservation_id,
+      reservedAtEpoch: requireNonNegativeInteger(
+        row.reserved_at_epoch,
+        "Stored reservation timestamp",
+      ),
+    };
   }
 }
