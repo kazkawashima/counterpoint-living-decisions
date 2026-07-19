@@ -33,12 +33,20 @@
         "name": "MEETINGS",
         "class_name": "MeetingCoordinator",
       },
+      {
+        "name": "JUDGE_REALTIME_CALLS",
+        "class_name": "JudgeRealtimeCallController",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["MeetingCoordinator"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["JudgeRealtimeCallController"],
     },
   ],
   "vars": {

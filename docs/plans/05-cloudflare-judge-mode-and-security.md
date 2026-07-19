@@ -56,7 +56,7 @@ C2 runtime notes:
 
 - [ ] Register `OPENAI_API_KEY_JUDGE` via secret workflow without echoing value.
 - [x] Allow only the judge user capability.
-- [x] Keep standard key out of browser, DO state, D1, R2, logs, and events.
+- [x] Keep standard key out of browser, DO storage, D1, R2, logs, and events.
 - [x] Keep direct judge client-secret issuance fail-closed until the C4
       server-owned call path enforces its reservation.
 - [x] Keep ordinary BYOK behavior unchanged.
@@ -125,14 +125,22 @@ C4 foundation notes:
   only SDP, channel isolation instructions, model, and a pseudonymous safety
   identifier to OpenAI, validates a bounded SDP response and exact call
   location, and keeps the provider call ID out of the browser contract. An
-  acceptance hook lets the future controller persist the call ID before SDP
-  body validation; the key-bearing destination is fixed to the official HTTPS
+  acceptance hook lets the controller persist the call ID before SDP body
+  validation; the key-bearing destination is fixed to the official HTTPS
   endpoint and cannot be overridden.
-- The connector is not yet routed. The remaining security gate is a durable
-  call controller that owns the provider call ID, enforces bounded termination,
-  and closes or conservatively finalizes the reservation. Until that gate is
-  implemented, direct judge Realtime issuance stays fail-closed and no remote
-  Secret registration occurs.
+- A dedicated Durable Object now owns one reservation/call pair. It persists
+  the provider call ID before returning SDP, requires an exact active full-cap
+  D1 reservation before provider work, schedules a 30-second alarm, invokes the
+  official authenticated hangup endpoint, and retries settlement without
+  issuing duplicate hangups. Accepted calls with a later malformed SDP response
+  are terminated immediately; provider outcomes without a known call ID are
+  charged conservatively.
+- The controller is not publicly routed yet. Reserving the complete USD 25
+  window prevents overlapping calls but does not prove that one hostile
+  browser data channel cannot exceed its reservation before the 30-second
+  alarm. Judge client-secret issuance therefore remains fail-closed until
+  authenticated sideband enforcement or a server-relayed transport bounds
+  in-call generations and cost. No remote Secret registration occurs.
 
 ### C5 — Security hardening
 

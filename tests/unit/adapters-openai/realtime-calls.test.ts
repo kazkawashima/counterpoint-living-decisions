@@ -3,6 +3,7 @@ import {
   MAX_OPENAI_REALTIME_SDP_BYTES,
   OPENAI_REALTIME_CALLS_URL,
   OpenAiManagedRealtimeCallConnector,
+  OpenAiManagedRealtimeCallTerminator,
   OpenAiRealtimeCallError,
   type OpenAiManagedRealtimeCallConnectorOptions,
 } from "@counterpoint/adapters-openai";
@@ -409,5 +410,89 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
 
     await connector.connect(request);
     expect(fetch.mock.calls[0]?.[0]).toBe(OPENAI_REALTIME_CALLS_URL);
+  });
+});
+
+describe("OpenAiManagedRealtimeCallTerminator", () => {
+  it("hangs up the exact server-owned call without reading a provider body", async () => {
+    const providerBody = `provider body containing ${standardApiKey}`;
+    const fetch = vi.fn<FetchLike>(() =>
+      Promise.resolve(new Response(providerBody, { status: 200 })),
+    );
+    const terminator = new OpenAiManagedRealtimeCallTerminator({
+      apiKey: standardApiKey,
+      fetch,
+    });
+
+    await terminator.hangup("rtc_call-ABC_123");
+
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `${OPENAI_REALTIME_CALLS_URL}/rtc_call-ABC_123/hangup`,
+    );
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Authorization: `Bearer ${standardApiKey}` },
+      method: "POST",
+    });
+    expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each([
+    "",
+    "call_not-realtime",
+    "rtc_contains.dot",
+    "rtc_contains/slash",
+    `rtc_${"a".repeat(252)}`,
+  ])("rejects invalid call ID %j before provider work", async (callId) => {
+    const fetch = vi.fn<FetchLike>();
+    const terminator = new OpenAiManagedRealtimeCallTerminator({
+      apiKey: standardApiKey,
+      fetch,
+    });
+
+    await expect(terminator.hangup(callId)).rejects.toThrow(
+      "call ID is invalid",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([400, 401, 404, 429, 500])(
+    "sanitizes a failed hangup with status %s",
+    async (status) => {
+      const providerBody = `provider rejected ${standardApiKey}`;
+      const terminator = new OpenAiManagedRealtimeCallTerminator({
+        apiKey: standardApiKey,
+        fetch: () => Promise.resolve(new Response(providerBody, { status })),
+      });
+
+      const failure = await terminator
+        .hangup("rtc_call-ABC_123")
+        .catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(OpenAiRealtimeCallError);
+      expect(String(failure)).toContain(String(status));
+      expect(String(failure)).not.toContain(standardApiKey);
+      expect(String(failure)).not.toContain(providerBody);
+      expect(failure).not.toHaveProperty("cause");
+    },
+  );
+
+  it("sanitizes transport errors and keeps the captured key private", async () => {
+    const terminator = new OpenAiManagedRealtimeCallTerminator({
+      apiKey: standardApiKey,
+      fetch: (_input, init) =>
+        Promise.reject(
+          new Error(`transport failed for ${JSON.stringify(init?.headers)}`),
+        ),
+    });
+
+    const failure = await terminator
+      .hangup("rtc_call-ABC_123")
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(OpenAiRealtimeCallError);
+    expect(String(failure)).not.toContain(standardApiKey);
+    expect((failure as Error).stack).not.toContain(standardApiKey);
+    expect(JSON.stringify(terminator)).toBe("{}");
   });
 });

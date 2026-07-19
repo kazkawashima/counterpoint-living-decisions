@@ -69,6 +69,7 @@ export {
   MAX_OPENAI_REALTIME_SDP_BYTES,
   OPENAI_REALTIME_CALLS_URL,
   OpenAiManagedRealtimeCallConnector,
+  OpenAiManagedRealtimeCallTerminator,
   OpenAiRealtimeCallError,
   type OpenAiManagedRealtimeCallConnectorOptions,
 } from "./realtime-calls.js";

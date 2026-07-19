@@ -379,33 +379,43 @@ The canonical implementation-facing artifacts are:
   fixes the global product ceiling at USD 25.
 - Reserved or outcome-unknown work remains charged at its full estimate
   without aging out; finalized actuals remain charged for 24 hours from
-  settlement.
-  finalize is idempotent and cannot exceed any reserved field; release is
-  idempotent only before finalization, and overlapping requests can settle out
-  of order. Tests cover every dimension, exactly USD 25 plus one micro-USD,
-  exact 24-hour expiry, unknown-outcome retention, concurrent requests, adapter
-  recreation, lifecycle invariants, direct-write trigger defense, and keyed
-  HMAC-only IP storage. A monotonic timestamp trigger also rejects out-of-order
-  privileged inserts that would otherwise evade a historical rolling-window
-  check.
+  settlement. Finalization is idempotent and cannot exceed any reserved field;
+  release is idempotent only before finalization, and overlapping requests can
+  settle out of order. Tests cover every dimension, exactly USD 25 plus one
+  micro-USD, exact 24-hour expiry, unknown-outcome retention, concurrent
+  requests, adapter recreation, lifecycle invariants, direct-write trigger
+  defense, and keyed HMAC-only IP storage. A monotonic timestamp trigger also
+  rejects out-of-order privileged inserts that would otherwise evade a
+  historical rolling-window check.
 - A server-owned unified WebRTC connector now captures the standard key, sends
   a bounded multipart SDP/session request with a pseudonymous safety
   identifier, validates response content type/size and the exact provider call
   location, fixes the key-bearing destination to the official HTTPS endpoint,
   and keeps both the key and call ID out of the browser protocol. Its
-  acceptance hook exposes the call ID to a trusted future controller before
-  SDP body validation, allowing accepted but malformed responses to remain
+  acceptance hook exposes the call ID to the trusted call controller before SDP
+  body validation, allowing accepted but malformed responses to remain
   terminable.
+- A dedicated Durable Object now owns each judge Realtime reservation/call
+  pair. It requires the exact active full-cap D1 reservation before provider
+  work, durably stores the provider call ID before browser SDP is returned,
+  schedules a 30-second alarm, invokes the official authenticated hangup
+  endpoint, and retries settlement without duplicate hangups. Accepted calls
+  with a later malformed SDP response are terminated immediately; unknown
+  provider outcomes remain conservatively charged.
+- The controller is intentionally not publicly routed. Reserving the complete
+  USD 25 rolling-window ceiling prevents overlap but does not prove that one
+  hostile browser data channel cannot exceed the reservation before the
+  30-second alarm. Sideband enforcement or a server-relayed transport must
+  first bound in-call generations and cost.
 - Direct Worker judge client-secret issuance is now intentionally fail-closed,
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
-- C4 is not complete: the connector is not routed until a durable server-side
-  controller can enforce bounded call termination and close or conservatively
-  finalize the reservation. Structured judge AI routes, measured flagship
-  limits, `USAGE_LIMIT_REACHED` HTTP integration, and content-free operator
-  visibility also remain.
-- The current verification baseline is 455 regular Vitest tests and 36
+- C4 is not complete: safe public route wiring, sideband usage enforcement,
+  measured flagship limits, the web managed-call switch, structured judge AI
+  routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
+  broader content-free operator visibility remain.
+- The current verification baseline is 467 regular Vitest tests and 46
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 
@@ -415,14 +425,15 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 by adding a durable server-side Realtime call controller
-that owns the provider call ID, has a bounded termination path, and settles the
-existing reservation conservatively. Then wire the authenticated allowlisted
-judge route through the limiter and controller, returning
-`USAGE_LIMIT_REACHED` before any provider request. Apply the same reservation
-boundary to structured judge AI only after hosted API parity exists. Keep
-remote Secret registration and deployment mutation behind an explicit
-deployment boundary.
+Continue Plan 05 C4 by attaching an authenticated sideband WebSocket to the
+server-owned call ID, durably aggregating bounded `response.done` usage without
+content, and pricing that usage against the pinned model rate card. Preserve
+the full reservation on missing or malformed telemetry; only measured,
+validated totals may settle below the USD 25 estimate. Then switch the judge
+web path to the managed-call contract with browser E2E coverage and saved reel
+screenshots. Apply the same reservation boundary to structured judge AI only
+after hosted API parity exists. Keep remote Secret registration and deployment
+mutation behind an explicit deployment boundary.
 
 ## Open gates
 

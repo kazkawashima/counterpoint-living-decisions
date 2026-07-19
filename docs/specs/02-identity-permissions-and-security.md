@@ -96,7 +96,9 @@ Security rules:
 - Standard key exists only as Cloudflare Secret `OPENAI_API_KEY_JUDGE`.
 - The Worker may use it only behind server-owned, pre-billable OpenAI call
   paths. Judge mode does not return a provider client secret to the browser.
-- The standard key is never sent to a Durable Object or browser.
+- The dedicated call-controller Durable Object may read the Worker Secret
+  transiently to create and terminate provider calls. The key is never written
+  to Durable Object storage or sent to a browser.
 - Ordinary users cannot select or inherit judge mode.
 - Hard limits bound account, IP, meeting count, concurrent sessions, Realtime
   seconds, generations, tokens, and daily spend.
@@ -108,9 +110,11 @@ Security rules:
   worst case remains within the currency boundary.
 - Hitting any limit fails closed with an explicit cap error and no new OpenAI
   request.
-- Direct judge Realtime client-secret issuance remains disabled until a
-  server-owned controller can enforce bounded termination and account for the
-  reserved call. Ordinary facilitator-provided BYOK remains a separate mode.
+- Direct judge Realtime client-secret issuance remains disabled. Judge WebRTC
+  will start only through the server-owned call controller once the controller
+  can bound both duration and in-call spend, own the provider call ID, and
+  account for the reserved call. Ordinary facilitator-provided BYOK remains a
+  separate mode.
 
 Exact budget values are a user decision recorded separately.
 

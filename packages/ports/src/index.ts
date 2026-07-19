@@ -4,6 +4,7 @@ export type {
   AiResult,
   ManagedRealtimeCall,
   ManagedRealtimeCallConnector,
+  ManagedRealtimeCallTerminator,
   ManagedRealtimeSecretIssuer,
   MeetingApiKeyLease,
   MeetingApiKeyLeaseConfigureResult,

@@ -77,6 +77,17 @@ export interface ManagedRealtimeCallConnector {
   ): Promise<ManagedRealtimeCall>;
 }
 
+/**
+ * Server-owned Realtime call termination boundary.
+ *
+ * Provider call identifiers must remain server-side. Implementations must use
+ * the provider's authenticated call-control endpoint and must not serialize
+ * provider credentials or response bodies into errors.
+ */
+export interface ManagedRealtimeCallTerminator {
+  hangup(callId: string): Promise<void>;
+}
+
 export interface MeetingApiKeyLease {
   readonly apiKey: string;
   readonly heartbeatAt: string;

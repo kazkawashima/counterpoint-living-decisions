@@ -22,7 +22,9 @@ import {
 } from "@counterpoint/protocol";
 
 import type { MeetingCoordinator } from "./meeting-coordinator.js";
+import type { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
 
+export { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
 export { MeetingCoordinator } from "./meeting-coordinator.js";
 
 const JSON_HEADERS = {
@@ -129,6 +131,18 @@ export function meetingCoordinatorFor(
   ) as DurableObjectStub<MeetingCoordinator>;
 }
 
+export function judgeRealtimeCallControllerFor(
+  env: Env,
+  reservationId: string,
+): DurableObjectStub<JudgeRealtimeCallController> {
+  if (reservationId.trim().length === 0) {
+    throw new TypeError("reservationId must not be empty");
+  }
+  return env.JUDGE_REALTIME_CALLS.get(
+    env.JUDGE_REALTIME_CALLS.idFromName(reservationId),
+  ) as DurableObjectStub<JudgeRealtimeCallController>;
+}
+
 function healthResponse(): Response {
   return jsonResponse(
     HealthResponseSchema.parse({
@@ -208,6 +222,11 @@ export function createWorkerHandler(): ExportedHandler<Env> {
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/client-secrets$/u.exec(
           url.pathname,
         );
+      const managedRealtimeCallRoute =
+        /^\/api\/v1\/meetings\/[^/]+\/realtime\/calls$/u.test(url.pathname);
+      if (request.method === "POST" && managedRealtimeCallRoute) {
+        return apiErrorResponse("REALTIME_UNAVAILABLE", crypto.randomUUID());
+      }
       if (
         request.method === "POST" &&
         realtimeClientSecretRoute?.[1] !== undefined

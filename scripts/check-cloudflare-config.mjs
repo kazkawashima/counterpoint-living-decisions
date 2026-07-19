@@ -19,7 +19,11 @@ export function validateCloudflareConfiguration(config, packageJson) {
   const meetingBinding = config.durable_objects?.bindings?.find(
     ({ name }) => name === "MEETINGS",
   );
+  const judgeRealtimeBinding = config.durable_objects?.bindings?.find(
+    ({ name }) => name === "JUDGE_REALTIME_CALLS",
+  );
   const firstMigration = config.migrations?.[0];
+  const secondMigration = config.migrations?.[1];
 
   expectCondition(
     config.main === "apps/worker/src/index.ts",
@@ -72,6 +76,19 @@ export function validateCloudflareConfiguration(config, packageJson) {
       firstMigration?.new_sqlite_classes?.includes("MeetingCoordinator") ===
         true,
     "The first Durable Object migration must introduce MeetingCoordinator with SQLite storage.",
+    violations,
+  );
+  expectCondition(
+    judgeRealtimeBinding?.class_name === "JudgeRealtimeCallController",
+    "JUDGE_REALTIME_CALLS must bind to JudgeRealtimeCallController.",
+    violations,
+  );
+  expectCondition(
+    secondMigration?.tag === "v2" &&
+      secondMigration?.new_sqlite_classes?.includes(
+        "JudgeRealtimeCallController",
+      ) === true,
+    "The second Durable Object migration must introduce JudgeRealtimeCallController with SQLite storage.",
     violations,
   );
   expectCondition(

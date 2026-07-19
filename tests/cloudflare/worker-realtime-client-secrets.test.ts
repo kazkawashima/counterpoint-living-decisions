@@ -36,6 +36,7 @@ function workerEnv(bindings: {
     ARTIFACTS: env.ARTIFACTS,
     ASSETS: env.ASSETS,
     DB: env.DB,
+    JUDGE_REALTIME_CALLS: env.JUDGE_REALTIME_CALLS,
     MEETINGS: env.MEETINGS,
     OPENAI_MODE: env.OPENAI_MODE,
     RUNTIME_MODE: env.RUNTIME_MODE,
@@ -212,5 +213,38 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "REALTIME_UNAVAILABLE",
     });
+  });
+
+  it("keeps the managed-call HTTP contract unrouted until in-call spend is bounded", async () => {
+    await seedJudgeFixture();
+    const response = await createWorkerHandler().fetch!(
+      new Request(
+        `https://counterpoint.test/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        {
+          body: JSON.stringify({
+            channel: "private",
+            meetingId: MEETING_ID,
+            sdpOffer: "v=0\r\ns=must-not-reach-provider\r\n",
+          }),
+          headers: {
+            authorization: `Bearer ${JUDGE_BEARER}`,
+            "content-type": "application/json",
+          },
+          method: "POST",
+        },
+      ) as unknown as WorkerRequest,
+      workerEnv({
+        JUDGE_USER_ID,
+        OPENAI_API_KEY_JUDGE: STANDARD_KEY,
+      }),
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(503);
+    const responseText = await response.clone().text();
+    await expect(response.json()).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
+    expect(responseText).not.toContain(STANDARD_KEY);
   });
 });

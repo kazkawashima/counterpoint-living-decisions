@@ -10,7 +10,7 @@ describe("Cloudflare configuration contract", () => {
     await expect(checkCloudflareConfiguration()).resolves.toEqual([]);
   });
 
-  it("rejects a judge key in ordinary Worker vars", () => {
+  it("rejects judge secrets in ordinary Worker vars", () => {
     const violations = validateCloudflareConfiguration(
       {
         assets: {
@@ -28,10 +28,22 @@ describe("Cloudflare configuration contract", () => {
           },
         ],
         durable_objects: {
-          bindings: [{ class_name: "MeetingCoordinator", name: "MEETINGS" }],
+          bindings: [
+            { class_name: "MeetingCoordinator", name: "MEETINGS" },
+            {
+              class_name: "JudgeRealtimeCallController",
+              name: "JUDGE_REALTIME_CALLS",
+            },
+          ],
         },
         main: "apps/worker/src/index.ts",
-        migrations: [{ new_sqlite_classes: ["MeetingCoordinator"], tag: "v1" }],
+        migrations: [
+          { new_sqlite_classes: ["MeetingCoordinator"], tag: "v1" },
+          {
+            new_sqlite_classes: ["JudgeRealtimeCallController"],
+            tag: "v2",
+          },
+        ],
         r2_buckets: [
           {
             binding: "ARTIFACTS",

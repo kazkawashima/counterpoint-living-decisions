@@ -1,6 +1,7 @@
 import type {
   ManagedRealtimeCall,
   ManagedRealtimeCallConnector,
+  ManagedRealtimeCallTerminator,
   RealtimeChannel,
 } from "@counterpoint/ports";
 
@@ -13,6 +14,7 @@ export const MAX_OPENAI_REALTIME_SDP_BYTES = 64 * 1024;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_CALL_ID_LENGTH = 255;
 const MAX_SAFETY_IDENTIFIER_LENGTH = 512;
+const REALTIME_CALL_ID_PATTERN = /^rtc_[A-Za-z0-9_-]+$/u;
 const REALTIME_CALL_LOCATION_PATTERN =
   /^\/v1\/realtime\/calls\/(rtc_[A-Za-z0-9_-]+)$/u;
 
@@ -211,6 +213,55 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       }
       throw new OpenAiRealtimeCallError(
         "OpenAI Realtime call creation was unavailable",
+      );
+    }
+  }
+}
+
+export class OpenAiManagedRealtimeCallTerminator implements ManagedRealtimeCallTerminator {
+  readonly #apiKey: string;
+  readonly #fetch: FetchLike;
+
+  constructor(options: OpenAiManagedRealtimeCallConnectorOptions) {
+    if (
+      options.apiKey.trim().length === 0 ||
+      options.apiKey.trim() !== options.apiKey
+    ) {
+      throw new TypeError(
+        "OpenAI managed Realtime API key must be nonempty and trimmed",
+      );
+    }
+    this.#apiKey = options.apiKey;
+    this.#fetch = options.fetch ?? globalThis.fetch;
+  }
+
+  async hangup(callId: string): Promise<void> {
+    try {
+      if (
+        !REALTIME_CALL_ID_PATTERN.test(callId) ||
+        callId.length > MAX_CALL_ID_LENGTH
+      ) {
+        throw new OpenAiRealtimeCallError("OpenAI Realtime call ID is invalid");
+      }
+      const response = await this.#fetch(
+        `${OPENAI_REALTIME_CALLS_URL}/${callId}/hangup`,
+        {
+          headers: { Authorization: `Bearer ${this.#apiKey}` },
+          method: "POST",
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        },
+      );
+      if (!response.ok) {
+        throw new OpenAiRealtimeCallError(
+          `OpenAI Realtime hangup failed with status ${String(response.status)}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof OpenAiRealtimeCallError) {
+        throw error;
+      }
+      throw new OpenAiRealtimeCallError(
+        "OpenAI Realtime hangup was unavailable",
       );
     }
   }
