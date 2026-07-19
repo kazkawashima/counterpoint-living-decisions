@@ -412,7 +412,7 @@ The canonical implementation-facing artifacts are:
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
 - Plan 05 C5 now has a reproducible `npm run security:verify` foundation. Its
-  246-case matrix, including parser-normalized loopback notation, gives strong
+  249-case matrix, including parser-normalized loopback notation, gives strong
   IDOR/meeting/owner, session/display expiry, DNS-pinned SSRF/redirect,
   disclosure preview/prompt-injection, artifact, webhook, API/Realtime, and
   content-free log regression coverage. Its repository scan includes tracked
@@ -420,20 +420,35 @@ The canonical implementation-facing artifacts are:
   secret-bearing filenames, and never prints matched values. D1-backed
   application authentication now proves exact inactivity and absolute expiry,
   durable revocation, logout, and post-revocation rejection.
+- Node HTTP authentication remains active one millisecond before inactivity
+  expiry, rejects and durably revokes at exact inactivity/absolute expiry, and
+  applies the same exact TTL boundary to display tokens. Wrong-meeting display
+  access returns the same content-free expired envelope.
+- HTTP IDOR coverage now includes an account legitimately assigned to two
+  meetings substituting an existing artifact ID across meeting paths; existing
+  and missing IDs return the same forbidden envelope. Cross-owner disclosure
+  preview, approval, and rejection likewise return the same forbidden result
+  for existing and missing candidates with no event-stream mutation.
 - HTTP multipart security now covers fake PDF, invalid JSON, and
   extension/MIME mismatch payloads. Malformed supported types remain
   owner-private failed sources with no derived/shared representation; mismatched
-  types are rejected before persistence. A correctly signed webhook one second
-  beyond its replay window is rejected without changing the event stream.
-- C5 is not complete: authorized-cross-meeting resource substitution,
-  HTTP expiry wiring, hosted safe-fetch parity, HTTP multipart spoofing/size,
-  expired/concurrent webhook delivery, and a single synthetic canary scan
-  across responses, payloads, logs, and generated output remain.
+  types are rejected before persistence. Both an overstated `Content-Length`
+  and an understated header with an actual file over 20 MiB are rejected
+  without storage or event writes. A correctly signed webhook one second beyond
+  its replay window is rejected without changing the event stream. Concurrent
+  duplicate delivery produces one receipt and one replay; concurrent changed
+  payloads sharing an event ID produce one receipt and one conflict, with
+  exactly one stored event in both cases.
+- All shared C5 rows now have executable coverage, including synthetic canaries
+  across API provider failures, Realtime state/errors, structured logs,
+  protocol envelopes, repository files, and generated output. C5 remains open
+  only for rerunning those contracts against hosted Worker routes after C3 API
+  parity.
 - C4 is not complete: safe public route wiring, sideband usage enforcement,
   measured flagship limits, the web managed-call switch, structured judge AI
   routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
   broader content-free operator visibility remain.
-- The current verification baseline is 480 regular Vitest tests and 47
+- The current verification baseline is 483 regular Vitest tests and 47
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 

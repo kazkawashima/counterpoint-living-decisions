@@ -10,6 +10,10 @@ import {
   type LocalServerRuntime,
 } from "../../apps/server/src/index.js";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
+import {
+  DISPLAY_TOKEN_TTL_MS,
+  SESSION_INACTIVITY_MS,
+} from "@counterpoint/application";
 import type {
   ManagedRealtimeSecretIssuer,
   RealtimeSecretIssuer,
@@ -57,6 +61,8 @@ import {
   UploadPrivateArtifactResponseSchema,
 } from "@counterpoint/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { MutableClock } from "../helpers/application-adapters.js";
 
 const temporaryDirectories: string[] = [];
 const runtimes: LocalServerRuntime[] = [];
@@ -328,6 +334,55 @@ describe("Node HTTP flagship shell", () => {
       ).toMatchObject({ code: "FORBIDDEN" });
     }
 
+    const product = await login(app, "product", "counterpoint-product");
+    const secondMeetingResponse = await app.request("/api/v1/meetings", {
+      body: JSON.stringify({
+        idempotencyKey: "artifact-cross-meeting-scope",
+        purpose: "Artifact scope boundary",
+        users: [
+          { role: "facilitator", userId: "product" },
+          { role: "participant", userId: "safety" },
+          { role: "participant", userId: "legal" },
+        ],
+      }),
+      headers: {
+        authorization: `Bearer ${product.bearerToken}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(secondMeetingResponse.status).toBe(201);
+    const secondMeeting = CreateMeetingResponseSchema.parse(
+      await secondMeetingResponse.json(),
+    );
+    const crossMeetingExisting = await app.request(
+      `/api/v1/meetings/${secondMeeting.meetingId}/artifacts/${artifact.sourceArtifactId}?representation=source`,
+      { headers: safetyAuthorization },
+    );
+    const crossMeetingMissing = await app.request(
+      `/api/v1/meetings/${secondMeeting.meetingId}/artifacts/artifact-synthetic-missing?representation=source`,
+      { headers: safetyAuthorization },
+    );
+    expect(crossMeetingExisting.status).toBe(403);
+    expect(crossMeetingMissing.status).toBe(403);
+    const crossMeetingExistingError = ErrorEnvelopeSchema.parse(
+      await crossMeetingExisting.json(),
+    );
+    const crossMeetingMissingError = ErrorEnvelopeSchema.parse(
+      await crossMeetingMissing.json(),
+    );
+    expect({
+      code: crossMeetingExistingError.code,
+      details: crossMeetingExistingError.details,
+      message: crossMeetingExistingError.message,
+      retryable: crossMeetingExistingError.retryable,
+    }).toEqual({
+      code: crossMeetingMissingError.code,
+      details: crossMeetingMissingError.details,
+      message: crossMeetingMissingError.message,
+      retryable: crossMeetingMissingError.retryable,
+    });
+
     const proposalResponse = await app.request(
       "/api/v1/disclosures/proposals",
       {
@@ -554,6 +609,70 @@ describe("Node HTTP flagship shell", () => {
     },
   );
 
+  it("rejects oversized multipart uploads before persistence despite Content-Length spoofing", async () => {
+    const { app, runtime } = await fixture();
+    const meetingId = "meeting-global-ai-rollout";
+    const safety = await login(app, "safety", "counterpoint-safety");
+    const authorization = `Bearer ${safety.bearerToken}`;
+    const recordsBefore =
+      await runtime.artifactIngestion.events.load(meetingId);
+    const put = vi.spyOn(runtime.artifactIngestion.artifacts, "put");
+
+    const declaredOversizedBody = new FormData();
+    declaredOversizedBody.set("idempotencyKey", "multipart-declared-oversized");
+    declaredOversizedBody.set("meetingId", meetingId);
+    declaredOversizedBody.set(
+      "file",
+      new File(["small"], "declared-oversized.txt", { type: "text/plain" }),
+    );
+    const declaredOversized = await app.request("/api/v1/artifacts", {
+      body: declaredOversizedBody,
+      headers: {
+        authorization,
+        "content-length": String(21 * 1024 * 1024 + 1),
+      },
+      method: "POST",
+    });
+    expect(declaredOversized.status).toBe(400);
+    expect(
+      ErrorEnvelopeSchema.parse(await declaredOversized.json()),
+    ).toMatchObject({
+      code: "ARTIFACT_TOO_LARGE",
+    });
+
+    const underreportedBody = new FormData();
+    underreportedBody.set(
+      "idempotencyKey",
+      "multipart-underreported-oversized",
+    );
+    underreportedBody.set("meetingId", meetingId);
+    underreportedBody.set(
+      "file",
+      new File([new Uint8Array(20 * 1024 * 1024 + 1)], "oversized.txt", {
+        type: "text/plain",
+      }),
+    );
+    const underreported = await app.request("/api/v1/artifacts", {
+      body: underreportedBody,
+      headers: {
+        authorization,
+        "content-length": "1",
+      },
+      method: "POST",
+    });
+    expect(underreported.status).toBe(400);
+    expect(ErrorEnvelopeSchema.parse(await underreported.json())).toMatchObject(
+      {
+        code: "ARTIFACT_TOO_LARGE",
+      },
+    );
+
+    expect(await runtime.artifactIngestion.events.load(meetingId)).toEqual(
+      recordsBefore,
+    );
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it("registers a safely fetched URL without persisting the locator or auto-sharing fetched instructions", async () => {
     const { runtime } = await fixture();
     const sourceText = [
@@ -706,6 +825,63 @@ describe("Node HTTP flagship shell", () => {
     expect(ErrorEnvelopeSchema.parse(await afterLogout.json())).toMatchObject({
       code: "AUTHENTICATION_REQUIRED",
     });
+  });
+
+  it("enforces exact inactivity and absolute session expiry through HTTP and persists revocation", async () => {
+    const { app, runtime } = await fixture();
+
+    const active = await login(app, "safety", "counterpoint-safety");
+    const activeHash = await runtime.tokens.digest(active.bearerToken);
+    const activeRecord = await runtime.sessions.findByTokenHash(activeHash);
+    expect(activeRecord).toBeDefined();
+    const activeClock = new MutableClock(activeRecord!.lastActivityAt);
+    activeClock.advance(SESSION_INACTIVITY_MS - 1);
+    const activeApp = createServerApp({ ...runtime, clock: activeClock });
+    const beforeBoundary = await activeApp.request("/api/v1/meetings", {
+      headers: { authorization: `Bearer ${active.bearerToken}` },
+    });
+    expect(beforeBoundary.status).toBe(200);
+
+    const inactive = await login(app, "legal", "counterpoint-legal");
+    const inactiveHash = await runtime.tokens.digest(inactive.bearerToken);
+    const inactiveRecord = await runtime.sessions.findByTokenHash(inactiveHash);
+    expect(inactiveRecord).toBeDefined();
+    const inactivityClock = new MutableClock(inactiveRecord!.lastActivityAt);
+    inactivityClock.advance(SESSION_INACTIVITY_MS);
+    const inactivityApp = createServerApp({
+      ...runtime,
+      clock: inactivityClock,
+    });
+    const atInactivityBoundary = await inactivityApp.request(
+      "/api/v1/meetings",
+      {
+        headers: { authorization: `Bearer ${inactive.bearerToken}` },
+      },
+    );
+    expect(atInactivityBoundary.status).toBe(401);
+    expect(
+      ErrorEnvelopeSchema.parse(await atInactivityBoundary.json()),
+    ).toMatchObject({ code: "SESSION_EXPIRED" });
+    await expect(
+      runtime.sessions.findByTokenHash(inactiveHash),
+    ).resolves.toMatchObject({ revokedAt: inactivityClock.now() });
+
+    const absolute = await login(app, "product", "counterpoint-product");
+    const absoluteHash = await runtime.tokens.digest(absolute.bearerToken);
+    const absoluteRecord = await runtime.sessions.findByTokenHash(absoluteHash);
+    expect(absoluteRecord).toBeDefined();
+    const absoluteClock = new MutableClock(absoluteRecord!.absoluteExpiresAt);
+    const absoluteApp = createServerApp({ ...runtime, clock: absoluteClock });
+    const atAbsoluteBoundary = await absoluteApp.request("/api/v1/meetings", {
+      headers: { authorization: `Bearer ${absolute.bearerToken}` },
+    });
+    expect(atAbsoluteBoundary.status).toBe(401);
+    expect(
+      ErrorEnvelopeSchema.parse(await atAbsoluteBoundary.json()),
+    ).toMatchObject({ code: "SESSION_EXPIRED" });
+    await expect(
+      runtime.sessions.findByTokenHash(absoluteHash),
+    ).resolves.toMatchObject({ revokedAt: absoluteClock.now() });
   });
 
   it("keeps meeting BYOK transient while issuing participant-bound Realtime secrets", async () => {
@@ -1429,6 +1605,73 @@ describe("Node HTTP flagship shell", () => {
     expect(serializedEvents).toContain(rotated.displayTokenId);
   });
 
+  it("enforces wrong-meeting and exact display-token expiry through HTTP without projection disclosure", async () => {
+    const { app, runtime } = await fixture();
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const tokenHash = await runtime.tokens.digest(facilitator.bearerToken);
+    const session = await runtime.sessions.findByTokenHash(tokenHash);
+    expect(session).toBeDefined();
+    const clock = new MutableClock(session!.lastActivityAt);
+    const expiringApp = createServerApp({ ...runtime, clock });
+    const meetingId = "meeting-global-ai-rollout";
+    const issuedResponse = await expiringApp.request(
+      `/api/v1/meetings/${meetingId}/display-tokens`,
+      {
+        body: JSON.stringify({ expectedPosition: 0, meetingId }),
+        headers: {
+          authorization: `Bearer ${facilitator.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(issuedResponse.status).toBe(201);
+    const issued = IssueDisplayTokenResponseSchema.parse(
+      await issuedResponse.json(),
+    );
+    expect(Date.parse(issued.expiresAt) - Date.parse(clock.now())).toBe(
+      DISPLAY_TOKEN_TTL_MS,
+    );
+
+    const wrongMeeting = await expiringApp.request(
+      `/api/v1/meetings/meeting-other/display?token=${encodeURIComponent(issued.displayToken)}`,
+    );
+    expect(wrongMeeting.status).toBe(401);
+    const wrongMeetingBody = await wrongMeeting.json();
+    expect(ErrorEnvelopeSchema.parse(wrongMeetingBody)).toMatchObject({
+      code: "DISPLAY_TOKEN_EXPIRED",
+    });
+    expect(JSON.stringify(wrongMeetingBody)).not.toContain("shared");
+    expect(JSON.stringify(wrongMeetingBody)).not.toContain(
+      "Global AI Product Rollout",
+    );
+
+    clock.advance(DISPLAY_TOKEN_TTL_MS - 1);
+    const beforeExpiry = await expiringApp.request(
+      `/api/v1/meetings/${meetingId}/display?token=${encodeURIComponent(issued.displayToken)}`,
+    );
+    expect(beforeExpiry.status).toBe(200);
+    expect(
+      SharedDisplayProjectionResponseSchema.parse(await beforeExpiry.json()),
+    ).toMatchObject({
+      meeting: { meetingId },
+    });
+
+    clock.advance(1);
+    const atExpiry = await expiringApp.request(
+      `/api/v1/meetings/${meetingId}/display?token=${encodeURIComponent(issued.displayToken)}`,
+    );
+    expect(atExpiry.status).toBe(401);
+    const expiryBody = await atExpiry.json();
+    expect(ErrorEnvelopeSchema.parse(expiryBody)).toMatchObject({
+      code: "DISPLAY_TOKEN_EXPIRED",
+    });
+    expect(JSON.stringify(expiryBody)).not.toContain("shared");
+    expect(JSON.stringify(expiryBody)).not.toContain(
+      "Global AI Product Rollout",
+    );
+  });
+
   it("lets only the facilitator reset one staged meeting deterministically", async () => {
     const { app, runtime } = await fixture();
     const facilitator = await login(app, "product", "counterpoint-product");
@@ -1876,6 +2119,68 @@ describe("Node HTTP flagship shell", () => {
     expect(
       beforePreview.filter(({ event }) => event.visibility === "shared"),
     ).toHaveLength(0);
+
+    const forbiddenLifecycleRequests = [
+      {
+        body(candidateId: string, suffix: string) {
+          return {
+            candidateId,
+            exactSnippet,
+            expectedPosition: 2,
+            idempotencyKey: `forbidden-preview-${suffix}`,
+            meetingId,
+            sourceRange,
+          };
+        },
+        path: "/api/v1/disclosures/preview",
+      },
+      {
+        body(candidateId: string, suffix: string) {
+          return {
+            candidateId,
+            expectedPosition: 2,
+            idempotencyKey: `forbidden-approve-${suffix}`,
+            meetingId,
+            previewHash: "sha256:synthetic-forbidden-preview",
+          };
+        },
+        path: "/api/v1/disclosures/approve",
+      },
+      {
+        body(candidateId: string, suffix: string) {
+          return {
+            candidateId,
+            expectedPosition: 2,
+            idempotencyKey: `forbidden-reject-${suffix}`,
+            meetingId,
+            reason: "Another owner cannot reject this candidate.",
+          };
+        },
+        path: "/api/v1/disclosures/reject",
+      },
+    ] as const;
+    for (const [suffix, candidateId] of [
+      ["existing", proposed.candidate.candidateId],
+      ["missing", "disclosure-synthetic-missing"],
+    ] as const) {
+      for (const request of forbiddenLifecycleRequests) {
+        const response = await app.request(request.path, {
+          body: JSON.stringify(request.body(candidateId, suffix)),
+          headers: {
+            authorization: `Bearer ${legal.bearerToken}`,
+            "content-type": "application/json",
+          },
+          method: "POST",
+        });
+        expect(response.status).toBe(403);
+        expect(ErrorEnvelopeSchema.parse(await response.json())).toMatchObject({
+          code: "FORBIDDEN",
+        });
+      }
+    }
+    expect(await runtime.disclosures.events.load(meetingId)).toEqual(
+      beforePreview,
+    );
 
     const previewResponse = await app.request("/api/v1/disclosures/preview", {
       body: JSON.stringify({
@@ -2560,6 +2865,97 @@ describe("Node HTTP flagship shell", () => {
       ),
     ).toHaveLength(1);
 
+    const concurrentPayload = {
+      ...regulatoryPayload,
+      description: "Concurrent duplicate delivery must append exactly once.",
+      eventId: "regulator:synthetic-eu-2026-09",
+    };
+    const concurrentRawBody = JSON.stringify(concurrentPayload);
+    const concurrentHeaders = {
+      "content-type": "application/json",
+      "x-counterpoint-webhook-signature": webhookSignature(
+        webhookTimestamp,
+        concurrentRawBody,
+      ),
+      "x-counterpoint-webhook-timestamp": webhookTimestamp,
+    };
+    const concurrentResponses = await Promise.all([
+      receiptOnlyApp.request(webhookUrl, {
+        body: concurrentRawBody,
+        headers: concurrentHeaders,
+        method: "POST",
+      }),
+      receiptOnlyApp.request(webhookUrl, {
+        body: concurrentRawBody,
+        headers: concurrentHeaders,
+        method: "POST",
+      }),
+    ]);
+    expect(concurrentResponses.map(({ status }) => status)).toEqual([202, 202]);
+    const concurrentReceipts = await Promise.all(
+      concurrentResponses.map(async (response) =>
+        RegulatoryChangeWebhookResponseSchema.parse(await response.json()),
+      ),
+    );
+    expect(concurrentReceipts.map(({ replayed }) => replayed).sort()).toEqual([
+      false,
+      true,
+    ]);
+    expect(concurrentReceipts[1]).toMatchObject({
+      event: concurrentReceipts[0]?.event,
+      position: concurrentReceipts[0]?.position,
+    });
+    expect(
+      (await runtime.externalEvents.events.load(meetingId)).filter(
+        ({ event }) =>
+          event.eventType === "ExternalEventReceived" &&
+          String(event.payload.externalEvent.id) === concurrentPayload.eventId,
+      ),
+    ).toHaveLength(1);
+
+    const conflictingConcurrentPayloads = [
+      {
+        ...regulatoryPayload,
+        description: "Concurrent conflict variant A.",
+        eventId: "regulator:synthetic-eu-2026-10",
+      },
+      {
+        ...regulatoryPayload,
+        description: "Concurrent conflict variant B.",
+        eventId: "regulator:synthetic-eu-2026-10",
+      },
+    ] as const;
+    const conflictingConcurrentResponses = await Promise.all(
+      conflictingConcurrentPayloads.map((payload) => {
+        const body = JSON.stringify(payload);
+        return Promise.resolve(
+          receiptOnlyApp.request(webhookUrl, {
+            body,
+            headers: {
+              "content-type": "application/json",
+              "x-counterpoint-webhook-signature": webhookSignature(
+                webhookTimestamp,
+                body,
+              ),
+              "x-counterpoint-webhook-timestamp": webhookTimestamp,
+            },
+            method: "POST",
+          }),
+        );
+      }),
+    );
+    expect(
+      conflictingConcurrentResponses.map(({ status }) => status).sort(),
+    ).toEqual([202, 409]);
+    expect(
+      (await runtime.externalEvents.events.load(meetingId)).filter(
+        ({ event }) =>
+          event.eventType === "ExternalEventReceived" &&
+          String(event.payload.externalEvent.id) ===
+            conflictingConcurrentPayloads[0].eventId,
+      ),
+    ).toHaveLength(1);
+
     const participantDemoResponse = await app.request(
       `/api/v1/meetings/${meetingId}/demo/regulatory-changes`,
       {
@@ -2630,7 +3026,7 @@ describe("Node HTTP flagship shell", () => {
     const listedExternalEvents = ListSharedExternalEventsResponseSchema.parse(
       await listedExternalEventsResponse.json(),
     );
-    expect(listedExternalEvents.events).toHaveLength(2);
+    expect(listedExternalEvents.events).toHaveLength(4);
     const invalidationResponse = await app.request(
       `/api/v1/meetings/${meetingId}/invalidation-evaluations`,
       {

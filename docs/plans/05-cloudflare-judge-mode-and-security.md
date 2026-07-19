@@ -144,36 +144,50 @@ C4 foundation notes:
 
 ### C5 — Security hardening
 
-- [ ] Run IDOR and cross-meeting/owner test matrix.
-- [ ] Run SSRF redirect/DNS/metadata matrix.
-- [ ] Run artifact content-type and size spoofing matrix.
-- [ ] Run session/display-token expiry and revocation.
-- [ ] Run webhook signature/replay/idempotency matrix.
-- [ ] Scan API responses, realtime payloads, logs, and repository for secrets.
+- [x] Run IDOR and cross-meeting/owner test matrix.
+- [x] Run SSRF redirect/DNS/metadata matrix.
+- [x] Run artifact content-type and size spoofing matrix.
+- [x] Run session/display-token expiry and revocation.
+- [x] Run webhook signature/replay/idempotency matrix.
+- [x] Scan API responses, realtime payloads, logs, and repository for secrets.
 - [x] Verify disclosure preview-hash and prompt-injection boundaries.
+- [ ] Re-run the C5 matrix against hosted Worker routes after API parity.
 
 The C5 foundation is reproducible through `npm run security:verify`. The
-current matrix exercises 246 authorization, owner isolation, session/display
+current matrix exercises 249 authorization, owner isolation, session/display
 expiry, SSRF/DNS pinning, redirect, artifact parser/size, webhook, disclosure,
 Realtime payload, API response, and structured-log cases. Parser-normalized
 decimal, hexadecimal, octal, short dotted, trailing-dot, and IPv4-embedded
 IPv6 loopback forms have an additional fail-closed matrix. The D1-backed
 application lifecycle also proves exact inactivity expiry, absolute expiry,
 durable revocation, logout, and no post-revocation authentication. The
-HTTP multipart matrix proves that fake PDF and invalid JSON payloads remain
+Node HTTP boundary proves active access one millisecond before inactivity
+expiry, rejection and durable revocation at exact inactivity and absolute
+expiry, and display-token access one millisecond before but not at exact TTL.
+Wrong-meeting display access returns the same content-free expired envelope.
+An account assigned to two meetings cannot substitute an existing artifact ID
+from one meeting into the other, and receives the same response as for a
+missing ID. Another owner cannot preview, approve, or reject either an existing
+or missing disclosure candidate, and all six attempts leave the event stream
+unchanged.
+The HTTP multipart matrix proves that fake PDF and invalid JSON payloads remain
 owner-private failed sources, while an extension/MIME mismatch is rejected
-before persistence; none becomes shared or visible to another owner. A
-correctly signed webhook one second outside the allowed window is also rejected
-without appending an event. The repository scan checks tracked and non-ignored
-untracked files plus
+before persistence; none becomes shared or visible to another owner.
+Overstated `Content-Length` is rejected before body parsing, while an
+understated header cannot bypass the actual 20 MiB file-size check; neither
+path writes storage or events. A correctly signed webhook one second outside
+the allowed window is also rejected without appending an event. Concurrent
+identical webhook deliveries return one durable receipt plus one replay, while
+concurrent conflicting payloads with the same event ID produce one receipt and
+one conflict with exactly one event. The repository scan checks tracked and
+non-ignored untracked files plus
 `apps/*/dist` and `packages/*/dist`, rejects tracked secret-bearing filenames,
 recognizes common provider credentials and private keys, skips ignored local
 secret files, and reports only the path and rule name rather than the detected
-value. C5 remains open for authorized-cross-meeting resource-ID substitution,
-HTTP session and display-token expiry wiring, hosted safe-fetch parity, HTTP
-multipart spoofing/size cases, expired and concurrent webhook delivery at the
-HTTP/store boundary, and one synthetic canary scan across responses, payloads,
-and logs.
+value. API provider failures, Realtime state/errors, structured logs, and
+protocol envelopes each carry synthetic secret/private canaries that are
+asserted absent. C5 remains open only for rerunning these shared contracts
+against hosted Worker routes after API parity.
 
 ### C6 — Hosted deployment path
 
