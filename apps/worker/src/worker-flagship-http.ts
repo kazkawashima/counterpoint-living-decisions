@@ -1,6 +1,7 @@
 import {
   approveDisclosure,
   authenticateSession,
+  commitDecision,
   listAssumptionInvalidationEvaluations,
   listAssignedMeetings,
   login,
@@ -9,8 +10,12 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  markDecisionReady,
+  saveDecisionDraft,
   resolveMeetingAuthorization,
   type DisclosureDependencies,
+  type DecisionDependencies,
+  type DecisionFailure,
   type InvalidationEvaluationView,
   type UserAuthorizationContext,
   type UserAuthorizationPolicy,
@@ -22,6 +27,8 @@ import {
   replayMeeting,
   type ExternalEvent as DomainExternalEvent,
   type DomainEvent,
+  type Decision as DomainDecision,
+  type DecisionRevision as DomainDecisionRevision,
   type MeetingProjection,
 } from "@counterpoint/domain";
 import {
@@ -53,6 +60,8 @@ import type {
 import {
   ApproveDisclosureRequestSchema,
   ApproveDisclosureResponseSchema,
+  CommitDecisionRequestSchema,
+  CommitDecisionResponseSchema,
   GetRoleProjectionResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
   ListAssignedMeetingsResponseSchema,
@@ -72,15 +81,23 @@ import {
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RoleProjectionQuerySchema,
+  MarkDecisionReadyRequestSchema,
+  MarkDecisionReadyResponseSchema,
+  SaveDecisionDraftRequestSchema,
+  SaveDecisionDraftResponseSchema,
+  type CommitDecisionRequest,
+  type MarkDecisionReadyRequest,
   type ApproveDisclosureRequest,
   type PreviewDisclosureRequest,
   type ProposeDisclosureRequest,
   type RejectDisclosureRequest,
+  type SaveDecisionDraftRequest,
   type RegisterPrivateTextSourceFixtureRequest,
 } from "@counterpoint/protocol";
 
 export interface WorkerFlagshipHttpDependencies {
   readonly clock: Clock;
+  readonly decisions: DecisionDependencies;
   readonly disclosures: DisclosureDependencies;
   readonly events: EventStore<DomainEvent>;
   readonly identities: IdentityRepository;
@@ -99,18 +116,21 @@ export interface WorkerFlagshipD1Bindings {
 
 export type WorkerFlagshipOperation =
   | "approve-disclosure"
+  | "commit-decision"
   | "decisions"
   | "evidence"
   | "external-events"
   | "invalidation-evaluations"
   | "login"
   | "logout"
+  | "mark-decision-ready"
   | "meetings"
   | "preview-disclosure"
   | "propose-disclosure"
   | "projection"
   | "register-text-source"
-  | "reject-disclosure";
+  | "reject-disclosure"
+  | "save-decision-draft";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
 
@@ -189,6 +209,13 @@ export function createWorkerFlagshipDependencies(
       return `sha256:${toBase64Url(new Uint8Array(digest))}`;
     },
   };
+  const decisions: DecisionDependencies = {
+    clock,
+    events,
+    hash,
+    ids,
+    projections,
+  };
   const disclosures: DisclosureDependencies = {
     artifacts: new R2ArtifactStore(bindings.ARTIFACTS),
     clock,
@@ -199,6 +226,7 @@ export function createWorkerFlagshipDependencies(
   };
   return {
     clock,
+    decisions,
     disclosures,
     events,
     identities: new D1IdentityRepository(bindings.DB),
@@ -439,6 +467,71 @@ function privateDisclosureCandidates(
   return [...candidates.values()];
 }
 
+function decisionView(
+  decision: DomainDecision,
+  updatedAt: string = decision.createdAt,
+) {
+  return {
+    activeRevision: decision.activeRevision,
+    activeRevisionId: decision.activeRevisionId,
+    decisionId: decision.id,
+    readiness: {
+      actionIds: decision.actionIds.length > 0,
+      evidenceIds: decision.evidenceIds.length > 0,
+      monitorCondition: decision.monitorCondition.description.length > 0,
+      outcome: decision.outcome.length > 0,
+      premiseIds: decision.premiseIds.length > 0,
+    },
+    snapshot: {
+      actionIds: decision.actionIds,
+      dissentIds: decision.dissentIds,
+      evidenceIds: decision.evidenceIds,
+      monitorCondition: decision.monitorCondition,
+      outcome: decision.outcome,
+      premiseIds: decision.premiseIds,
+      status: decision.status,
+      title: decision.title,
+    },
+    status: decision.status,
+    ...(decision.supersededByDecisionId === undefined
+      ? {}
+      : { supersededByDecisionId: decision.supersededByDecisionId }),
+    updatedAt,
+  };
+}
+
+function decisionRevisionView(revision: DomainDecisionRevision) {
+  return {
+    changeReason: revision.changeReason,
+    createdAt: revision.createdAt,
+    createdBy: revision.createdBy,
+    decisionId: revision.decisionId,
+    ...(revision.previousRevisionId === undefined
+      ? {}
+      : { previousRevisionId: revision.previousRevisionId }),
+    revisionId: revision.id,
+    snapshot: revision.snapshot,
+    version: revision.version,
+  };
+}
+
+function decisionFailureResponse(
+  correlationId: string,
+  failure: DecisionFailure,
+) {
+  if (failure.code === "CONFLICT") {
+    return apiErrorResponse("CONFLICT", correlationId, {
+      actualPosition: failure.actualPosition,
+      expectedPosition: failure.expectedPosition,
+    });
+  }
+  return failure.code === "FORBIDDEN" ||
+    failure.code === "IDEMPOTENCY_CONFLICT" ||
+    failure.code === "INVALID_STATE_TRANSITION"
+    ? apiErrorResponse(failure.code, correlationId)
+    : apiErrorResponse("VALIDATION_FAILED", correlationId);
+}
+
 async function assignedMeeting(
   dependencies: WorkerFlagshipHttpDependencies,
   meetingId: string,
@@ -648,6 +741,9 @@ export async function handleWorkerFlagshipHttp(input: {
   let previewDisclosureRequest: PreviewDisclosureRequest | undefined;
   let proposeDisclosureRequest: ProposeDisclosureRequest | undefined;
   let rejectDisclosureRequest: RejectDisclosureRequest | undefined;
+  let saveDecisionDraftRequest: SaveDecisionDraftRequest | undefined;
+  let markDecisionReadyRequest: MarkDecisionReadyRequest | undefined;
+  let commitDecisionRequest: CommitDecisionRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
 
@@ -768,6 +864,36 @@ export async function handleWorkerFlagshipHttp(input: {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
     rejectDisclosureRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "save-decision-draft") {
+    const parsed = SaveDecisionDraftRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    saveDecisionDraftRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "mark-decision-ready") {
+    const parsed = MarkDecisionReadyRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    markDecisionReadyRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "commit-decision") {
+    const parsed = CommitDecisionRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    commitDecisionRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
 
@@ -1003,6 +1129,141 @@ export async function handleWorkerFlagshipHttp(input: {
           result.position,
         ),
         state: result.state,
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "save-decision-draft") {
+    if (saveDecisionDraftRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await saveDecisionDraft(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        actionIds: saveDecisionDraftRequest.actionIds,
+        changeReason: saveDecisionDraftRequest.changeReason,
+        correlationId,
+        ...(saveDecisionDraftRequest.decisionId === undefined
+          ? {}
+          : { decisionId: saveDecisionDraftRequest.decisionId }),
+        dissentIds: saveDecisionDraftRequest.dissentIds,
+        evidenceIds: saveDecisionDraftRequest.evidenceIds,
+        expectedPosition: await dependencies.events.position(meetingId),
+        idempotencyKey: saveDecisionDraftRequest.idempotencyKey,
+        meetingId: saveDecisionDraftRequest.meetingId,
+        monitorCondition: {
+          description: saveDecisionDraftRequest.monitorCondition.description,
+          ...(saveDecisionDraftRequest.monitorCondition.registrationId ===
+          undefined
+            ? {}
+            : {
+                registrationId:
+                  saveDecisionDraftRequest.monitorCondition.registrationId,
+              }),
+        },
+        outcome: saveDecisionDraftRequest.outcome,
+        premiseIds: saveDecisionDraftRequest.premiseIds,
+        title: saveDecisionDraftRequest.title,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(correlationId, result);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      SaveDecisionDraftResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, result.revision.createdAt),
+        meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        revision: decisionRevisionView(result.revision),
+      }),
+      201,
+      correlationId,
+    );
+  }
+
+  if (operation === "mark-decision-ready") {
+    if (markDecisionReadyRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await markDecisionReady(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        ...markDecisionReadyRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(correlationId, result);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      MarkDecisionReadyResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, dependencies.clock.now()),
+        meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "commit-decision") {
+    if (commitDecisionRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await commitDecision(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        ...commitDecisionRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+        explicitCommit: true,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(correlationId, result);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      CommitDecisionResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, result.revision.createdAt),
+        meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        revision: decisionRevisionView(result.revision),
       }),
       200,
       correlationId,

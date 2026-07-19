@@ -291,16 +291,25 @@ export function createWorkerHandler(): ExportedHandler<Env> {
                     : request.method === "POST" &&
                         url.pathname === "/api/v1/disclosures/reject"
                       ? "reject-disclosure"
-                      : request.method === "GET" &&
-                          url.pathname === "/api/v1/meetings"
-                        ? "meetings"
-                        : request.method === "GET" &&
-                            flagshipProjectionRoute !== null
-                          ? "projection"
-                          : request.method === "GET" &&
-                              flagshipCollectionOperation !== undefined
-                            ? flagshipCollectionOperation
-                            : undefined;
+                      : request.method === "POST" &&
+                          url.pathname === "/api/v1/decisions/drafts"
+                        ? "save-decision-draft"
+                        : request.method === "POST" &&
+                            url.pathname === "/api/v1/decisions/ready"
+                          ? "mark-decision-ready"
+                          : request.method === "POST" &&
+                              url.pathname === "/api/v1/decisions/commit"
+                            ? "commit-decision"
+                            : request.method === "GET" &&
+                                url.pathname === "/api/v1/meetings"
+                              ? "meetings"
+                              : request.method === "GET" &&
+                                  flagshipProjectionRoute !== null
+                                ? "projection"
+                                : request.method === "GET" &&
+                                    flagshipCollectionOperation !== undefined
+                                  ? flagshipCollectionOperation
+                                  : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;

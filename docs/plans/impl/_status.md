@@ -564,6 +564,11 @@ The canonical implementation-facing artifacts are:
   without exposing storage credentials. The Cloudflare flagship test covers
   the source receipt, candidate transitions, shared evidence after approval,
   and visibility after projection reload.
+- A facilitator can now save a manual hosted decision draft that references
+  shared evidence; the Worker keeps application readiness and ownership checks
+  authoritative, returns the revision receipt, and rehydrates the DRAFT
+  decision in the shared projection. Ready/commit routes are present but are
+  not claimed successful until the draft has all required references.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call

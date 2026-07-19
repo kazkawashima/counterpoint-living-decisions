@@ -9,6 +9,7 @@ import {
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  SaveDecisionDraftResponseSchema,
 } from "@counterpoint/protocol";
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
@@ -270,6 +271,45 @@ describe("Cloudflare Worker hosted flagship API", () => {
       previewHash: previewBody.previewHash,
     });
 
+    const draftResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/decisions/drafts", {
+          body: JSON.stringify({
+            actionIds: [],
+            changeReason: "Initial facilitator draft",
+            dissentIds: [],
+            evidenceIds: [approveBody.evidence.evidenceId],
+            expectedPosition: 5,
+            idempotencyKey: "worker-flagship-decision-draft",
+            meetingId: FLAGSHIP_MEETING_ID,
+            monitorCondition: { description: "Review pilot metrics weekly" },
+            outcome: "Run the staged pilot with an explicit owner.",
+            premiseIds: [],
+            title: "Staged rollout pilot",
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(draftResponse.status).toBe(201);
+    const draftBody = SaveDecisionDraftResponseSchema.parse(
+      await json(draftResponse),
+    );
+    expect(draftBody).toMatchObject({
+      decision: {
+        snapshot: {
+          evidenceIds: [approveBody.evidence.evidenceId],
+          status: "DRAFT",
+          title: "Staged rollout pilot",
+        },
+        status: "DRAFT",
+      },
+      position: 6,
+    });
+
     const projectionAfterSourceResponse = await handler.fetch!(
       workerRequest(
         new Request(
@@ -291,6 +331,12 @@ describe("Cloudflare Worker hosted flagship API", () => {
         disclosureCandidates: [expect.objectContaining({ state: "approved" })],
       },
       shared: {
+        decisions: [
+          expect.objectContaining({
+            decisionId: draftBody.decision.decisionId,
+            status: "DRAFT",
+          }),
+        ],
         evidence: [
           expect.objectContaining({
             evidenceId: approveBody.evidence.evidenceId,
