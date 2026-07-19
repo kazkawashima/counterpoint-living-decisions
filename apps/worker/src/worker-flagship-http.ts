@@ -1,9 +1,11 @@
 import {
   authenticateSession,
+  listAssumptionInvalidationEvaluations,
   listAssignedMeetings,
   login,
   logout,
   resolveMeetingAuthorization,
+  type InvalidationEvaluationView,
   type UserAuthorizationContext,
   type UserAuthorizationPolicy,
 } from "@counterpoint/application";
@@ -12,6 +14,7 @@ import {
   meetingId as domainMeetingId,
   meetingPosition,
   replayMeeting,
+  type ExternalEvent as DomainExternalEvent,
   type DomainEvent,
 } from "@counterpoint/domain";
 import {
@@ -40,7 +43,11 @@ import type {
 } from "@counterpoint/ports";
 import {
   GetRoleProjectionResponseSchema,
+  ListInvalidationEvaluationsResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListSharedDecisionsResponseSchema,
+  ListSharedEvidenceResponseSchema,
+  ListSharedExternalEventsResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
@@ -65,7 +72,14 @@ export interface WorkerFlagshipD1Bindings {
 }
 
 export type WorkerFlagshipOperation =
-  "login" | "logout" | "meetings" | "projection";
+  | "decisions"
+  | "evidence"
+  | "external-events"
+  | "invalidation-evaluations"
+  | "login"
+  | "logout"
+  | "meetings"
+  | "projection";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
 
@@ -186,6 +200,101 @@ function utteranceView(utterance: {
     participantId: utterance.participantId,
     text: utterance.text,
     utteranceId: utterance.id,
+  };
+}
+
+function externalEventReceiptView(event: DomainExternalEvent) {
+  return {
+    description: event.description,
+    effectiveAt: event.effectiveAt,
+    eventId: event.id,
+    eventType: event.eventType,
+    jurisdiction: event.jurisdiction,
+    meetingId: event.meetingId,
+    monitorRegistrationId: event.monitorRegistrationId,
+    payloadHash: event.payloadHash,
+    receivedAt: event.receivedAt,
+    schemaVersion: event.schemaVersion,
+    source: event.source,
+    sourceReference: event.sourceReference,
+  };
+}
+
+function invalidationEvaluationView(evaluation: InvalidationEvaluationView) {
+  const review = evaluation.review;
+  return {
+    affectedActionIds: evaluation.affectedActionIds,
+    affectedPremiseIds: evaluation.affectedPremiseIds,
+    confidence: evaluation.confidence,
+    decision: {
+      activeRevision: evaluation.decision.activeRevision,
+      activeRevisionId: evaluation.decision.activeRevisionId,
+      decisionId: evaluation.decision.id,
+      readiness: {
+        actionIds: evaluation.decision.actionIds.length > 0,
+        evidenceIds: evaluation.decision.evidenceIds.length > 0,
+        monitorCondition:
+          evaluation.decision.monitorCondition.description.length > 0,
+        outcome: evaluation.decision.outcome.length > 0,
+        premiseIds: evaluation.decision.premiseIds.length > 0,
+      },
+      snapshot: {
+        actionIds: evaluation.decision.actionIds,
+        dissentIds: evaluation.decision.dissentIds,
+        evidenceIds: evaluation.decision.evidenceIds,
+        monitorCondition: evaluation.decision.monitorCondition,
+        outcome: evaluation.decision.outcome,
+        premiseIds: evaluation.decision.premiseIds,
+        status: evaluation.decision.status,
+        title: evaluation.decision.title,
+      },
+      status: evaluation.decision.status,
+      ...(evaluation.decision.supersededByDecisionId === undefined
+        ? {}
+        : {
+            supersededByDecisionId: evaluation.decision.supersededByDecisionId,
+          }),
+      updatedAt: evaluation.generatedAt,
+    },
+    evidenceReferenceIds: evaluation.evidenceReferenceIds,
+    externalEventId: evaluation.externalEventId,
+    generatedAt: evaluation.generatedAt,
+    inputReferenceIds: evaluation.inputReferenceIds,
+    model: evaluation.model,
+    operation: evaluation.operation,
+    outputSchemaVersion: evaluation.outputSchemaVersion,
+    promptVersion: evaluation.promptVersion,
+    reason: evaluation.reason,
+    ...(review === undefined
+      ? {}
+      : {
+          review: {
+            disposition: review.disposition,
+            facilitatorParticipantId: review.facilitatorParticipantId,
+            heldActionIds: review.heldActionIds,
+            reason: review.reason,
+            ...(review.reconsiderationTask === undefined
+              ? {}
+              : {
+                  reconsiderationTask: {
+                    affectedActionIds:
+                      review.reconsiderationTask.affectedActionIds,
+                    affectedPremiseIds:
+                      review.reconsiderationTask.affectedPremiseIds,
+                    createdAt: review.reconsiderationTask.createdAt,
+                    decisionId: review.reconsiderationTask.decisionId,
+                    ownerParticipantId:
+                      review.reconsiderationTask.ownerParticipantId,
+                    reconsiderationTaskId: review.reconsiderationTask.id,
+                    state: review.reconsiderationTask.state,
+                    triggerExternalEventId:
+                      review.reconsiderationTask.triggerExternalEventId,
+                  },
+                }),
+            reviewedAt: review.reviewedAt,
+          },
+        }),
+    suggestionId: evaluation.suggestionId,
   };
 }
 
@@ -438,6 +547,81 @@ export async function handleWorkerFlagshipHttp(input: {
   if (resolved.kind === "rejected") {
     return apiErrorResponse(resolved.code, correlationId);
   }
+
+  if (operation === "evidence" || operation === "decisions") {
+    const projection = await roleProjection(
+      dependencies,
+      resolved.authorization,
+      correlationId,
+    );
+    if (projection === undefined) {
+      return apiErrorResponse("FORBIDDEN", correlationId);
+    }
+    if (operation === "evidence") {
+      return apiJsonResponse(
+        ListSharedEvidenceResponseSchema.parse({
+          correlationId,
+          evidence: projection.shared.evidence,
+          meetingId,
+          position: projection.shared.position,
+        }),
+        200,
+        correlationId,
+      );
+    }
+    return apiJsonResponse(
+      ListSharedDecisionsResponseSchema.parse({
+        correlationId,
+        decisions: projection.shared.decisions,
+        meetingId,
+        position: projection.shared.position,
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "external-events") {
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    const projection = replayMeeting(domainMeetingId(meetingId), events);
+    return apiJsonResponse(
+      ListSharedExternalEventsResponseSchema.parse({
+        correlationId,
+        events: projection.shared.externalEvents.map(externalEventReceiptView),
+        meetingId,
+        position: visiblePosition(events, resolved.authorization.participantId),
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "invalidation-evaluations") {
+    const records = await dependencies.events.load(meetingId);
+    return apiJsonResponse(
+      ListInvalidationEvaluationsResponseSchema.parse({
+        correlationId,
+        evaluations: listAssumptionInvalidationEvaluations(records).map(
+          invalidationEvaluationView,
+        ),
+        meetingId,
+        position: visiblePosition(
+          records.map(({ event, position }) => ({
+            ...event,
+            position: meetingPosition(position),
+          })),
+          resolved.authorization.participantId,
+        ),
+      }),
+      200,
+      correlationId,
+    );
+  }
+
   const projection = await roleProjection(
     dependencies,
     resolved.authorization,

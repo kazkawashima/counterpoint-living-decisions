@@ -101,6 +101,30 @@ describe("Cloudflare Worker hosted flagship API", () => {
         userId: "product",
       },
     });
+
+    for (const [path, collection] of [
+      ["evidence", "evidence"],
+      ["decisions", "decisions"],
+      ["external-events", "events"],
+      ["invalidation-evaluations", "evaluations"],
+    ] as const) {
+      const response = await handler.fetch!(
+        workerRequest(
+          new Request(
+            `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/${path}`,
+            { headers: authorization, method: "GET" },
+          ),
+        ),
+        workerEnv(),
+        {} as ExecutionContext,
+      );
+      expect(response.status).toBe(200);
+      await expect(json(response)).resolves.toMatchObject({
+        [collection]: [],
+        meetingId: FLAGSHIP_MEETING_ID,
+        position: 0,
+      });
+    }
   });
 
   it("keeps the hosted meeting and projection routes authenticated", async () => {

@@ -250,6 +250,27 @@ export function createWorkerHandler(): ExportedHandler<Env> {
       }
       const flagshipProjectionRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/projection$/u.exec(url.pathname);
+      const flagshipCollectionRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/(evidence|decisions|external-events|invalidation-evaluations)$/u.exec(
+          url.pathname,
+        );
+      const flagshipCollectionOperation =
+        flagshipCollectionRoute === null
+          ? undefined
+          : (
+              {
+                decisions: "decisions",
+                evidence: "evidence",
+                "external-events": "external-events",
+                "invalidation-evaluations": "invalidation-evaluations",
+              } as const
+            )[
+              flagshipCollectionRoute[2] as
+                | "decisions"
+                | "evidence"
+                | "external-events"
+                | "invalidation-evaluations"
+            ];
       const flagshipOperation =
         request.method === "POST" && url.pathname === "/api/v1/login"
           ? "login"
@@ -259,13 +280,23 @@ export function createWorkerHandler(): ExportedHandler<Env> {
               ? "meetings"
               : request.method === "GET" && flagshipProjectionRoute !== null
                 ? "projection"
-                : undefined;
+                : request.method === "GET" &&
+                    flagshipCollectionOperation !== undefined
+                  ? flagshipCollectionOperation
+                  : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;
         if (flagshipProjectionRoute !== null) {
           try {
             meetingId = decodeURIComponent(flagshipProjectionRoute[1] ?? "");
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipCollectionRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(flagshipCollectionRoute[1] ?? "");
           } catch {
             return apiErrorResponse("VALIDATION_FAILED", correlationId);
           }

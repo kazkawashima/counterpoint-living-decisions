@@ -551,6 +551,11 @@ The canonical implementation-facing artifacts are:
   meetings, and role projection are served by the Worker. Two Cloudflare
   integration cases use external-host-style URLs, and the local Wrangler smoke
   reaches login, meetings, and projection through `0.0.0.0`.
+- The hosted read model now also serves the web client's shared evidence,
+  decisions, external-event receipts, and invalidation-evaluation list
+  contracts through the same authenticated meeting boundary. The four
+  collection routes are covered by the external-host-style Cloudflare
+  flagship test and remain read-only until hosted mutation parity is complete.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call
@@ -588,8 +593,8 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 by extending hosted Worker proof to session revocation,
-assignment removal, and real Durable Object lifecycle behavior. Then measure
+Continue Plan 05 by extending hosted Worker proof to real Durable Object
+lifecycle behavior and the remaining hosted mutation contracts. Then measure
 the flagship to replace full-cap-per-attempt settlement with safe derived
 limits and only then enable the public judge route or switch the judge UI.
 Never accept reservation, provider call, participant, session, or key-source
