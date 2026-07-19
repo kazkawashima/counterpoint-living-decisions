@@ -38,8 +38,29 @@ export async function artifactStoreContract(
     store.get({ ...privateScope, meetingId: "meeting-b" }),
   ).resolves.toBeUndefined();
 
+  const sharedScope = {
+    artifactId: privateScope.artifactId,
+    meetingId: privateScope.meetingId,
+    visibility: "shared" as const,
+  };
+  await store.put({
+    bytes: new Uint8Array([4, 5, 6]),
+    contentType: "application/pdf",
+    hash: "sha256:shared-fixture",
+    scope: sharedScope,
+  });
+  await expect(store.get(sharedScope)).resolves.toEqual(
+    new Uint8Array([4, 5, 6]),
+  );
+  await expect(store.get(privateScope)).resolves.toEqual(
+    new Uint8Array([1, 2, 3]),
+  );
+
   await store.delete(privateScope);
   await expect(store.get(privateScope)).resolves.toBeUndefined();
+  await expect(store.get(sharedScope)).resolves.toEqual(
+    new Uint8Array([4, 5, 6]),
+  );
 
   await expect(
     store.put({

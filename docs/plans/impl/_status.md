@@ -350,11 +350,30 @@ The canonical implementation-facing artifacts are:
   tests and all 15 browser E2E scenarios, in addition to Worker dry-run/local
   smoke, build, lint, typecheck, formatting, architecture, environment, and
   Compose checks.
+- Plan 05 C2 now runs the same event, projection, and artifact contracts
+  against D1/R2 and SQLite/local storage. D1 primary-session batches and SQLite
+  `BEGIN IMMEDIATE` transactions atomically persist events, idempotency
+  receipts, and owner-partitioned projections; replay, conflicts, and failed
+  projection writes cannot rewrite or partially commit state.
+- A fifth D1 migration rejects non-contiguous positions and incomplete
+  idempotency ranges. The Cloudflare-native Vitest pool applies all migrations
+  in isolated Workers storage and cannot inherit `.env`; its script builds the
+  current workspace first so stale `dist` output cannot mask source changes.
+- The meeting Durable Object now coordinates only 30-second ticket digests and
+  payload-free publication metadata. Its shared contract proves monotonic
+  ordering, semantic idempotency, participant-visible resume cursors, display
+  ticket revocation, reset continuity, and D1 snapshot fallback after an
+  unknown cursor without storing private content or a provider key.
+- C2 verification passes 399 normal tests plus 9 Cloudflare-native D1/DO
+  tests, full build/lint/typecheck/format/architecture/config/environment/
+  Compose checks, local migration and external-IP-style Worker smoke, generated
+  binding checks, and deployment dry-run. No UI changed, so no new browser
+  capture was required.
 
 ## In progress
 
-- Begin Plan 05 C2 Cloudflare adapter parity while preserving D1 as durable
-  truth and avoiding duplicate Node/Worker HTTP semantics.
+- Begin Plan 05 C3 judge-managed key path without registering a remote secret
+  or exposing a second HTTP implementation.
 
 ## Not started
 
@@ -364,13 +383,12 @@ The canonical implementation-facing artifacts are:
 
 Continue with Plan 05 in
 [`05-cloudflare-judge-mode-and-security.md`](../05-cloudflare-judge-mode-and-security.md)
-at C2: implement D1 event/projection repositories, run the existing artifact
-contract against R2, and define the Durable Object coordination contract for
-ordering, resume, idempotency, revocation, and reset. Extract shared HTTP
-transport semantics before wiring the full Worker API so Node and Cloudflare
-cannot drift. Preserve the allowlisted judge-managed source and USD 25 rolling
-24-hour product spend gate for C3/C4; do not deploy or create remote resources
-without an explicit deployment boundary.
+at C3: extract shared HTTP transport semantics before wiring the Worker API,
+then add a capability-checked judge-managed provider source that is unavailable
+to ordinary users and never enters the browser, Durable Object, D1, R2, events,
+or logs. Keep secret registration and all remote resource/deployment mutation
+behind an explicit deployment boundary. Preserve ordinary BYOK behavior and
+the USD 25 rolling-24-hour product spend gate for C4.
 
 ## Open gates
 

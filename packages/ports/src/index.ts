@@ -25,6 +25,13 @@ export type {
   EventRecord,
   EventStore,
 } from "./event-store.js";
+export {
+  isEventProjectionStore,
+  type AtomicAppendRequest,
+  type EventProjectionCommitRequest,
+  type EventProjectionStore,
+  type ProjectionWrite,
+} from "./event-projection-store.js";
 export type {
   Clock,
   IdGenerator,

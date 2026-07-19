@@ -90,6 +90,7 @@ export function validateCloudflareConfiguration(config, packageJson) {
     "cloudflare:types",
     "cloudflare:types:check",
     "dev:worker",
+    "test:cloudflare",
   ]) {
     expectCondition(
       packageJson.scripts?.[scriptName]?.includes(

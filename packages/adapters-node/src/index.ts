@@ -24,6 +24,7 @@ export {
   CURRENT_SQLITE_MIGRATION_COUNT,
   NodeSqliteDatabase,
   sqliteMigrationCount,
+  SqliteEventProjectionStore,
   SqliteEventStore,
   SqliteProjectionStore,
 } from "./sqlite.js";

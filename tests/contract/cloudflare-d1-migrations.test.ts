@@ -27,6 +27,7 @@ const expectedMigrationNames = [
   "0002_event_ledger_and_projections.sql",
   "0003_decisions_audit_and_artifacts.sql",
   "0004_bearer_sessions.sql",
+  "0005_d1_append_guards.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -48,6 +49,18 @@ const expectedTablesAfterMigration = [
     "meetings",
     "participant_assignments",
     "projections",
+    "users",
+  ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
     "users",
   ],
   [
@@ -191,6 +204,21 @@ function explicitIndexNames(database: DatabaseSync): readonly string[] {
   return rows.map((row) => row.name);
 }
 
+function triggerNames(database: DatabaseSync): readonly string[] {
+  const rows = database
+    .prepare(
+      `
+        SELECT name
+        FROM sqlite_schema
+        WHERE type = 'trigger'
+        ORDER BY name
+      `,
+    )
+    .all() as unknown as NameRow[];
+
+  return rows.map((row) => row.name);
+}
+
 function tableColumnMap(
   database: DatabaseSync,
   tableNames: readonly string[],
@@ -235,6 +263,9 @@ describe("Cloudflare D1 migrations", () => {
       );
       expect(migration.sql).not.toMatch(/\bCREATE TABLE (?!IF NOT EXISTS\b)/i);
       expect(migration.sql).not.toMatch(/\bCREATE INDEX (?!IF NOT EXISTS\b)/i);
+      expect(migration.sql).not.toMatch(
+        /\bCREATE TRIGGER (?!IF NOT EXISTS\b)/i,
+      );
     }
   });
 
@@ -311,6 +342,10 @@ describe("Cloudflare D1 migrations", () => {
         "participant_assignments_user",
         "sessions_user_activity",
       ]);
+      expect(triggerNames(database)).toEqual([
+        "event_appends_complete_range",
+        "events_contiguous_position",
+      ]);
 
       database.exec(`
         INSERT INTO users (user_id, password_hash)
@@ -352,6 +387,12 @@ describe("Cloudflare D1 migrations", () => {
           VALUES ('meeting-a', 0, '{}');
         `),
       ).toThrow();
+      expect(() =>
+        database.exec(`
+          INSERT INTO events (meeting_id, position, payload_json)
+          VALUES ('meeting-a', 2, '{}');
+        `),
+      ).toThrow("counterpoint_event_position_conflict");
       expect(() =>
         database.exec(`
           INSERT INTO events (meeting_id, position, payload_json)
@@ -417,6 +458,25 @@ describe("Cloudflare D1 migrations", () => {
           );
         `),
       ).toThrow();
+      expect(() =>
+        database.exec(`
+          INSERT INTO event_appends (
+            meeting_id,
+            idempotency_key,
+            payload_fingerprint,
+            event_payloads_json,
+            first_position,
+            event_count
+          ) VALUES (
+            'meeting-a',
+            'incomplete-range',
+            'fingerprint',
+            '[]',
+            2,
+            1
+          );
+        `),
+      ).toThrow("counterpoint_event_append_range_incomplete");
       expect(() =>
         database.exec(`
           INSERT INTO sessions (

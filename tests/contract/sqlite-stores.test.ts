@@ -8,6 +8,7 @@ import {
   NodeSqliteDatabase,
   ScryptPasswordHasher,
   seedSyntheticUsers,
+  SqliteEventProjectionStore,
   SqliteEventStore,
   SqliteProjectionStore,
   SqliteSessionRepository,
@@ -16,6 +17,11 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { artifactStoreContract } from "./artifact-store-contract.js";
+import {
+  type AtomicFixtureEvent,
+  type AtomicFixtureProjection,
+  eventProjectionStoreContract,
+} from "./event-projection-store-contract.js";
 import { eventStoreContract } from "./event-store-contract.js";
 import { projectionStoreContract } from "./projection-store-contract.js";
 import { sessionRepositoryContract } from "./session-repository-contract.js";
@@ -87,6 +93,32 @@ afterEach(async () => {
 });
 
 describe("SQLite and local-file port adapters", () => {
+  it("atomically commits events, receipts, and projections", async () => {
+    const owner = await database();
+    const eventCodec = fixtureEventCodec();
+    const projectionCodec = fixtureProjectionCodec();
+    const invalidProjectionCodec: JsonCodec<AtomicFixtureProjection> = {
+      decode: (serialized) => projectionCodec.decode(serialized),
+      encode(value) {
+        return value.label === "invalid"
+          ? "not valid json"
+          : JSON.stringify(value);
+      },
+    };
+    await eventProjectionStoreContract(
+      () =>
+        new SqliteEventProjectionStore<
+          AtomicFixtureEvent,
+          AtomicFixtureProjection
+        >(owner, eventCodec, projectionCodec),
+      () =>
+        new SqliteEventProjectionStore<
+          AtomicFixtureEvent,
+          AtomicFixtureProjection
+        >(owner, eventCodec, invalidProjectionCodec),
+    );
+  });
+
   it("satisfies the reusable event-store contract", async () => {
     const owner = await database();
     await eventStoreContract(

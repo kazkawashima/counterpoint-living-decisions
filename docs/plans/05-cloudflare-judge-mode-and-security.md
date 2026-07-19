@@ -27,12 +27,30 @@ parity, persistent data, and completed high-risk security gates.
 
 ### C2 — Adapter parity
 
-- [ ] Run shared event/projection repository contract suite against D1.
-- [ ] Run artifact contract suite against R2.
-- [ ] Run realtime/coordination contract suite against Durable Objects.
-- [ ] Prove event ordering, resume position, idempotency, display revocation,
+- [x] Run shared event/projection repository contract suite against D1.
+- [x] Run artifact contract suite against R2.
+- [x] Run realtime/coordination contract suite against Durable Objects.
+- [x] Prove event ordering, resume position, idempotency, display revocation,
       and reset parity.
-- [ ] Document unavoidable runtime differences without changing domain meaning.
+- [x] Document unavoidable runtime differences without changing domain meaning.
+
+C2 runtime notes:
+
+- D1 uses primary sessions and one transactional batch for events, the
+  idempotency receipt, and owner-partitioned projections. SQLite uses one
+  `BEGIN IMMEDIATE` transaction behind the same shared contract.
+- The meeting Durable Object coordinates only short-lived ticket digests and
+  payload-free publication metadata. D1 remains durable truth. An eviction
+  intentionally loses unused tickets and publication hints; a reconnect with
+  an unknown visible cursor must fetch a fresh role-authorized D1 projection.
+- Private publications are renumbered into participant-visible cursors, so a
+  display or another participant cannot infer private activity from gaps.
+  Session revocation discards matching participant or display tickets, while a
+  reset remains a normal shared publication and does not rewind the cursor.
+- The local Node hub can call an in-process projection callback. The hosted
+  path must fetch the same personalized snapshot through the authenticated
+  Worker route when the shared HTTP runtime is wired. C2 does not expose the
+  coordinator's internal routes or a public WebSocket endpoint.
 
 ### C3 — Judge-managed key path
 

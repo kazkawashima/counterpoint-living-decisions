@@ -6,6 +6,8 @@ import type {
   AppendEventsFailure,
   AppendEventsRequest,
   AppendEventsResult,
+  EventProjectionCommitRequest,
+  EventProjectionStore,
   EventRecord,
   EventStore,
   ProjectionScope,
@@ -346,6 +348,207 @@ function projectionPartition(scope: ProjectionScope): {
   };
 }
 
+function readPosition(database: DatabaseSync, meetingId: string): number {
+  const row = database
+    .prepare(
+      `
+        SELECT COALESCE(MAX(position), 0) AS position
+        FROM events
+        WHERE meeting_id = ?
+      `,
+    )
+    .get(meetingId) as unknown as PositionRow;
+  return row.position;
+}
+
+function loadEventRange<TEvent>(
+  database: DatabaseSync,
+  codec: JsonCodec<TEvent>,
+  meetingId: string,
+  firstPosition: number,
+  eventCount: number,
+): readonly EventRecord<TEvent>[] {
+  const rows = database
+    .prepare(
+      `
+        SELECT position, payload_json
+        FROM events
+        WHERE meeting_id = ? AND position >= ? AND position < ?
+        ORDER BY position ASC
+      `,
+    )
+    .all(
+      meetingId,
+      firstPosition,
+      firstPosition + eventCount,
+    ) as unknown as EventRow[];
+  if (rows.length !== eventCount) {
+    throw new Error("Idempotent append points to an incomplete event range");
+  }
+  return rows.map((row) => ({
+    event: codec.decode(row.payload_json),
+    position: row.position,
+  }));
+}
+
+function upsertProjection<TProjection>(
+  database: DatabaseSync,
+  codec: JsonCodec<TProjection>,
+  scope: ProjectionScope,
+  value: TProjection,
+): void {
+  const partition = projectionPartition(scope);
+  database
+    .prepare(
+      `
+        INSERT INTO projections (
+          meeting_id,
+          projection,
+          scope_kind,
+          owner_participant_id,
+          payload_json
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (
+          meeting_id,
+          projection,
+          scope_kind,
+          owner_participant_id
+        ) DO UPDATE SET
+          payload_json = excluded.payload_json,
+          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      `,
+    )
+    .run(
+      scope.meetingId,
+      scope.projection,
+      partition.scopeKind,
+      partition.ownerParticipantId,
+      codec.encode(value),
+    );
+}
+
+function appendSqlite<TEvent>(
+  database: DatabaseSync,
+  codec: JsonCodec<TEvent>,
+  request: AppendEventsRequest<TEvent>,
+  afterAppend?: () => void,
+): AppendEventsFailure | AppendEventsResult<TEvent> {
+  requireNonEmpty(request.meetingId, "meetingId");
+  if (request.expectedPosition !== undefined) {
+    requirePosition(request.expectedPosition, "expectedPosition");
+  }
+  if (request.idempotencyKey !== undefined) {
+    requireNonEmpty(request.idempotencyKey, "idempotencyKey");
+  }
+
+  const serializedEvents = request.events.map((event) => codec.encode(event));
+  const serializedPayloads = JSON.stringify(serializedEvents);
+  const fingerprint = request.payloadFingerprint ?? serializedPayloads;
+
+  return runTransaction(database, () => {
+    if (request.idempotencyKey !== undefined) {
+      const previous = database
+        .prepare(
+          `
+            SELECT
+              payload_fingerprint,
+              event_payloads_json,
+              first_position,
+              event_count
+            FROM event_appends
+            WHERE meeting_id = ? AND idempotency_key = ?
+          `,
+        )
+        .get(request.meetingId, request.idempotencyKey) as unknown as
+        IdempotencyRow | undefined;
+
+      if (previous !== undefined) {
+        if (
+          previous.payload_fingerprint !== fingerprint ||
+          (!request.trustPayloadFingerprintForReplay &&
+            previous.event_payloads_json !== serializedPayloads)
+        ) {
+          return {
+            idempotencyKey: request.idempotencyKey,
+            kind: "idempotency_conflict" as const,
+          };
+        }
+        return {
+          kind: "replayed" as const,
+          records: loadEventRange(
+            database,
+            codec,
+            request.meetingId,
+            previous.first_position,
+            previous.event_count,
+          ),
+        };
+      }
+    }
+
+    const actualPosition = readPosition(database, request.meetingId);
+    if (
+      request.expectedPosition !== undefined &&
+      request.expectedPosition !== actualPosition
+    ) {
+      return {
+        actualPosition,
+        expectedPosition: request.expectedPosition,
+        kind: "position_conflict" as const,
+      };
+    }
+
+    const insertEvent = database.prepare(
+      `
+        INSERT INTO events (meeting_id, position, payload_json)
+        VALUES (?, ?, ?)
+      `,
+    );
+    const records = request.events.map((event, index) => {
+      const position = actualPosition + index + 1;
+      if (!Number.isSafeInteger(position)) {
+        throw new RangeError("Event position exceeds the safe integer range");
+      }
+      insertEvent.run(
+        request.meetingId,
+        position,
+        serializedEvents[index] ?? "",
+      );
+      return { event, position };
+    });
+
+    if (request.idempotencyKey !== undefined) {
+      database
+        .prepare(
+          `
+            INSERT INTO event_appends (
+              meeting_id,
+              idempotency_key,
+              payload_fingerprint,
+              event_payloads_json,
+              first_position,
+              event_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `,
+        )
+        .run(
+          request.meetingId,
+          request.idempotencyKey,
+          fingerprint,
+          serializedPayloads,
+          actualPosition + 1,
+          records.length,
+        );
+    }
+
+    afterAppend?.();
+    return {
+      kind: "appended" as const,
+      records,
+    };
+  });
+}
+
 export class SqliteEventStore<TEvent> implements EventStore<TEvent> {
   readonly #codec: JsonCodec<TEvent>;
   readonly #owner: NodeSqliteDatabase;
@@ -359,120 +562,7 @@ export class SqliteEventStore<TEvent> implements EventStore<TEvent> {
     request: AppendEventsRequest<TEvent>,
   ): Promise<AppendEventsFailure | AppendEventsResult<TEvent>> {
     await Promise.resolve();
-    requireNonEmpty(request.meetingId, "meetingId");
-    if (request.expectedPosition !== undefined) {
-      requirePosition(request.expectedPosition, "expectedPosition");
-    }
-    if (request.idempotencyKey !== undefined) {
-      requireNonEmpty(request.idempotencyKey, "idempotencyKey");
-    }
-
-    const serializedEvents = request.events.map((event) =>
-      this.#codec.encode(event),
-    );
-    const serializedPayloads = JSON.stringify(serializedEvents);
-    const fingerprint = request.payloadFingerprint ?? serializedPayloads;
-    const database = this.#owner.database;
-
-    return runTransaction(database, () => {
-      if (request.idempotencyKey !== undefined) {
-        const previous = database
-          .prepare(
-            `
-              SELECT
-                payload_fingerprint,
-                event_payloads_json,
-                first_position,
-                event_count
-              FROM event_appends
-              WHERE meeting_id = ? AND idempotency_key = ?
-            `,
-          )
-          .get(request.meetingId, request.idempotencyKey) as unknown as
-          IdempotencyRow | undefined;
-
-        if (previous !== undefined) {
-          if (
-            previous.payload_fingerprint !== fingerprint ||
-            (!request.trustPayloadFingerprintForReplay &&
-              previous.event_payloads_json !== serializedPayloads)
-          ) {
-            return {
-              idempotencyKey: request.idempotencyKey,
-              kind: "idempotency_conflict" as const,
-            };
-          }
-          return {
-            kind: "replayed" as const,
-            records: this.#loadRange(
-              request.meetingId,
-              previous.first_position,
-              previous.event_count,
-            ),
-          };
-        }
-      }
-
-      const actualPosition = this.#readPosition(request.meetingId);
-      if (
-        request.expectedPosition !== undefined &&
-        request.expectedPosition !== actualPosition
-      ) {
-        return {
-          actualPosition,
-          expectedPosition: request.expectedPosition,
-          kind: "position_conflict" as const,
-        };
-      }
-
-      const insertEvent = database.prepare(
-        `
-          INSERT INTO events (meeting_id, position, payload_json)
-          VALUES (?, ?, ?)
-        `,
-      );
-      const records = request.events.map((event, index) => {
-        const position = actualPosition + index + 1;
-        if (!Number.isSafeInteger(position)) {
-          throw new RangeError("Event position exceeds the safe integer range");
-        }
-        insertEvent.run(
-          request.meetingId,
-          position,
-          serializedEvents[index] ?? "",
-        );
-        return { event, position };
-      });
-
-      if (request.idempotencyKey !== undefined) {
-        database
-          .prepare(
-            `
-              INSERT INTO event_appends (
-                meeting_id,
-                idempotency_key,
-                payload_fingerprint,
-                event_payloads_json,
-                first_position,
-                event_count
-              ) VALUES (?, ?, ?, ?, ?, ?)
-            `,
-          )
-          .run(
-            request.meetingId,
-            request.idempotencyKey,
-            fingerprint,
-            serializedPayloads,
-            actualPosition + 1,
-            records.length,
-          );
-      }
-
-      return {
-        kind: "appended" as const,
-        records,
-      };
-    });
+    return appendSqlite(this.#owner.database, this.#codec, request);
   }
 
   async load(
@@ -504,48 +594,7 @@ export class SqliteEventStore<TEvent> implements EventStore<TEvent> {
   async position(meetingId: string): Promise<number> {
     await Promise.resolve();
     requireNonEmpty(meetingId, "meetingId");
-    return this.#readPosition(meetingId);
-  }
-
-  #loadRange(
-    meetingId: string,
-    firstPosition: number,
-    eventCount: number,
-  ): readonly EventRecord<TEvent>[] {
-    const rows = this.#owner.database
-      .prepare(
-        `
-          SELECT position, payload_json
-          FROM events
-          WHERE meeting_id = ? AND position >= ? AND position < ?
-          ORDER BY position ASC
-        `,
-      )
-      .all(
-        meetingId,
-        firstPosition,
-        firstPosition + eventCount,
-      ) as unknown as EventRow[];
-    if (rows.length !== eventCount) {
-      throw new Error("Idempotent append points to an incomplete event range");
-    }
-    return rows.map((row) => ({
-      event: this.#codec.decode(row.payload_json),
-      position: row.position,
-    }));
-  }
-
-  #readPosition(meetingId: string): number {
-    const row = this.#owner.database
-      .prepare(
-        `
-          SELECT COALESCE(MAX(position), 0) AS position
-          FROM events
-          WHERE meeting_id = ?
-        `,
-      )
-      .get(meetingId) as unknown as PositionRow;
-    return row.position;
+    return readPosition(this.#owner.database, meetingId);
   }
 }
 
@@ -585,35 +634,90 @@ export class SqliteProjectionStore<
 
   async put(scope: ProjectionScope, value: TProjection): Promise<void> {
     await Promise.resolve();
-    const partition = projectionPartition(scope);
-    const serialized = this.#codec.encode(value);
-    this.#owner.database
-      .prepare(
-        `
-          INSERT INTO projections (
-            meeting_id,
-            projection,
-            scope_kind,
-            owner_participant_id,
-            payload_json
-          ) VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT (
-            meeting_id,
-            projection,
-            scope_kind,
-            owner_participant_id
-          ) DO UPDATE SET
-            payload_json = excluded.payload_json,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-        `,
-      )
-      .run(
-        scope.meetingId,
-        scope.projection,
-        partition.scopeKind,
-        partition.ownerParticipantId,
-        serialized,
-      );
+    upsertProjection(this.#owner.database, this.#codec, scope, value);
+  }
+}
+
+export class SqliteEventProjectionStore<
+  TEvent,
+  TProjection,
+> implements EventProjectionStore<TEvent, TProjection> {
+  readonly #eventCodec: JsonCodec<TEvent>;
+  readonly #events: SqliteEventStore<TEvent>;
+  readonly #owner: NodeSqliteDatabase;
+  readonly #projectionCodec: JsonCodec<TProjection>;
+  readonly #projections: SqliteProjectionStore<TProjection>;
+
+  constructor(
+    owner: NodeSqliteDatabase,
+    eventCodec: JsonCodec<TEvent>,
+    projectionCodec: JsonCodec<TProjection>,
+  ) {
+    this.#owner = owner;
+    this.#eventCodec = eventCodec;
+    this.#projectionCodec = projectionCodec;
+    this.#events = new SqliteEventStore(owner, eventCodec);
+    this.#projections = new SqliteProjectionStore(owner, projectionCodec);
+  }
+
+  append(
+    request: AppendEventsRequest<TEvent>,
+  ): Promise<AppendEventsFailure | AppendEventsResult<TEvent>> {
+    return this.#events.append(request);
+  }
+
+  async commit(
+    request: EventProjectionCommitRequest<TEvent, TProjection>,
+  ): Promise<AppendEventsFailure | AppendEventsResult<TEvent>> {
+    await Promise.resolve();
+    if (request.append.events.length === 0) {
+      throw new TypeError("Atomic commits require at least one event");
+    }
+    requirePosition(request.append.expectedPosition, "expectedPosition");
+    requireNonEmpty(request.append.idempotencyKey, "idempotencyKey");
+    for (const projection of request.projections) {
+      if (projection.scope.meetingId !== request.append.meetingId) {
+        throw new TypeError(
+          "Atomic projection writes must belong to the appended meeting",
+        );
+      }
+    }
+    return appendSqlite(
+      this.#owner.database,
+      this.#eventCodec,
+      request.append,
+      () => {
+        for (const projection of request.projections) {
+          upsertProjection(
+            this.#owner.database,
+            this.#projectionCodec,
+            projection.scope,
+            projection.value,
+          );
+        }
+      },
+    );
+  }
+
+  get(scope: ProjectionScope): Promise<TProjection | undefined> {
+    return this.#projections.get(scope);
+  }
+
+  load(
+    meetingId: string,
+    options?: {
+      readonly afterPosition?: number;
+    },
+  ): Promise<readonly EventRecord<TEvent>[]> {
+    return this.#events.load(meetingId, options);
+  }
+
+  position(meetingId: string): Promise<number> {
+    return this.#events.position(meetingId);
+  }
+
+  put(scope: ProjectionScope, value: TProjection): Promise<void> {
+    return this.#projections.put(scope, value);
   }
 }
 

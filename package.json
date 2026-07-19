@@ -43,6 +43,7 @@
     "smoke:openai:realtime-secret": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-realtime-secret-smoke.mjs",
     "test": "vitest run",
     "test:architecture": "node scripts/check-architecture.mjs",
+    "test:cloudflare": "npm run build --workspace @counterpoint/adapters-cloudflare && npm run build --workspace @counterpoint/worker && CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false vitest run --config vitest.cloudflare.config.ts",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
     "unit": "vitest run --project unit"
@@ -51,6 +52,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.18.6",
     "@cloudflare/workers-types": "5.20260719.1",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",

@@ -1,11 +1,13 @@
-import { DurableObject } from "cloudflare:workers";
-
 import {
   CURRENT_PROTOCOL_VERSION,
   HealthResponseSchema,
   ReadinessResponseSchema,
   createErrorEnvelope,
 } from "@counterpoint/protocol";
+
+import type { MeetingCoordinator } from "./meeting-coordinator.js";
+
+export { MeetingCoordinator } from "./meeting-coordinator.js";
 
 const JSON_HEADERS = {
   "cache-control": "no-store",
@@ -16,6 +18,7 @@ const EXPECTED_D1_MIGRATIONS = [
   "0002_event_ledger_and_projections.sql",
   "0003_decisions_audit_and_artifacts.sql",
   "0004_bearer_sessions.sql",
+  "0005_d1_append_guards.sql",
 ] as const;
 
 export type Env = Readonly<WorkerBindings>;
@@ -152,25 +155,6 @@ export function createWorkerHandler(): ExportedHandler<Env> {
       return env.ASSETS.fetch(request);
     },
   };
-}
-
-export class MeetingCoordinator extends DurableObject<Env> {
-  override fetch(request: Request): Response {
-    const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/health") {
-      return jsonResponse({
-        durableTruth: "d1",
-        status: "ok",
-      });
-    }
-    return jsonResponse(
-      {
-        code: "NOT_FOUND",
-        message: "The meeting coordinator route was not found.",
-      },
-      404,
-    );
-  }
 }
 
 export default createWorkerHandler();

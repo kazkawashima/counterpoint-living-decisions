@@ -49,6 +49,7 @@ describe("Cloudflare configuration contract", () => {
             "cloudflare:types",
             "cloudflare:types:check",
             "dev:worker",
+            "test:cloudflare",
           ].map((name) => [
             name,
             "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler dev --ip 0.0.0.0",
