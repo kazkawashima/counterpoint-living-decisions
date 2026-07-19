@@ -2,8 +2,11 @@ import { env } from "cloudflare:workers";
 import type {
   ManagedRealtimeCallConnector,
   ManagedRealtimeCallTerminator,
+  ManagedRealtimeSidebandConnector,
+  ManagedRealtimeSidebandObserver,
   UsageRequest,
 } from "@counterpoint/ports";
+import { emptyOpenAiRealtimeUsageState } from "@counterpoint/adapters-openai";
 import {
   JUDGE_REALTIME_MAX_DURATION_SECONDS,
   JUDGE_REALTIME_RESERVED_USAGE,
@@ -22,10 +25,63 @@ const input = {
   sdpOffer: "v=0\r\ns=offer\r\n",
 };
 
+function responseDone(): Record<string, unknown> {
+  return {
+    event_id: "event-response-1",
+    response: {
+      id: "response-1",
+      output: [
+        {
+          content: [
+            { transcript: "meeting-private-canary-must-not-be-retained" },
+          ],
+        },
+      ],
+      usage: {
+        input_token_details: {
+          audio_tokens: 13,
+          cached_tokens: 64,
+          cached_tokens_details: {
+            audio_tokens: 0,
+            image_tokens: 0,
+            text_tokens: 64,
+          },
+          image_tokens: 0,
+          text_tokens: 119,
+        },
+        input_tokens: 132,
+        output_token_details: {
+          audio_tokens: 91,
+          text_tokens: 30,
+        },
+        output_tokens: 121,
+        total_tokens: 253,
+      },
+    },
+    type: "response.done",
+  };
+}
+
 class MemoryStorage implements JudgeRealtimeCallStorage {
   alarm: number | undefined;
   failPuts = 0;
   state: Awaited<ReturnType<JudgeRealtimeCallStorage["get"]>>;
+
+  confirmHangup(
+    callId: string,
+  ): ReturnType<JudgeRealtimeCallStorage["confirmHangup"]> {
+    if (this.state?.status !== "active" || this.state.callId !== callId) {
+      return Promise.resolve(undefined);
+    }
+    const next = {
+      reservationId: this.state.reservationId,
+      reservedUsage: this.state.reservedUsage,
+      sidebandUsage: this.state.sidebandUsage,
+      status: "hangup_confirmed" as const,
+    };
+    this.state = structuredClone(next);
+    return Promise.resolve(next);
+  }
 
   deleteAlarm(): Promise<void> {
     this.alarm = undefined;
@@ -34,6 +90,20 @@ class MemoryStorage implements JudgeRealtimeCallStorage {
 
   get(): ReturnType<JudgeRealtimeCallStorage["get"]> {
     return Promise.resolve(this.state);
+  }
+
+  markSidebandUntrustworthy(callId: string): Promise<boolean> {
+    if (this.state?.status !== "active" || this.state.callId !== callId) {
+      return Promise.resolve(false);
+    }
+    this.state = {
+      ...this.state,
+      sidebandUsage: {
+        ...this.state.sidebandUsage,
+        trustworthy: false,
+      },
+    };
+    return Promise.resolve(true);
   }
 
   put(
@@ -47,9 +117,100 @@ class MemoryStorage implements JudgeRealtimeCallStorage {
     return Promise.resolve();
   }
 
+  replaceActiveUsage(
+    callId: string,
+    expected: Parameters<JudgeRealtimeCallStorage["replaceActiveUsage"]>[1],
+    next: Parameters<JudgeRealtimeCallStorage["replaceActiveUsage"]>[2],
+  ): Promise<boolean> {
+    if (
+      this.state?.status !== "active" ||
+      this.state.callId !== callId ||
+      JSON.stringify(this.state.sidebandUsage) !== JSON.stringify(expected)
+    ) {
+      return Promise.resolve(false);
+    }
+    this.state = {
+      ...this.state,
+      sidebandUsage: structuredClone(next),
+    };
+    return Promise.resolve(true);
+  }
+
+  replaceConnecting(
+    reservationId: string,
+    state: Parameters<JudgeRealtimeCallStorage["replaceConnecting"]>[1],
+  ): Promise<boolean> {
+    if (
+      this.state?.status !== "connecting" ||
+      this.state.reservationId !== reservationId
+    ) {
+      return Promise.resolve(false);
+    }
+    this.state = structuredClone(state);
+    return Promise.resolve(true);
+  }
+
   setAlarm(scheduledTimeEpochMs: number): Promise<void> {
     this.alarm = scheduledTimeEpochMs;
     return Promise.resolve();
+  }
+}
+
+class DelayedUsageStorage extends MemoryStorage {
+  readonly replacementStarted: Promise<void>;
+  readonly #replacementGate: Promise<void>;
+  #releaseReplacement: (() => void) | undefined;
+  #reportReplacementStarted: (() => void) | undefined;
+
+  constructor() {
+    super();
+    this.replacementStarted = new Promise<void>((resolve) => {
+      this.#reportReplacementStarted = resolve;
+    });
+    this.#replacementGate = new Promise<void>((resolve) => {
+      this.#releaseReplacement = resolve;
+    });
+  }
+
+  releaseReplacement(): void {
+    this.#releaseReplacement?.();
+  }
+
+  override async replaceActiveUsage(
+    callId: string,
+    expected: Parameters<JudgeRealtimeCallStorage["replaceActiveUsage"]>[1],
+    next: Parameters<JudgeRealtimeCallStorage["replaceActiveUsage"]>[2],
+  ): Promise<boolean> {
+    this.#reportReplacementStarted?.();
+    await this.#replacementGate;
+    return super.replaceActiveUsage(callId, expected, next);
+  }
+}
+
+class DelayedInitialGetStorage extends MemoryStorage {
+  readonly getStarted: Promise<void>;
+  readonly #getGate: Promise<void>;
+  #releaseGet: (() => void) | undefined;
+  #reportGetStarted: (() => void) | undefined;
+
+  constructor() {
+    super();
+    this.getStarted = new Promise<void>((resolve) => {
+      this.#reportGetStarted = resolve;
+    });
+    this.#getGate = new Promise<void>((resolve) => {
+      this.#releaseGet = resolve;
+    });
+  }
+
+  override async get(): ReturnType<JudgeRealtimeCallStorage["get"]> {
+    this.#reportGetStarted?.();
+    await this.#getGate;
+    return super.get();
+  }
+
+  releaseGet(): void {
+    this.#releaseGet?.();
   }
 }
 
@@ -57,6 +218,7 @@ function lifecycle(
   options: {
     readonly connector?: ManagedRealtimeCallConnector;
     readonly now?: number;
+    readonly sideband?: ManagedRealtimeSidebandConnector;
     readonly storage?: MemoryStorage;
     readonly terminator?: ManagedRealtimeCallTerminator;
     readonly finalize?: (
@@ -82,6 +244,15 @@ function lifecycle(
     hangup,
   };
   const finalize = options.finalize ?? vi.fn(() => Promise.resolve());
+  let sidebandObserver: ManagedRealtimeSidebandObserver | undefined;
+  const sidebandClose = vi.fn();
+  const sidebandConnect = vi.fn<ManagedRealtimeSidebandConnector["connect"]>(
+    (_callId, observer) => {
+      sidebandObserver = observer;
+      return Promise.resolve({ close: sidebandClose, isHealthy: () => true });
+    },
+  );
+  const sideband = options.sideband ?? { connect: sidebandConnect };
   return {
     connector,
     finalize,
@@ -89,10 +260,16 @@ function lifecycle(
     instance: new JudgeRealtimeCallLifecycle({
       clock: () => options.now ?? 1_000,
       connector,
+      sideband,
       storage,
       terminator,
       usage: { finalize },
     }),
+    get sidebandObserver() {
+      return sidebandObserver;
+    },
+    sidebandClose,
+    sidebandConnect,
     storage,
     terminator,
   };
@@ -113,11 +290,17 @@ describe("JudgeRealtimeCallLifecycle", () => {
       callId: "rtc_server-owned-call",
       reservationId: input.reservationId,
       reservedUsage,
+      sidebandUsage: emptyOpenAiRealtimeUsageState(),
+      startedAtEpochMs: 50_000,
       status: "active",
       terminateAtEpochMs: 50_000 + JUDGE_REALTIME_MAX_DURATION_SECONDS * 1_000,
     });
     expect(fixture.storage.alarm).toBe(
       50_000 + JUDGE_REALTIME_MAX_DURATION_SECONDS * 1_000,
+    );
+    expect(fixture.sidebandConnect).toHaveBeenCalledWith(
+      "rtc_server-owned-call",
+      expect.any(Object),
     );
     expect(JSON.stringify(await fixture.instance.status())).not.toContain(
       "rtc_server-owned-call",
@@ -164,6 +347,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(storage.state).toEqual({
       reservationId: input.reservationId,
       reservedUsage,
+      sidebandUsage: emptyOpenAiRealtimeUsageState(),
       status: "hangup_confirmed",
     });
 
@@ -203,7 +387,249 @@ describe("JudgeRealtimeCallLifecycle", () => {
     );
   });
 
-  it("recovers an accepted call ID when its first durable write fails", async () => {
+  it("fails closed when the authenticated sideband cannot attach", async () => {
+    const sideband: ManagedRealtimeSidebandConnector = {
+      connect: () => Promise.reject(new Error("sideband unavailable")),
+    };
+    const fixture = lifecycle({ sideband });
+
+    await expect(fixture.instance.start(input)).resolves.toEqual({
+      kind: "unavailable",
+    });
+
+    expect(fixture.hangup).toHaveBeenCalledWith("rtc_server-owned-call");
+    expect(fixture.finalize).toHaveBeenCalledWith(
+      input.reservationId,
+      reservedUsage,
+    );
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("durably projects sideband usage without retaining provider content", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+
+    await fixture.sidebandObserver?.onProviderEvent(responseDone());
+
+    expect(fixture.storage.state).toMatchObject({
+      sidebandUsage: {
+        totals: {
+          costMicroUsd: 7_206,
+          generationCount: 1,
+          inputTokens: 132,
+          outputTokens: 121,
+        },
+        trustworthy: true,
+      },
+      status: "active",
+    });
+    expect(JSON.stringify(fixture.storage.state)).not.toContain(
+      "meeting-private-canary",
+    );
+  });
+
+  it("cannot resurrect an active call with a stale telemetry write", async () => {
+    const storage = new DelayedUsageStorage();
+    const fixture = lifecycle({ storage });
+    await fixture.instance.start(input);
+    const observer = fixture.sidebandObserver;
+    if (observer === undefined) {
+      throw new TypeError("Expected attached sideband observer");
+    }
+
+    const record = observer.onProviderEvent(responseDone());
+    await storage.replacementStarted;
+    await fixture.instance.terminate();
+    storage.releaseReplacement();
+    await record;
+
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+  });
+
+  it("hangs up and fully settles malformed billable telemetry", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+    const malformed = responseDone();
+    const response = malformed.response as Record<string, unknown>;
+    response.usage = {
+      ...(response.usage as Record<string, unknown>),
+      future_billable_units: 1,
+    };
+
+    await fixture.sidebandObserver?.onProviderEvent(malformed);
+
+    expect(fixture.hangup).toHaveBeenCalledWith("rtc_server-owned-call");
+    expect(fixture.finalize).toHaveBeenCalledWith(
+      input.reservationId,
+      reservedUsage,
+    );
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("fully settles a provider-side sideband disconnect", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+
+    await fixture.sidebandObserver?.onDisconnect({
+      clean: false,
+      initiatedByServer: false,
+    });
+
+    expect(fixture.hangup).toHaveBeenCalledWith("rtc_server-owned-call");
+    expect(fixture.finalize).toHaveBeenCalledWith(
+      input.reservationId,
+      reservedUsage,
+    );
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("does not return browser SDP when sideband disconnects during attachment", async () => {
+    const close = vi.fn();
+    const sideband: ManagedRealtimeSidebandConnector = {
+      async connect(_callId, observer) {
+        await observer.onDisconnect({
+          clean: false,
+          initiatedByServer: false,
+        });
+        return { close, isHealthy: () => true };
+      },
+    };
+    const fixture = lifecycle({ sideband });
+
+    await expect(fixture.instance.start(input)).resolves.toEqual({
+      kind: "unavailable",
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("does not return browser SDP when sideband disconnects after attachment", async () => {
+    let observer: ManagedRealtimeSidebandObserver | undefined;
+    const sideband: ManagedRealtimeSidebandConnector = {
+      connect(_callId, selectedObserver) {
+        observer = selectedObserver;
+        return Promise.resolve({ close: vi.fn(), isHealthy: () => true });
+      },
+    };
+    const connector: ManagedRealtimeCallConnector = {
+      async connect(_request, onAccepted) {
+        await onAccepted?.("rtc_disconnect-before-sdp");
+        await observer?.onDisconnect({
+          clean: false,
+          initiatedByServer: false,
+        });
+        return {
+          callId: "rtc_disconnect-before-sdp",
+          channel: "private",
+          model: "gpt-realtime-2.1",
+          sdpAnswer: "v=0\r\ns=answer\r\n",
+        };
+      },
+    };
+    const fixture = lifecycle({ connector, sideband });
+
+    await expect(fixture.instance.start(input)).resolves.toEqual({
+      kind: "unavailable",
+    });
+
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("does not return browser SDP while sideband health notification is pending", async () => {
+    const close = vi.fn();
+    const sideband: ManagedRealtimeSidebandConnector = {
+      connect: () =>
+        Promise.resolve({
+          close,
+          isHealthy: () => false,
+        }),
+    };
+    const fixture = lifecycle({ sideband });
+
+    await expect(fixture.instance.start(input)).resolves.toEqual({
+      kind: "unavailable",
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("does not duplicate settlement when server shutdown closes sideband", async () => {
+    let observer: ManagedRealtimeSidebandObserver | undefined;
+    let disconnect: Promise<void> | undefined;
+    const sideband: ManagedRealtimeSidebandConnector = {
+      connect(_callId, selectedObserver) {
+        observer = selectedObserver;
+        return Promise.resolve({
+          close() {
+            disconnect = observer?.onDisconnect({
+              clean: true,
+              initiatedByServer: true,
+            });
+          },
+          isHealthy: () => true,
+        });
+      },
+    };
+    const fixture = lifecycle({ sideband });
+    await fixture.instance.start(input);
+
+    await fixture.instance.terminate();
+    await disconnect;
+
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+  });
+
+  it("serializes concurrent termination attempts", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+
+    await Promise.all([
+      fixture.instance.terminate(),
+      fixture.instance.terminate(),
+      fixture.instance.terminate(),
+    ]);
+
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("settles without provider work when its initial durable claim fails", async () => {
     const storage = new MemoryStorage();
     storage.failPuts = 1;
     const hangup = vi.fn(() => Promise.resolve());
@@ -216,7 +642,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
       kind: "unavailable",
     });
 
-    expect(hangup).toHaveBeenCalledWith("rtc_server-owned-call");
+    expect(hangup).not.toHaveBeenCalled();
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
       reservedUsage,
@@ -269,6 +695,87 @@ describe("JudgeRealtimeCallLifecycle", () => {
       kind: "conflict",
     });
     expect(connect).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a concurrent start while provider connection is pending", async () => {
+    let releaseConnection: (() => void) | undefined;
+    const connectionGate = new Promise<void>((resolve) => {
+      releaseConnection = resolve;
+    });
+    const connect = vi.fn<ManagedRealtimeCallConnector["connect"]>(
+      async (_request, onAccepted) => {
+        await connectionGate;
+        await onAccepted?.("rtc_concurrent-start");
+        return {
+          callId: "rtc_concurrent-start",
+          channel: "private",
+          model: "gpt-realtime-2.1",
+          sdpAnswer: "v=0\r\ns=answer\r\n",
+        };
+      },
+    );
+    const fixture = lifecycle({ connector: { connect } });
+    const firstStart = fixture.instance.start(input);
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
+
+    await expect(fixture.instance.start(input)).resolves.toEqual({
+      kind: "conflict",
+    });
+    releaseConnection?.();
+    await expect(firstStart).resolves.toMatchObject({ kind: "started" });
+    expect(connect).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a connecting claim without allowing a late accepted call to revive", async () => {
+    let releaseConnection: (() => void) | undefined;
+    const connectionGate = new Promise<void>((resolve) => {
+      releaseConnection = resolve;
+    });
+    const connector: ManagedRealtimeCallConnector = {
+      async connect(_request, onAccepted) {
+        await connectionGate;
+        await onAccepted?.("rtc_accepted-after-cancel");
+        return {
+          callId: "rtc_accepted-after-cancel",
+          channel: "private",
+          model: "gpt-realtime-2.1",
+          sdpAnswer: "v=0\r\ns=answer\r\n",
+        };
+      },
+    };
+    const fixture = lifecycle({ connector });
+    const pendingStart = fixture.instance.start(input);
+    await vi.waitFor(() =>
+      expect(fixture.storage.state?.status).toBe("connecting"),
+    );
+
+    await fixture.instance.terminate();
+    releaseConnection?.();
+
+    await expect(pendingStart).resolves.toEqual({ kind: "unavailable" });
+    expect(fixture.hangup).toHaveBeenCalledWith("rtc_accepted-after-cancel");
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("cancels before the initial durable claim without starting provider work", async () => {
+    const storage = new DelayedInitialGetStorage();
+    const connect = vi.fn<ManagedRealtimeCallConnector["connect"]>();
+    const fixture = lifecycle({ connector: { connect }, storage });
+    const pendingStart = fixture.instance.start(input);
+    await storage.getStarted;
+
+    const termination = fixture.instance.terminate();
+    storage.releaseGet();
+
+    await expect(pendingStart).resolves.toEqual({ kind: "unavailable" });
+    await termination;
+    expect(connect).not.toHaveBeenCalled();
+    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.storage.state).toBeUndefined();
   });
 });
 

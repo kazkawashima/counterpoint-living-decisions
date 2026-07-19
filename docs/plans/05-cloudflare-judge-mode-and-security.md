@@ -129,10 +129,13 @@ C4 foundation notes:
   validation; the key-bearing destination is fixed to the official HTTPS
   endpoint and cannot be overridden.
 - A dedicated Durable Object now owns one reservation/call pair. It persists
-  the provider call ID before returning SDP, requires an exact active full-cap
-  D1 reservation before provider work, schedules a 30-second alarm, invokes the
-  official authenticated hangup endpoint, and retries settlement without
-  issuing duplicate hangups. Accepted calls with a later malformed SDP response
+  a connecting claim before provider I/O and the provider call ID before
+  returning SDP, requires an exact active full-cap D1 reservation before
+  provider work, schedules a 30-second alarm, invokes the official
+  authenticated hangup endpoint, and retries settlement without issuing
+  duplicate hangups. Transactional connecting/active transitions reject
+  concurrent starts, late acceptance after cancellation, and stale telemetry
+  writes after settlement. Accepted calls with a later malformed SDP response
   are terminated immediately; provider outcomes without a known call ID are
   charged conservatively.
 - The current official sideband and cost contracts were rechecked on
@@ -143,12 +146,26 @@ C4 foundation notes:
   Malformed totals, identity conflicts, separately billed transcription
   events, unsafe integer growth, and any reservation-dimension overflow make
   the accumulator permanently untrustworthy. They can never lower settlement.
+- The Durable Object attaches an outbound, API-key-authenticated sideband
+  WebSocket to the accepted provider call ID before browser SDP can be
+  returned. The adapter fixes the destination to the official provider origin,
+  accepts only bounded text JSON, preserves event order, and never persists raw
+  provider frames. Only the content-free accumulator state is stored.
+- Sideband setup failure, provider-side disconnect, malformed or future
+  billable telemetry, and any observed reservation-dimension overflow
+  immediately invoke authenticated hangup and conservatively finalize the full
+  reservation. Attachment-time disconnects cannot race through a successful
+  browser SDP response, and server-initiated close cannot duplicate settlement.
+  Trustworthy measured telemetry is visible internally but is not yet used to
+  lower the charged reservation.
 - The controller is not publicly routed yet. Reserving the complete USD 25
   window prevents overlapping calls but does not prove that one hostile
   browser data channel cannot exceed its reservation before the 30-second
-  alarm. Judge client-secret issuance therefore remains fail-closed until
-  authenticated sideband enforcement or a server-relayed transport bounds
-  in-call generations and cost. No remote Secret registration occurs.
+  alarm. Sideband observation is reactive: while the browser owns the provider
+  data channel it can still issue arbitrary or concurrent generation commands
+  before accounting events arrive. Judge client-secret issuance therefore
+  remains fail-closed until provider control moves to the Durable Object
+  sideband or a server-relayed transport. No remote Secret registration occurs.
 
 ### C5 — Security hardening
 
@@ -162,7 +179,7 @@ C4 foundation notes:
 - [ ] Re-run the C5 matrix against hosted Worker routes after API parity.
 
 The C5 foundation is reproducible through `npm run security:verify`. The
-current matrix exercises 260 authorization, owner isolation, session/display
+current matrix exercises 273 authorization, owner isolation, session/display
 expiry, SSRF/DNS pinning, redirect, artifact parser/size, webhook, disclosure,
 Realtime payload, API response, and structured-log cases. Parser-normalized
 decimal, hexadecimal, octal, short dotted, trailing-dot, and IPv4-embedded

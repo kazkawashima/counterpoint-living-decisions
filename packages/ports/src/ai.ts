@@ -88,6 +88,35 @@ export interface ManagedRealtimeCallTerminator {
   hangup(callId: string): Promise<void>;
 }
 
+export interface ManagedRealtimeSidebandDisconnect {
+  readonly clean: boolean;
+  readonly initiatedByServer: boolean;
+}
+
+export interface ManagedRealtimeSidebandObserver {
+  onDisconnect(event: ManagedRealtimeSidebandDisconnect): Promise<void>;
+  onProviderEvent(event: unknown): Promise<void>;
+}
+
+export interface ManagedRealtimeSidebandConnection {
+  close(): void;
+  isHealthy(): boolean;
+}
+
+/**
+ * Server-owned observer for an accepted provider Realtime call.
+ *
+ * Implementations must authenticate directly to the fixed provider origin,
+ * retain the provider key and raw frames only transiently, preserve message
+ * order, and project frames into content-free accounting state.
+ */
+export interface ManagedRealtimeSidebandConnector {
+  connect(
+    callId: string,
+    observer: ManagedRealtimeSidebandObserver,
+  ): Promise<ManagedRealtimeSidebandConnection>;
+}
+
 export interface MeetingApiKeyLease {
   readonly apiKey: string;
   readonly heartbeatAt: string;

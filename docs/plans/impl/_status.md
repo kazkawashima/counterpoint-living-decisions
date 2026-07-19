@@ -396,12 +396,16 @@ The canonical implementation-facing artifacts are:
   body validation, allowing accepted but malformed responses to remain
   terminable.
 - A dedicated Durable Object now owns each judge Realtime reservation/call
-  pair. It requires the exact active full-cap D1 reservation before provider
-  work, durably stores the provider call ID before browser SDP is returned,
-  schedules a 30-second alarm, invokes the official authenticated hangup
-  endpoint, and retries settlement without duplicate hangups. Accepted calls
-  with a later malformed SDP response are terminated immediately; unknown
-  provider outcomes remain conservatively charged.
+  pair. It requires the exact active full-cap D1 reservation and stores a
+  durable connecting claim before provider work, then stores the provider call
+  ID before browser SDP is returned. Transactional state changes reject
+  concurrent starts, terminate-before-claim, terminate-during-connect, late
+  provider acceptance after cancellation, and stale telemetry writes after
+  settlement. The controller reuses one lifecycle/socket owner across requests
+  and alarms, schedules a 30-second alarm, invokes the official authenticated
+  hangup endpoint, and retries settlement without duplicate hangups. Accepted
+  calls with a later malformed SDP response are terminated immediately;
+  unknown provider outcomes remain conservatively charged.
 - The current OpenAI sideband, `response.done`, and `gpt-realtime-2.1` pricing
   contracts were rechecked on 2026-07-19. A new provider adapter extracts only
   event/response IDs and complete text/audio/image/cached token counts, prices
@@ -411,20 +415,38 @@ The canonical implementation-facing artifacts are:
 - The telemetry accumulator is idempotent for exact repeated events and
   permanently fails closed on malformed totals, reused/conflicting identities,
   separately billed transcription, unsafe integer growth, or any reserved
-  cost/token/generation overflow. It is not yet attached to the provider
-  sideband or used for lower settlement; missing telemetry still leaves the
-  full USD 25 reservation charged.
+  cost/token/generation overflow. It now receives the provider sideband stream
+  but is not used for lower settlement; missing telemetry still leaves the full
+  USD 25 reservation charged.
+- An outbound, API-key-authenticated sideband WebSocket is now attached to the
+  accepted call ID before browser SDP can be returned. Its provider origin is
+  fixed, frames are bounded ordered text JSON, and only the content-free
+  accumulator projection is persisted in Durable Object storage. The status
+  surface exposes trust and generation count without exposing the call ID or
+  provider content.
+- Sideband setup failure, attachment-time disconnect, provider disconnect,
+  malformed/future billable telemetry, and observed reservation overflow all
+  invoke authenticated hangup and settle the full reservation. Server-initiated
+  close is distinguished from provider loss, invalid/error frames actively
+  close the underlying socket, and termination is serialized so callbacks,
+  requests, and alarms cannot duplicate hangup or settlement.
+- Trustworthy measured usage does not yet reduce settlement; the full
+  reservation remains the safe charge for every outcome. Sideband observation
+  also does not make the browser-controlled provider data channel safe: a
+  hostile client could issue arbitrary or concurrent generation commands before
+  the corresponding accounting events arrive.
 - The controller is intentionally not publicly routed. Reserving the complete
   USD 25 rolling-window ceiling prevents overlap but does not prove that one
   hostile browser data channel cannot exceed the reservation before the
-  30-second alarm. Sideband enforcement or a server-relayed transport must
-  first bound in-call generations and cost.
+  30-second alarm. Provider control must first move to a Durable Object-owned
+  sideband path or a server-relayed transport that proactively bounds in-call
+  generations and cost.
 - Direct Worker judge client-secret issuance is now intentionally fail-closed,
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
 - Plan 05 C5 now has a reproducible `npm run security:verify` foundation. Its
-  260-case matrix, including parser-normalized loopback notation, gives strong
+  273-case matrix, including parser-normalized loopback notation, gives strong
   IDOR/meeting/owner, session/display expiry, DNS-pinned SSRF/redirect,
   disclosure preview/prompt-injection, artifact, webhook, API/Realtime, and
   content-free log regression coverage. Its repository scan includes tracked
@@ -472,11 +494,12 @@ The canonical implementation-facing artifacts are:
   shutdown runbook forbids schema down migration and secret-value inspection.
   No remote resource, secret, migration, deployment, or repository visibility
   changed during this preparation.
-- C4 is not complete: safe public route wiring, sideband usage enforcement,
+- C4 is not complete: safe public route wiring, server-owned generation
+  control,
   measured flagship limits, the web managed-call switch, structured judge AI
   routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
   broader content-free operator visibility remain.
-- The current verification baseline is 516 regular Vitest tests and 47
+- The current verification baseline is 529 regular Vitest tests and 60
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 
@@ -487,12 +510,12 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 by attaching an authenticated sideband WebSocket to the
-server-owned call ID before browser SDP is returned. Feed every provider event
-through the durable content-free accumulator, terminate immediately on
-telemetry loss/invalidity/limit exhaustion, and preserve the full reservation
-unless server-initiated hangup is followed by a trustworthy ordered close.
-Then switch the judge web path to the managed-call contract with browser E2E
+Continue Plan 05 C4 by removing provider generation control from the judge
+browser. Evaluate the smallest media-preserving route between media-only WebRTC
+with Durable Object-owned sideband commands and a server-relayed transport;
+prove that every `response.create`, cancellation, and session update is
+serialized behind the remaining reservation before enabling the public route.
+Then switch the judge web path to that managed contract with browser E2E
 coverage and saved reel screenshots. Apply the same reservation boundary to
 structured judge AI only after hosted API parity exists. Keep remote Secret
 registration and deployment mutation behind an explicit deployment boundary.

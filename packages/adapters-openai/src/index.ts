@@ -85,3 +85,10 @@ export {
   type OpenAiRealtimeUsageState,
   type OpenAiRealtimeUsageTotals,
 } from "./realtime-usage.js";
+export {
+  MAX_OPENAI_REALTIME_SIDEBAND_EVENT_BYTES,
+  OPENAI_REALTIME_SIDEBAND_URL,
+  OpenAiRealtimeSidebandConnector,
+  OpenAiRealtimeSidebandError,
+  type OpenAiRealtimeSidebandConnectorOptions,
+} from "./realtime-sideband.js";
