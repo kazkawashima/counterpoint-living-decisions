@@ -73,3 +73,15 @@ export {
   OpenAiRealtimeCallError,
   type OpenAiManagedRealtimeCallConnectorOptions,
 } from "./realtime-calls.js";
+export {
+  GPT_REALTIME_2_1_PRICING_VERSION,
+  emptyOpenAiRealtimeUsageState,
+  parseOpenAiRealtimeResponseDoneUsage,
+  priceGptRealtime21UsageMicroUsd,
+  recordOpenAiRealtimeServerEvent,
+  type OpenAiRealtimeResponseUsage,
+  type OpenAiRealtimeUsageLimits,
+  type OpenAiRealtimeUsageRecordResult,
+  type OpenAiRealtimeUsageState,
+  type OpenAiRealtimeUsageTotals,
+} from "./realtime-usage.js";

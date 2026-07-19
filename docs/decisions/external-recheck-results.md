@@ -52,11 +52,25 @@ Sources:
 - Structured Outputs are not supported by the Realtime model, so transcripts
   must enter deterministic application commands or a separate validated
   Responses operation.
+- The WebRTC call `Location` header supplies a server-owned call ID. An
+  application server can attach a sideband WebSocket to
+  `/v1/realtime?call_id=...` to monitor and control that same session without
+  exposing the standard key to the browser.
+- Conversational billing is reported on each `response.done` event. The usage
+  includes text/audio/image input details, cached-token details, and
+  text/audio output details; input transcription, if enabled, is billed
+  separately and therefore remains disabled in judge mode.
+- The pinned `gpt-realtime-2.1` rate card checked on 2026-07-19 is, per one
+  million tokens: text input USD 4, cached text input USD 0.40, text output
+  USD 24, audio input USD 32, cached audio input USD 0.40, audio output USD 64,
+  image input USD 5, and cached image input USD 0.50.
 
 Sources:
 
 - <https://developers.openai.com/api/docs/guides/realtime-webrtc>
 - <https://developers.openai.com/api/docs/guides/realtime-conversations>
+- <https://developers.openai.com/api/docs/guides/realtime-server-controls>
+- <https://developers.openai.com/api/docs/guides/realtime-costs>
 - <https://developers.openai.com/api/docs/models/gpt-realtime-2.1>
 
 Before implementing A6, recheck account-specific client-secret lifetime,

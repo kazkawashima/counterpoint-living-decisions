@@ -135,6 +135,14 @@ C4 foundation notes:
   issuing duplicate hangups. Accepted calls with a later malformed SDP response
   are terminated immediately; provider outcomes without a known call ID are
   charged conservatively.
+- The current official sideband and cost contracts were rechecked on
+  2026-07-19. A strict content-free accumulator validates complete
+  `response.done` text/audio/image/cached token details, deduplicates exact
+  response identities, and prices them against the pinned
+  `gpt-realtime-2.1` rate card with conservative integer micro-USD rounding.
+  Malformed totals, identity conflicts, separately billed transcription
+  events, unsafe integer growth, and any reservation-dimension overflow make
+  the accumulator permanently untrustworthy. They can never lower settlement.
 - The controller is not publicly routed yet. Reserving the complete USD 25
   window prevents overlapping calls but does not prove that one hostile
   browser data channel cannot exceed its reservation before the 30-second
@@ -154,7 +162,7 @@ C4 foundation notes:
 - [ ] Re-run the C5 matrix against hosted Worker routes after API parity.
 
 The C5 foundation is reproducible through `npm run security:verify`. The
-current matrix exercises 249 authorization, owner isolation, session/display
+current matrix exercises 260 authorization, owner isolation, session/display
 expiry, SSRF/DNS pinning, redirect, artifact parser/size, webhook, disclosure,
 Realtime payload, API response, and structured-log cases. Parser-normalized
 decimal, hexadecimal, octal, short dotted, trailing-dot, and IPv4-embedded

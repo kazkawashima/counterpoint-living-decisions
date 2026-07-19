@@ -402,6 +402,18 @@ The canonical implementation-facing artifacts are:
   endpoint, and retries settlement without duplicate hangups. Accepted calls
   with a later malformed SDP response are terminated immediately; unknown
   provider outcomes remain conservatively charged.
+- The current OpenAI sideband, `response.done`, and `gpt-realtime-2.1` pricing
+  contracts were rechecked on 2026-07-19. A new provider adapter extracts only
+  event/response IDs and complete text/audio/image/cached token counts, prices
+  them with exact deci-micro-USD arithmetic and conservative rounding, and
+  stores no transcript, audio, output item, meeting, participant, or source
+  content.
+- The telemetry accumulator is idempotent for exact repeated events and
+  permanently fails closed on malformed totals, reused/conflicting identities,
+  separately billed transcription, unsafe integer growth, or any reserved
+  cost/token/generation overflow. It is not yet attached to the provider
+  sideband or used for lower settlement; missing telemetry still leaves the
+  full USD 25 reservation charged.
 - The controller is intentionally not publicly routed. Reserving the complete
   USD 25 rolling-window ceiling prevents overlap but does not prove that one
   hostile browser data channel cannot exceed the reservation before the
@@ -412,7 +424,7 @@ The canonical implementation-facing artifacts are:
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
 - Plan 05 C5 now has a reproducible `npm run security:verify` foundation. Its
-  249-case matrix, including parser-normalized loopback notation, gives strong
+  260-case matrix, including parser-normalized loopback notation, gives strong
   IDOR/meeting/owner, session/display expiry, DNS-pinned SSRF/redirect,
   disclosure preview/prompt-injection, artifact, webhook, API/Realtime, and
   content-free log regression coverage. Its repository scan includes tracked
@@ -464,7 +476,7 @@ The canonical implementation-facing artifacts are:
   measured flagship limits, the web managed-call switch, structured judge AI
   routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
   broader content-free operator visibility remain.
-- The current verification baseline is 505 regular Vitest tests and 47
+- The current verification baseline is 516 regular Vitest tests and 47
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 
@@ -476,14 +488,14 @@ The canonical implementation-facing artifacts are:
 ## Next executable slice
 
 Continue Plan 05 C4 by attaching an authenticated sideband WebSocket to the
-server-owned call ID, durably aggregating bounded `response.done` usage without
-content, and pricing that usage against the pinned model rate card. Preserve
-the full reservation on missing or malformed telemetry; only measured,
-validated totals may settle below the USD 25 estimate. Then switch the judge
-web path to the managed-call contract with browser E2E coverage and saved reel
-screenshots. Apply the same reservation boundary to structured judge AI only
-after hosted API parity exists. Keep remote Secret registration and deployment
-mutation behind an explicit deployment boundary.
+server-owned call ID before browser SDP is returned. Feed every provider event
+through the durable content-free accumulator, terminate immediately on
+telemetry loss/invalidity/limit exhaustion, and preserve the full reservation
+unless server-initiated hangup is followed by a trustworthy ordered close.
+Then switch the judge web path to the managed-call contract with browser E2E
+coverage and saved reel screenshots. Apply the same reservation boundary to
+structured judge AI only after hosted API parity exists. Keep remote Secret
+registration and deployment mutation behind an explicit deployment boundary.
 
 ## Open gates
 
