@@ -1,5 +1,9 @@
 import {
+  AcquireSharedFloorRequestSchema,
+  AcquireSharedFloorResponseSchema,
   ApproveDisclosureResponseSchema,
+  CaptureUtteranceRequestSchema,
+  CaptureUtteranceResponseSchema,
   ClearMeetingByokResponseSchema,
   CommitDecisionResponseSchema,
   ConfigureMeetingByokResponseSchema,
@@ -9,6 +13,8 @@ import {
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   FacilitatorDemoResetResponseSchema,
+  GetRoleProjectionRequestSchema,
+  GetRoleProjectionResponseSchema,
   HeartbeatMeetingByokResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
   IssueDisplayTokenResponseSchema,
@@ -26,6 +32,8 @@ import {
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
+  ReleaseSharedFloorRequestSchema,
+  ReleaseSharedFloorResponseSchema,
   ResolveDecisionReviewResponseSchema,
   RevokeDisplayTokenResponseSchema,
   ReviewInvalidationResponseSchema,
@@ -33,8 +41,12 @@ import {
   StartDecisionMonitoringResponseSchema,
   SharedDisplayProjectionResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
+  type AcquireSharedFloorRequest,
+  type AcquireSharedFloorResponse,
   type AssignedMeeting,
   type ApproveDisclosureResponse,
+  type CaptureUtteranceRequest,
+  type CaptureUtteranceResponse,
   type ClearMeetingByokResponse,
   type CommitDecisionRequest,
   type CommitDecisionResponse,
@@ -47,6 +59,8 @@ import {
   type DispositionSharedDecisionCandidateRequest,
   type DispositionSharedDecisionCandidateResponse,
   type FacilitatorDemoResetResponse,
+  type GetRoleProjectionRequest,
+  type GetRoleProjectionResponse,
   type HeartbeatMeetingByokResponse,
   type LoginResponse,
   type InjectDemoRegulatoryChangeResponse,
@@ -62,6 +76,8 @@ import {
   type ProposeDisclosureResponse,
   type RegisterPrivateTextSourceFixtureResponse,
   type RejectDisclosureResponse,
+  type ReleaseSharedFloorRequest,
+  type ReleaseSharedFloorResponse,
   type ReviewInvalidationRequest,
   type ReviewInvalidationResponse,
   type ResolveDecisionReviewResponse,
@@ -73,9 +89,14 @@ import {
   type SynthesizeSharedDecisionRequest,
   type SynthesizeSharedDecisionResponse,
   type TextRange,
+  type UtteranceChannel,
 } from "@counterpoint/protocol";
 
 export type {
+  AcquireSharedFloorRequest,
+  AcquireSharedFloorResponse,
+  CaptureUtteranceRequest,
+  CaptureUtteranceResponse,
   ClearMeetingByokResponse,
   CommitDecisionRequest,
   CommitDecisionResponse,
@@ -86,6 +107,8 @@ export type {
   DecisionHistoryResponse,
   DecisionJsonExportResponse,
   FacilitatorDemoResetResponse,
+  GetRoleProjectionRequest,
+  GetRoleProjectionResponse,
   HeartbeatMeetingByokResponse,
   InjectDemoRegulatoryChangeResponse,
   IssueDisplayTokenResponse,
@@ -98,6 +121,8 @@ export type {
   ReviewInvalidationRequest,
   ReviewInvalidationResponse,
   ResolveDecisionReviewResponse,
+  ReleaseSharedFloorRequest,
+  ReleaseSharedFloorResponse,
   RevokeDisplayTokenResponse,
   SaveDecisionDraftRequest,
   SaveDecisionDraftResponse,
@@ -233,6 +258,30 @@ export interface DecisionHistoryClientQuery {
 export interface DecisionAuditClientQuery {
   readonly decisionId?: string;
   readonly meetingId: string;
+}
+
+export interface GetRoleProjectionClientInput {
+  readonly correlationId?: string;
+  readonly meetingId: string;
+}
+
+export interface AcquireSharedFloorClientInput {
+  readonly correlationId?: string;
+  readonly meetingId: string;
+  readonly utteranceId: string;
+}
+
+export interface ReleaseSharedFloorClientInput {
+  readonly meetingId: string;
+  readonly utteranceId: string;
+}
+
+export interface CaptureUtteranceClientInput {
+  readonly capturedAt: string;
+  readonly channel: UtteranceChannel;
+  readonly meetingId: string;
+  readonly text: string;
+  readonly utteranceId: string;
 }
 
 const SESSION_KEY = "counterpoint.session";
@@ -526,6 +575,72 @@ export async function issueRealtimeClientSecret(
     session,
   );
   return IssueRealtimeClientSecretResponseSchema.parse(body);
+}
+
+export async function getRoleProjection(
+  session: StoredSession,
+  input: GetRoleProjectionClientInput,
+  signal?: AbortSignal,
+): Promise<GetRoleProjectionResponse> {
+  const requestInput: GetRoleProjectionRequest =
+    GetRoleProjectionRequestSchema.parse(input);
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(requestInput.meetingId)}/projection`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return GetRoleProjectionResponseSchema.parse(body);
+}
+
+export async function acquireSharedFloor(
+  session: StoredSession,
+  input: AcquireSharedFloorClientInput,
+): Promise<AcquireSharedFloorResponse> {
+  const requestInput: AcquireSharedFloorRequest =
+    AcquireSharedFloorRequestSchema.parse(input);
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(requestInput.meetingId)}/realtime/shared-floor`,
+    {
+      body: JSON.stringify(requestInput),
+      method: "POST",
+    },
+    session,
+  );
+  return AcquireSharedFloorResponseSchema.parse(body);
+}
+
+export async function releaseSharedFloor(
+  session: StoredSession,
+  input: ReleaseSharedFloorClientInput,
+): Promise<ReleaseSharedFloorResponse> {
+  const requestInput: ReleaseSharedFloorRequest =
+    ReleaseSharedFloorRequestSchema.parse(input);
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(requestInput.meetingId)}/realtime/shared-floor`,
+    {
+      body: JSON.stringify(requestInput),
+      method: "DELETE",
+    },
+    session,
+  );
+  return ReleaseSharedFloorResponseSchema.parse(body);
+}
+
+export async function captureUtterance(
+  session: StoredSession,
+  input: CaptureUtteranceClientInput,
+): Promise<CaptureUtteranceResponse> {
+  const requestInput: CaptureUtteranceRequest =
+    CaptureUtteranceRequestSchema.parse(input);
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(requestInput.meetingId)}/utterances`,
+    {
+      body: JSON.stringify(requestInput),
+      method: "POST",
+    },
+    session,
+  );
+  return CaptureUtteranceResponseSchema.parse(body);
 }
 
 export async function registerPrivateTextSource(

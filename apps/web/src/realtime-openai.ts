@@ -10,6 +10,7 @@ export type OpenAiRealtimeStatus =
 
 export interface OpenAiRealtimeState {
   readonly channel: OpenAiRealtimeChannel;
+  readonly microphone: "live" | "off" | "requesting";
   readonly reconnectAttempt: number;
   readonly status: OpenAiRealtimeStatus;
   readonly textFallbackAvailable: boolean;
@@ -26,6 +27,23 @@ export interface RealtimeSessionDescription {
 
 export interface RealtimeDataChannel {
   close(): void;
+  getReadyState(): "closed" | "closing" | "connecting" | "open";
+  send(data: string): void;
+  setMessageListener(listener: (data: string) => void): () => void;
+  setOpenListener(listener: () => void): () => void;
+}
+
+export interface RealtimeAudioTrack {
+  enabled: boolean;
+  stop(): void;
+}
+
+export interface RealtimeAudioSender {
+  replaceTrack(track: RealtimeAudioTrack | null): Promise<void>;
+}
+
+export interface RealtimeMediaStream {
+  getAudioTracks(): readonly RealtimeAudioTrack[];
 }
 
 export type RealtimePeerConnectionState =
@@ -33,6 +51,7 @@ export type RealtimePeerConnectionState =
 
 export interface RealtimePeerConnection {
   close(): void;
+  createAudioSender(): RealtimeAudioSender;
   createDataChannel(label: string): RealtimeDataChannel;
   createOffer(): Promise<RealtimeSessionDescription>;
   getConnectionState(): RealtimePeerConnectionState;
@@ -42,6 +61,7 @@ export interface RealtimePeerConnection {
 }
 
 export type RealtimePeerConnectionFactory = () => RealtimePeerConnection;
+export type RealtimeMediaFactory = () => Promise<RealtimeMediaStream>;
 
 export interface RealtimeSdpResponse {
   readonly ok: boolean;
@@ -72,11 +92,16 @@ export interface RealtimeTimer {
 export interface OpenAiRealtimeConnection {
   close(): void;
   readonly peer: RealtimePeerConnection;
+  sendText(text: string): void;
+  startPushToTalk(): Promise<void>;
+  stopPushToTalk(): Promise<void>;
 }
 
 export interface ConnectOpenAiRealtimeInput {
   readonly clientSecret: string;
   readonly fetch?: RealtimeFetch;
+  readonly mediaFactory?: RealtimeMediaFactory;
+  readonly onTranscript?: (transcript: string) => void;
   readonly peerFactory?: RealtimePeerConnectionFactory;
 }
 
@@ -88,6 +113,8 @@ export interface OpenAiRealtimeControllerOptions {
   readonly issueSecret: (
     channel: OpenAiRealtimeChannel,
   ) => Promise<EphemeralRealtimeSecret>;
+  readonly mediaFactory?: RealtimeMediaFactory;
+  readonly onTranscript?: (transcript: string) => void;
   readonly peerFactory?: RealtimePeerConnectionFactory;
   readonly retryDelaysMs?: readonly number[];
   readonly timer?: RealtimeTimer;
@@ -99,6 +126,9 @@ export interface OpenAiRealtimeController {
   readonly disconnect: () => void;
   readonly getState: () => OpenAiRealtimeState;
   readonly markActivity: () => void;
+  readonly sendText: (text: string) => void;
+  readonly startPushToTalk: () => Promise<void>;
+  readonly stopPushToTalk: () => Promise<void>;
   readonly subscribe: (listener: () => void) => () => void;
 }
 
@@ -111,12 +141,48 @@ export class OpenAiRealtimeConnectionError extends Error {
 
 function createBrowserPeerConnection(): RealtimePeerConnection {
   const peer = new RTCPeerConnection();
+  const audioElement = document.createElement("audio");
+  audioElement.autoplay = true;
+  peer.addEventListener("track", (event) => {
+    audioElement.srcObject = event.streams[0] ?? null;
+  });
 
   return {
     close: () => {
+      audioElement.srcObject = null;
+      audioElement.remove();
       peer.close();
     },
-    createDataChannel: (label) => peer.createDataChannel(label),
+    createAudioSender: () => {
+      const sender = peer.addTransceiver("audio", {
+        direction: "sendrecv",
+      }).sender;
+      return {
+        replaceTrack: (track) =>
+          sender.replaceTrack(track as MediaStreamTrack | null),
+      };
+    },
+    createDataChannel: (label) => {
+      const channel = peer.createDataChannel(label);
+      return {
+        close: () => channel.close(),
+        getReadyState: () => channel.readyState,
+        send: (data) => channel.send(data),
+        setMessageListener: (listener) => {
+          const handleMessage = (event: MessageEvent<unknown>) => {
+            if (typeof event.data === "string") {
+              listener(event.data);
+            }
+          };
+          channel.addEventListener("message", handleMessage);
+          return () => channel.removeEventListener("message", handleMessage);
+        },
+        setOpenListener: (listener) => {
+          channel.addEventListener("open", listener);
+          return () => channel.removeEventListener("open", listener);
+        },
+      };
+    },
     createOffer: async () => {
       const offer = await peer.createOffer();
       if (offer.sdp === undefined) {
@@ -138,6 +204,10 @@ function createBrowserPeerConnection(): RealtimePeerConnection {
       await peer.setRemoteDescription(description);
     },
   };
+}
+
+async function browserMediaFactory(): Promise<RealtimeMediaStream> {
+  return navigator.mediaDevices.getUserMedia({ audio: true });
 }
 
 async function browserFetch(
@@ -173,19 +243,105 @@ function closePeerResources(
   }
 }
 
+function transcriptFromServerEvent(
+  serialized: string,
+): { readonly itemId: string; readonly transcript: string } | undefined {
+  let event: unknown;
+  try {
+    event = JSON.parse(serialized);
+  } catch {
+    return undefined;
+  }
+  if (typeof event !== "object" || event === null) {
+    return undefined;
+  }
+  const candidate = event as {
+    readonly item?: {
+      readonly content?: readonly {
+        readonly transcript?: unknown;
+        readonly type?: unknown;
+      }[];
+      readonly id?: unknown;
+      readonly role?: unknown;
+    };
+    readonly item_id?: unknown;
+    readonly transcript?: unknown;
+    readonly type?: unknown;
+  };
+  if (
+    candidate.type ===
+      "conversation.item.input_audio_transcription.completed" &&
+    typeof candidate.item_id === "string" &&
+    typeof candidate.transcript === "string" &&
+    candidate.transcript.trim().length > 0
+  ) {
+    return {
+      itemId: candidate.item_id,
+      transcript: candidate.transcript.trim(),
+    };
+  }
+  if (
+    candidate.type !== "conversation.item.done" ||
+    candidate.item?.role !== "user" ||
+    typeof candidate.item.id !== "string"
+  ) {
+    return undefined;
+  }
+  const transcript = candidate.item.content?.find(
+    (part) =>
+      part.type === "input_audio" &&
+      typeof part.transcript === "string" &&
+      part.transcript.trim().length > 0,
+  )?.transcript;
+  return typeof transcript === "string"
+    ? { itemId: candidate.item.id, transcript: transcript.trim() }
+    : undefined;
+}
+
 export async function connectOpenAiRealtime(
   input: ConnectOpenAiRealtimeInput,
 ): Promise<OpenAiRealtimeConnection> {
   const peer = (input.peerFactory ?? createBrowserPeerConnection)();
+  const audioSender = peer.createAudioSender();
   const dataChannel = peer.createDataChannel("oai-events");
   const fetch = input.fetch ?? browserFetch;
+  const mediaFactory = input.mediaFactory ?? browserMediaFactory;
+  const deliveredTranscriptItems = new Set<string>();
+  let activeTrack: RealtimeAudioTrack | undefined;
   let closed = false;
+  let removeMessageListener: (() => void) | undefined;
+  let removeOpenListener: (() => void) | undefined;
+
+  const sendEvent = (event: Readonly<Record<string, unknown>>): void => {
+    if (closed || dataChannel.getReadyState() !== "open") {
+      throw new OpenAiRealtimeConnectionError();
+    }
+    dataChannel.send(JSON.stringify(event));
+  };
+
+  const configureManualTurnTaking = (): void => {
+    sendEvent({
+      session: {
+        audio: {
+          input: {
+            transcription: { model: "gpt-4o-mini-transcribe" },
+            turn_detection: null,
+          },
+        },
+      },
+      type: "session.update",
+    });
+  };
 
   const close = (): void => {
     if (closed) {
       return;
     }
     closed = true;
+    activeTrack?.stop();
+    activeTrack = undefined;
+    removeMessageListener?.();
+    removeOpenListener?.();
     closePeerResources(peer, dataChannel);
   };
 
@@ -211,7 +367,83 @@ export async function connectOpenAiRealtime(
       sdp: answerSdp,
       type: "answer",
     });
-    return { close, peer };
+    removeMessageListener = dataChannel.setMessageListener((serialized) => {
+      const completed = transcriptFromServerEvent(serialized);
+      if (
+        completed === undefined ||
+        deliveredTranscriptItems.has(completed.itemId)
+      ) {
+        return;
+      }
+      deliveredTranscriptItems.add(completed.itemId);
+      input.onTranscript?.(completed.transcript);
+    });
+    if (dataChannel.getReadyState() === "open") {
+      configureManualTurnTaking();
+    } else {
+      removeOpenListener = dataChannel.setOpenListener(
+        configureManualTurnTaking,
+      );
+    }
+    return {
+      close,
+      peer,
+      sendText: (text) => {
+        const canonicalText = text.trim();
+        if (canonicalText.length === 0) {
+          throw new OpenAiRealtimeConnectionError();
+        }
+        sendEvent({
+          item: {
+            content: [{ text: canonicalText, type: "input_text" }],
+            role: "user",
+            type: "message",
+          },
+          type: "conversation.item.create",
+        });
+        sendEvent({ type: "response.create" });
+      },
+      startPushToTalk: async () => {
+        if (activeTrack !== undefined) {
+          return;
+        }
+        const stream = await mediaFactory();
+        const track = stream.getAudioTracks()[0];
+        if (track === undefined || closed) {
+          track?.stop();
+          throw new OpenAiRealtimeConnectionError();
+        }
+        track.enabled = false;
+        try {
+          await audioSender.replaceTrack(track);
+          if (closed) {
+            throw new OpenAiRealtimeConnectionError();
+          }
+          sendEvent({ type: "input_audio_buffer.clear" });
+          activeTrack = track;
+          track.enabled = true;
+        } catch {
+          track.stop();
+          await audioSender.replaceTrack(null).catch(() => undefined);
+          throw new OpenAiRealtimeConnectionError();
+        }
+      },
+      stopPushToTalk: async () => {
+        const track = activeTrack;
+        if (track === undefined) {
+          return;
+        }
+        track.enabled = false;
+        activeTrack = undefined;
+        try {
+          sendEvent({ type: "input_audio_buffer.commit" });
+          sendEvent({ type: "response.create" });
+        } finally {
+          await audioSender.replaceTrack(null).catch(() => undefined);
+          track.stop();
+        }
+      },
+    };
   } catch {
     close();
     throw new OpenAiRealtimeConnectionError();
@@ -227,6 +459,8 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
     channel: OpenAiRealtimeChannel,
   ) => Promise<EphemeralRealtimeSecret>;
   readonly #listeners = new Set<() => void>();
+  readonly #mediaFactory: RealtimeMediaFactory | undefined;
+  readonly #onTranscript: ((transcript: string) => void) | undefined;
   readonly #peerFactory: RealtimePeerConnectionFactory | undefined;
   readonly #retryDelaysMs: readonly number[];
   readonly #timer: RealtimeTimer;
@@ -246,6 +480,8 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
     this.#fetch = options.fetch;
     this.#idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.#issueSecret = options.issueSecret;
+    this.#mediaFactory = options.mediaFactory;
+    this.#onTranscript = options.onTranscript;
     this.#peerFactory = options.peerFactory;
     this.#retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
     this.#timer = options.timer ?? systemTimer;
@@ -301,6 +537,58 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
     this.#scheduleIdleClose();
   };
 
+  readonly sendText = (text: string): void => {
+    if (this.#disposed || this.#state.status !== "connected") {
+      return;
+    }
+    this.#connection?.sendText(text);
+    this.#scheduleIdleClose();
+  };
+
+  readonly startPushToTalk = async (): Promise<void> => {
+    if (
+      this.#disposed ||
+      this.#state.status !== "connected" ||
+      this.#connection === undefined ||
+      this.#state.microphone !== "off"
+    ) {
+      throw new OpenAiRealtimeConnectionError();
+    }
+    const connection = this.#connection;
+    this.#setMicrophone("requesting");
+    try {
+      await connection.startPushToTalk();
+      if (connection !== this.#connection) {
+        await connection.stopPushToTalk();
+        throw new OpenAiRealtimeConnectionError();
+      }
+      this.#setMicrophone("live");
+      this.#scheduleIdleClose();
+    } catch {
+      this.#setMicrophone("off");
+      throw new OpenAiRealtimeConnectionError();
+    }
+  };
+
+  readonly stopPushToTalk = async (): Promise<void> => {
+    if (
+      this.#disposed ||
+      this.#connection === undefined ||
+      this.#state.microphone === "off"
+    ) {
+      return;
+    }
+    const connection = this.#connection;
+    try {
+      await connection.stopPushToTalk();
+    } finally {
+      if (connection === this.#connection) {
+        this.#setMicrophone("off");
+        this.#scheduleIdleClose();
+      }
+    }
+  };
+
   readonly close = (): void => {
     if (this.#disposed) {
       return;
@@ -316,10 +604,21 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
   ): OpenAiRealtimeState {
     return Object.freeze({
       channel: this.#channel,
+      microphone: "off" as const,
       reconnectAttempt,
       status,
       textFallbackAvailable: status === "degraded",
     });
+  }
+
+  #setMicrophone(microphone: OpenAiRealtimeState["microphone"]): void {
+    if (this.#state.microphone === microphone) {
+      return;
+    }
+    this.#state = Object.freeze({ ...this.#state, microphone });
+    for (const listener of this.#listeners) {
+      listener();
+    }
   }
 
   #setState(status: OpenAiRealtimeStatus, reconnectAttempt: number): void {
@@ -345,6 +644,12 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
       const connection = await connectOpenAiRealtime({
         clientSecret: issued.clientSecret,
         ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
+        ...(this.#mediaFactory === undefined
+          ? {}
+          : { mediaFactory: this.#mediaFactory }),
+        ...(this.#onTranscript === undefined
+          ? {}
+          : { onTranscript: this.#onTranscript }),
         ...(this.#peerFactory === undefined
           ? {}
           : { peerFactory: this.#peerFactory }),

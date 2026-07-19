@@ -72,13 +72,13 @@ text/manual degraded path.
 ### A7 — Voice channel interaction
 
 - [x] Start microphone off.
-- [ ] Implement explicit push-to-talk shared/private controls.
+- [x] Implement explicit push-to-talk shared/private controls.
 - [x] Lock channel during utterance at the application boundary.
 - [x] Implement the server shared-floor lease and atomic busy state.
-- [ ] Surface shared-floor owner/lease and queue/busy state in voice controls.
+- [x] Surface shared-floor owner/lease and queue/busy state in voice controls.
 - [x] Deduplicate utterances by ID.
-- [ ] Make transcript command semantics identical to text.
-- [ ] Add Realtime failure-to-text fallback.
+- [x] Make transcript command semantics identical to text.
+- [x] Add Realtime failure-to-text fallback.
 
 ### A8 — Degraded mode
 

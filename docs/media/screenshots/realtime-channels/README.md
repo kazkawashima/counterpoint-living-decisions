@@ -16,8 +16,11 @@ the screenshots or clip.
    exhausted capped reconnect while shared remains connected. Narration: one
    failed channel does not erase meeting state or block the text path.
 4. `2026-07-19-realtime-participant-mobile-reduced-motion.png` — 390×844
-   participant view with no standard-key input. Reduced motion is forced.
+   participant view with no standard-key input plus the A7 private/shared
+   speech boundary and typed fallback. Reduced motion is forced.
 
 `../../clips/realtime-channels/2026-07-19-byok-connect-to-degraded.webm`
 records the key-secured → two-channel connected → private-only degraded
 sequence. The SDP transport and credentials in this E2E capture are synthetic.
+The updated clip also preserves the A7 controls in-frame while both channel
+controllers change state.

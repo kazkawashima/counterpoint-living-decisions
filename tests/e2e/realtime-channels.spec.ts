@@ -5,10 +5,45 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 const screenshotDirectory = resolve("docs/media/screenshots/realtime-channels");
 const clipDirectory = resolve("docs/media/clips/realtime-channels");
+const voiceScreenshotDirectory = resolve(
+  "docs/media/screenshots/voice-channels",
+);
+const voiceClipDirectory = resolve("docs/media/clips/voice-channels");
 const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
 async function installSyntheticWebRtc(context: BrowserContext) {
   await context.addInitScript(() => {
+    class SyntheticDataChannel extends EventTarget {
+      readyState: RTCDataChannelState = "open";
+      static transcriptSequence = 0;
+
+      close(): void {
+        this.readyState = "closed";
+      }
+
+      send(data: string): void {
+        const event = JSON.parse(data) as { type?: string };
+        if (event.type !== "input_audio_buffer.commit") {
+          return;
+        }
+        SyntheticDataChannel.transcriptSequence += 1;
+        const itemId = `item-synthetic-voice-${String(
+          SyntheticDataChannel.transcriptSequence,
+        )}`;
+        queueMicrotask(() => {
+          this.dispatchEvent(
+            new MessageEvent("message", {
+              data: JSON.stringify({
+                item_id: itemId,
+                transcript: "Synthetic voice floor statement.",
+                type: "conversation.item.input_audio_transcription.completed",
+              }),
+            }),
+          );
+        });
+      }
+    }
+
     class SyntheticPeerConnection extends EventTarget {
       connectionState: RTCPeerConnectionState = "new";
       localDescription: RTCSessionDescription | null = null;
@@ -19,12 +54,16 @@ async function installSyntheticWebRtc(context: BrowserContext) {
         this.dispatchEvent(new Event("connectionstatechange"));
       }
 
-      createDataChannel(): RTCDataChannel {
+      addTransceiver(): RTCRtpTransceiver {
         return {
-          close() {
-            // Synthetic A6 data channel; no audio or application events.
+          sender: {
+            replaceTrack: () => Promise.resolve(),
           },
-        } as RTCDataChannel;
+        } as unknown as RTCRtpTransceiver;
+      }
+
+      createDataChannel(): RTCDataChannel {
+        return new SyntheticDataChannel() as unknown as RTCDataChannel;
       }
 
       createOffer(): Promise<RTCSessionDescriptionInit> {
@@ -56,6 +95,21 @@ async function installSyntheticWebRtc(context: BrowserContext) {
       value: SyntheticPeerConnection,
       writable: true,
     });
+    const syntheticTrack = () => ({
+      enabled: false,
+      stop() {
+        // Synthetic microphone track.
+      },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: () =>
+          Promise.resolve({
+            getAudioTracks: () => [syntheticTrack()],
+          }),
+      },
+    });
   });
 }
 
@@ -82,6 +136,8 @@ async function signIn(page: Page, identity: string, password: string) {
 test.beforeAll(async () => {
   await mkdir(screenshotDirectory, { recursive: true });
   await mkdir(clipDirectory, { recursive: true });
+  await mkdir(voiceScreenshotDirectory, { recursive: true });
+  await mkdir(voiceClipDirectory, { recursive: true });
 });
 
 test("facilitator secures BYOK and connects isolated private/shared WebRTC channels", async ({
@@ -214,7 +270,171 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
   const saveVideo = video?.saveAs(
     `${clipDirectory}/2026-07-19-byok-connect-to-degraded.webm`,
   );
+  await page.getByRole("button", { name: "Remove key" }).click();
+  await expect(page.getByText("Facilitator BYOK · tab only")).toBeVisible();
   await context.close();
+  await saveVideo;
+});
+
+test("private/shared text and push-to-talk use one immutable, floor-gated command path", async ({
+  baseURL,
+  browser,
+}) => {
+  const productContext = await browser.newContext({
+    recordVideo: {
+      dir: "test-results/reel-video",
+      size: { height: 800, width: 1440 },
+    },
+    viewport: { height: 1050, width: 1440 },
+  });
+  const legalContext = await browser.newContext({
+    viewport: { height: 950, width: 1280 },
+  });
+  await Promise.all([
+    installSyntheticWebRtc(productContext),
+    installSyntheticWebRtc(legalContext),
+  ]);
+
+  for (const context of [productContext, legalContext]) {
+    let issued = 0;
+    await context.route(
+      "**/api/v1/meetings/*/realtime/client-secrets",
+      async (route) => {
+        const input = route.request().postDataJSON() as {
+          channel: "private" | "shared";
+          meetingId: string;
+        };
+        issued += 1;
+        await route.fulfill({
+          body: JSON.stringify({
+            channel: input.channel,
+            clientSecret: `ek_synthetic_a7_${input.channel}_${String(issued)}`,
+            correlationId: `correlation-a7-${String(issued)}`,
+            expiresAt: "2026-07-19T05:00:00.000Z",
+            meetingId: input.meetingId,
+            model: "gpt-realtime-2.1",
+          }),
+          contentType: "application/json",
+          status: 201,
+        });
+      },
+    );
+    await context.route(
+      "https://api.openai.com/v1/realtime/calls",
+      async (route) => {
+        await route.fulfill({
+          body: "v=0\r\no=openai 2 2 IN IP4 127.0.0.1\r\ns=A7 synthetic answer\r\nt=0 0\r\n",
+          contentType: "application/sdp",
+          status: 200,
+        });
+      },
+    );
+  }
+
+  const productPage = await productContext.newPage();
+  const legalPage = await legalContext.newPage();
+  await productPage.goto(baseURL ?? "/");
+  await signIn(productPage, "Product", "counterpoint-product");
+  await productPage
+    .getByLabel("Facilitator BYOK · tab only")
+    .fill(standardApiKey);
+  await productPage.getByRole("button", { name: "Set key" }).click();
+  await expect(productPage.getByText("Facilitator lease active")).toBeVisible();
+
+  await legalPage.goto(baseURL ?? "/");
+  await signIn(legalPage, "Legal", "counterpoint-legal");
+  const productSpeech = productPage.getByRole("region", {
+    name: "Explicit speech controls",
+  });
+  const legalSpeech = legalPage.getByRole("region", {
+    name: "Explicit speech controls",
+  });
+  const privateText = "Synthetic private product concern for A7.";
+  await productSpeech.getByLabel("Equivalent text command").fill(privateText);
+  await productSpeech.getByRole("button", { name: /Send privately/u }).click();
+  await expect(
+    productSpeech.getByText(`Sent privately · ${privateText} · text-only`),
+  ).toBeVisible();
+  await productSpeech.screenshot({
+    animations: "disabled",
+    path: `${voiceScreenshotDirectory}/2026-07-19-private-text-desktop.png`,
+  });
+
+  await productSpeech.getByRole("button", { name: /Shared · room/u }).click();
+  await legalSpeech.getByRole("button", { name: /Shared · room/u }).click();
+  await expect(legalSpeech.getByText(privateText)).toHaveCount(0);
+
+  const productSharedCard = productPage
+    .getByRole("article")
+    .filter({ hasText: "Shared room agent" });
+  const legalSharedCard = legalPage
+    .getByRole("article")
+    .filter({ hasText: "Shared room agent" });
+  await productSharedCard.getByRole("button", { name: "Connect" }).click();
+  await legalSharedCard.getByRole("button", { name: "Connect" }).click();
+  await expect(productSharedCard.getByText("Connected")).toBeVisible();
+  await expect(legalSharedCard.getByText("Connected")).toBeVisible();
+
+  const sharedText = "Synthetic shared launch statement for A7.";
+  await productSpeech.getByLabel("Equivalent text command").fill(sharedText);
+  await productSpeech.getByRole("button", { name: /Send to room/u }).click();
+  await expect(
+    productSpeech.getByText(`Sent to the room · ${sharedText}`),
+  ).toBeVisible();
+  await expect(legalSpeech.getByText(sharedText)).toBeVisible({
+    timeout: 4_000,
+  });
+
+  const productPushToTalk = productSpeech.getByRole("button", {
+    name: /Hold to speak to room/u,
+  });
+  const bounds = await productPushToTalk.boundingBox();
+  expect(bounds).not.toBeNull();
+  await productPage.mouse.move(
+    (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
+    (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2,
+  );
+  await productPage.mouse.down();
+  await expect(
+    productSpeech.getByText("You hold the room floor"),
+  ).toBeVisible();
+  await expect(
+    productSpeech.getByRole("button", { name: /Private · owner only/u }),
+  ).toBeDisabled();
+  await expect(legalSpeech.getByText("Room floor busy")).toBeVisible({
+    timeout: 4_000,
+  });
+  await expect(
+    legalSpeech.getByRole("button", { name: /Hold to speak to room/u }),
+  ).toBeDisabled();
+  await legalSpeech.screenshot({
+    animations: "disabled",
+    path: `${voiceScreenshotDirectory}/2026-07-19-shared-floor-busy-desktop.png`,
+  });
+  await productSpeech.screenshot({
+    animations: "allow",
+    path: `${voiceScreenshotDirectory}/2026-07-19-shared-floor-live-desktop.png`,
+  });
+
+  await productPage.mouse.up();
+  await expect(
+    productSpeech.getByText(
+      "Captured for the room · Synthetic voice floor statement.",
+    ),
+  ).toBeVisible({ timeout: 5_000 });
+  await expect(
+    legalSpeech.getByText("Synthetic voice floor statement."),
+  ).toBeVisible({ timeout: 4_000 });
+
+  const video = productPage.video();
+  const saveVideo = video?.saveAs(
+    `${voiceClipDirectory}/2026-07-19-private-text-shared-floor-voice.webm`,
+  );
+  await productPage.getByRole("button", { name: "Remove key" }).click();
+  await expect(
+    productPage.getByText("Facilitator BYOK · tab only"),
+  ).toBeVisible();
+  await Promise.all([productContext.close(), legalContext.close()]);
   await saveVideo;
 });
 

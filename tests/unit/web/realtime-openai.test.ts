@@ -5,6 +5,7 @@ import {
   createOpenAiRealtimeController,
   type OpenAiRealtimeChannel,
   type OpenAiRealtimeState,
+  type RealtimeAudioTrack,
   type RealtimeDataChannel,
   type RealtimeFetch,
   type RealtimePeerConnection,
@@ -15,10 +16,58 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class FakeDataChannel implements RealtimeDataChannel {
   closed = false;
+  readonly sent: string[] = [];
+  #messageListener: ((data: string) => void) | undefined;
+  #openListener: (() => void) | undefined;
 
   close(): void {
     this.closed = true;
   }
+
+  getReadyState(): "closed" | "open" {
+    return this.closed ? "closed" : "open";
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  setMessageListener(listener: (data: string) => void): () => void {
+    this.#messageListener = listener;
+    return () => {
+      if (this.#messageListener === listener) {
+        this.#messageListener = undefined;
+      }
+    };
+  }
+
+  setOpenListener(listener: () => void): () => void {
+    this.#openListener = listener;
+    return () => {
+      if (this.#openListener === listener) {
+        this.#openListener = undefined;
+      }
+    };
+  }
+
+  emitMessage(event: unknown): void {
+    this.#messageListener?.(JSON.stringify(event));
+  }
+}
+
+class FakeAudioTrack implements RealtimeAudioTrack {
+  enabled = true;
+  stopped = false;
+
+  stop(): void {
+    this.stopped = true;
+  }
+}
+
+function parsedEvents(channel: FakeDataChannel | undefined): unknown[] {
+  return (
+    channel?.sent.map((serialized) => JSON.parse(serialized) as unknown) ?? []
+  );
 }
 
 class FakePeer implements RealtimePeerConnection {
@@ -26,12 +75,22 @@ class FakePeer implements RealtimePeerConnection {
   readonly localDescriptions: RealtimeSessionDescription[] = [];
   readonly remoteDescriptions: RealtimeSessionDescription[] = [];
   closed = false;
+  readonly replacedTracks: (RealtimeAudioTrack | null)[] = [];
   state: RealtimePeerConnectionState = "new";
   #listener: (() => void) | undefined;
 
   close(): void {
     this.closed = true;
     this.state = "closed";
+  }
+
+  createAudioSender() {
+    return {
+      replaceTrack: (track: RealtimeAudioTrack | null) => {
+        this.replacedTracks.push(track);
+        return Promise.resolve();
+      },
+    };
   }
 
   createDataChannel(label: string): FakeDataChannel {
@@ -87,9 +146,11 @@ function successfulFetch(): RealtimeFetch {
 function setupController(input?: {
   readonly channel?: OpenAiRealtimeChannel;
   readonly fetch?: RealtimeFetch;
+  readonly onTranscript?: (transcript: string) => void;
   readonly secret?: string;
 }) {
   const peers: FakePeer[] = [];
+  const tracks: FakeAudioTrack[] = [];
   const issueSecret = vi.fn(() =>
     Promise.resolve({
       clientSecret: input?.secret ?? "ek_ephemeral_synthetic",
@@ -100,6 +161,16 @@ function setupController(input?: {
     clock: { now: () => Date.now() },
     fetch: input?.fetch ?? successfulFetch(),
     issueSecret,
+    mediaFactory: () => {
+      const track = new FakeAudioTrack();
+      tracks.push(track);
+      return Promise.resolve({
+        getAudioTracks: () => [track],
+      });
+    },
+    ...(input?.onTranscript === undefined
+      ? {}
+      : { onTranscript: input.onTranscript }),
     peerFactory: () => {
       const peer = new FakePeer();
       peers.push(peer);
@@ -112,7 +183,7 @@ function setupController(input?: {
       setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
     },
   });
-  return { controller, issueSecret, peers };
+  return { controller, issueSecret, peers, tracks };
 }
 
 describe("OpenAI Realtime browser lifecycle", () => {
@@ -136,6 +207,17 @@ describe("OpenAI Realtime browser lifecycle", () => {
     });
 
     expect(peer.channels.map(({ label }) => label)).toEqual(["oai-events"]);
+    expect(parsedEvents(peer.channels[0]?.channel)).toContainEqual({
+      session: {
+        audio: {
+          input: {
+            transcription: { model: "gpt-4o-mini-transcribe" },
+            turn_detection: null,
+          },
+        },
+      },
+      type: "session.update",
+    });
     expect(peer.localDescriptions).toEqual([
       { sdp: "synthetic-offer-sdp", type: "offer" },
     ]);
@@ -172,10 +254,84 @@ describe("OpenAI Realtime browser lifecycle", () => {
     ]);
     expect(getState()).toEqual({
       channel: "private",
+      microphone: "off",
       reconnectAttempt: 0,
       status: "connected",
       textFallbackAvailable: false,
     });
+    controller.close();
+  });
+
+  it("keeps microphone capture off until push-down and commits on release", async () => {
+    const { controller, peers, tracks } = setupController();
+    await controller.connect();
+
+    expect(tracks).toHaveLength(0);
+    expect(controller.getState().microphone).toBe("off");
+
+    await controller.startPushToTalk();
+
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0]?.enabled).toBe(true);
+    expect(controller.getState().microphone).toBe("live");
+    expect(peers[0]?.replacedTracks).toEqual([tracks[0]]);
+    expect(parsedEvents(peers[0]?.channels[0]?.channel)).toContainEqual({
+      type: "input_audio_buffer.clear",
+    });
+
+    await controller.stopPushToTalk();
+
+    expect(controller.getState().microphone).toBe("off");
+    expect(tracks[0]).toMatchObject({ enabled: false, stopped: true });
+    expect(peers[0]?.replacedTracks).toEqual([tracks[0], null]);
+    expect(parsedEvents(peers[0]?.channels[0]?.channel).slice(-2)).toEqual([
+      { type: "input_audio_buffer.commit" },
+      { type: "response.create" },
+    ]);
+    controller.close();
+  });
+
+  it("sends typed text through the Realtime conversation and deduplicates completed transcripts", async () => {
+    const transcripts: string[] = [];
+    const { controller, peers } = setupController({
+      onTranscript: (transcript) => transcripts.push(transcript),
+    });
+    await controller.connect();
+
+    controller.sendText("  Synthetic typed fallback.  ");
+    const channel = peers[0]?.channels[0]?.channel;
+    expect(parsedEvents(channel).slice(-2)).toEqual([
+      {
+        item: {
+          content: [{ text: "Synthetic typed fallback.", type: "input_text" }],
+          role: "user",
+          type: "message",
+        },
+        type: "conversation.item.create",
+      },
+      { type: "response.create" },
+    ]);
+
+    channel?.emitMessage({
+      item_id: "item-voice-1",
+      transcript: "Synthetic voice transcript.",
+      type: "conversation.item.input_audio_transcription.completed",
+    });
+    channel?.emitMessage({
+      item: {
+        content: [
+          {
+            transcript: "Synthetic voice transcript.",
+            type: "input_audio",
+          },
+        ],
+        id: "item-voice-1",
+        role: "user",
+      },
+      type: "conversation.item.done",
+    });
+
+    expect(transcripts).toEqual(["Synthetic voice transcript."]);
     controller.close();
   });
 
@@ -222,6 +378,7 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(issueSecret).toHaveBeenCalledTimes(4);
     expect(controller.getState()).toEqual({
       channel: "private",
+      microphone: "off",
       reconnectAttempt: 3,
       status: "degraded",
       textFallbackAvailable: true,
