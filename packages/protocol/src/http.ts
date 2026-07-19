@@ -493,6 +493,7 @@ const RealtimeSdpSchema = z
   .min(1)
   .max(64 * 1024);
 
+export const ManagedCallIdSchema = OpaqueIdSchema.brand<"ManagedCallId">();
 export const RealtimeChannelSchema = z.enum(["private", "shared"]);
 export const RealtimeKeySourceSchema = z.enum([
   "facilitatorProvided",
@@ -550,12 +551,50 @@ export const CreateManagedRealtimeCallRequestSchema = z.strictObject({
 });
 export const CreateManagedRealtimeCallResponseSchema = z.strictObject({
   meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
   channel: RealtimeChannelSchema,
   model: RealtimeModelSchema,
   sdpAnswer: RealtimeSdpSchema,
   ...RequiredCorrelationShape,
 });
+export const BeginManagedRealtimeTurnRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
+  utteranceId: UtteranceIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const BeginManagedRealtimeTurnResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
+  utteranceId: UtteranceIdSchema,
+  ...RequiredCorrelationShape,
+});
+export const AwaitManagedRealtimeTranscriptRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
+  utteranceId: UtteranceIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const AwaitManagedRealtimeTranscriptResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
+  utteranceId: UtteranceIdSchema,
+  transcript: UtteranceTextSchema,
+  ...RequiredCorrelationShape,
+});
+export const TerminateManagedRealtimeCallRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const TerminateManagedRealtimeCallResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  managedCallId: ManagedCallIdSchema,
+  terminated: z.literal(true),
+  ...RequiredCorrelationShape,
+});
 
+export type ManagedCallId = z.infer<typeof ManagedCallIdSchema>;
 export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
 export type RealtimeKeySource = z.infer<typeof RealtimeKeySourceSchema>;
 export type ConfigureMeetingByokRequest = z.infer<
@@ -587,6 +626,24 @@ export type CreateManagedRealtimeCallRequest = z.infer<
 >;
 export type CreateManagedRealtimeCallResponse = z.infer<
   typeof CreateManagedRealtimeCallResponseSchema
+>;
+export type BeginManagedRealtimeTurnRequest = z.infer<
+  typeof BeginManagedRealtimeTurnRequestSchema
+>;
+export type BeginManagedRealtimeTurnResponse = z.infer<
+  typeof BeginManagedRealtimeTurnResponseSchema
+>;
+export type AwaitManagedRealtimeTranscriptRequest = z.infer<
+  typeof AwaitManagedRealtimeTranscriptRequestSchema
+>;
+export type AwaitManagedRealtimeTranscriptResponse = z.infer<
+  typeof AwaitManagedRealtimeTranscriptResponseSchema
+>;
+export type TerminateManagedRealtimeCallRequest = z.infer<
+  typeof TerminateManagedRealtimeCallRequestSchema
+>;
+export type TerminateManagedRealtimeCallResponse = z.infer<
+  typeof TerminateManagedRealtimeCallResponseSchema
 >;
 
 export const AcquireSharedFloorRequestSchema = z.strictObject({

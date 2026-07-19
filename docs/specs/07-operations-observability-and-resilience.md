@@ -73,6 +73,13 @@ USD 50 API-provider budget alert is a secondary operator warning, not an
 enforcement substitute. Secondary technical limits are calculated from
 measured flagship usage to fit inside the USD 25 ceiling.
 
+Judge Realtime input transcription is separately billed by the fixed
+`gpt-realtime-whisper` model at USD 0.017 per minute as checked on 2026-07-19.
+The 30-second call ceiling therefore contributes at most USD 0.0085, and
+reported duration usage must be added to the same currency total and
+Realtime-second boundary. Missing, token-based, malformed, or excessive
+transcription usage fails closed.
+
 Limit counters are durable enough to survive runtime restarts. When a limit is
 reached:
 

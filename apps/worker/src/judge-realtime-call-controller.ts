@@ -6,12 +6,13 @@ import {
 } from "@counterpoint/adapters-cloudflare";
 import {
   DEFAULT_OPENAI_REALTIME_MODEL,
-  GPT_REALTIME_2_1_PRICING_VERSION,
+  JUDGE_REALTIME_PRICING_VERSION,
   MAX_OPENAI_REALTIME_SDP_BYTES,
   OpenAiManagedRealtimeCallConnector,
   OpenAiManagedRealtimeCallTerminator,
   OpenAiRealtimeSidebandConnector,
   emptyOpenAiRealtimeUsageState,
+  parseOpenAiRealtimeCompletedTranscription,
   recordOpenAiRealtimeServerEvent,
   type OpenAiRealtimeUsageState,
 } from "@counterpoint/adapters-openai";
@@ -36,11 +37,13 @@ export const JUDGE_REALTIME_RESERVED_USAGE: UsageRequest = {
 };
 
 const CALL_STATE_KEY = "judge-realtime-call";
+const MAX_OPAQUE_ID_LENGTH = 256;
 const JUDGE_REALTIME_USAGE_LIMITS = {
   costMicroUsd: JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
   generationCount: JUDGE_REALTIME_RESERVED_USAGE.generationCount,
   inputTokens: JUDGE_REALTIME_RESERVED_USAGE.estimatedInputTokens,
   outputTokens: JUDGE_REALTIME_RESERVED_USAGE.estimatedOutputTokens,
+  transcriptionSeconds: JUDGE_REALTIME_RESERVED_USAGE.realtimeSeconds,
 } as const;
 const JSON_HEADERS = {
   "cache-control": "no-store",
@@ -70,7 +73,7 @@ export function isExactJudgeRealtimeReservation(
     row?.status === "reserved" &&
     row.operation === "judge_realtime" &&
     row.model === DEFAULT_OPENAI_REALTIME_MODEL &&
-    row.pricing_version === GPT_REALTIME_2_1_PRICING_VERSION &&
+    row.pricing_version === JUDGE_REALTIME_PRICING_VERSION &&
     row.reserved_cost_micro_usd === JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD &&
     row.reserved_input_tokens ===
       JUDGE_REALTIME_RESERVED_USAGE.estimatedInputTokens &&
@@ -88,6 +91,17 @@ export interface StartCallInput {
   readonly reservationId: string;
   readonly safetyIdentifier: string;
   readonly sdpOffer: string;
+}
+
+interface ManagedRealtimeTurn {
+  readonly completed?: {
+    readonly eventId: string;
+    readonly seconds: number;
+    readonly transcript: string;
+  };
+  readonly providerItemId?: string;
+  readonly stopped: boolean;
+  readonly utteranceId: string;
 }
 
 export type StoredCallState =
@@ -177,6 +191,41 @@ function nonEmptyString(value: unknown): value is string {
   );
 }
 
+function opaqueId(value: unknown): value is string {
+  return (
+    nonEmptyString(value) &&
+    value.length <= MAX_OPAQUE_ID_LENGTH &&
+    !/\s/u.test(value) &&
+    !Array.from(value).some((character) => {
+      const codePoint = character.codePointAt(0);
+      return (
+        codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)
+      );
+    })
+  );
+}
+
+function providerItemId(event: unknown): string | undefined {
+  if (!isRecord(event)) {
+    return undefined;
+  }
+  const value = event.item_id;
+  return nonEmptyString(value) && value.length <= 255 ? value : undefined;
+}
+
+function parseTurnInput(
+  value: unknown,
+): { readonly utteranceId: string } | undefined {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, ["utteranceId"]) ||
+    !opaqueId(value.utteranceId)
+  ) {
+    return undefined;
+  }
+  return { utteranceId: value.utteranceId };
+}
+
 function parseStartCallInput(value: unknown): StartCallInput | undefined {
   if (
     !isRecord(value) ||
@@ -220,6 +269,7 @@ function sameUsageState(
 export class JudgeRealtimeCallLifecycle {
   readonly #clock: () => number;
   readonly #connector: ManagedRealtimeCallConnector;
+  #lifecycleVersion = 0;
   readonly #sidebandConnector: ManagedRealtimeSidebandConnector;
   #sidebandConnection: ManagedRealtimeSidebandConnection | undefined;
   #responseAfterCancelPending = false;
@@ -229,6 +279,7 @@ export class JudgeRealtimeCallLifecycle {
   #startCancelled = false;
   #startInProgress = false;
   #termination: Promise<void> | undefined;
+  #turn: ManagedRealtimeTurn | undefined;
   readonly #storage: JudgeRealtimeCallStorage;
   readonly #terminator: ManagedRealtimeCallTerminator;
   readonly #usage: Pick<UsageLimiter, "finalize">;
@@ -466,6 +517,59 @@ export class JudgeRealtimeCallLifecycle {
     };
   }
 
+  async beginTurn(
+    utteranceId: string,
+  ): Promise<
+    | { readonly kind: "begun"; readonly replayed: boolean }
+    | { readonly kind: "conflict" }
+    | { readonly kind: "unavailable" }
+  > {
+    if (!opaqueId(utteranceId) || this.#termination !== undefined) {
+      return { kind: "unavailable" };
+    }
+    const lifecycleVersion = this.#lifecycleVersion;
+    const state = await this.#storage.get();
+    if (
+      state?.status !== "active" ||
+      lifecycleVersion !== this.#lifecycleVersion ||
+      this.#termination !== undefined ||
+      this.#sidebandConnection?.isHealthy() !== true
+    ) {
+      return { kind: "unavailable" };
+    }
+    if (this.#turn?.utteranceId === utteranceId) {
+      return { kind: "begun", replayed: true };
+    }
+    if (this.#turn !== undefined && this.#turn.completed === undefined) {
+      return { kind: "conflict" };
+    }
+    this.#turn = {
+      stopped: false,
+      utteranceId,
+    };
+    return { kind: "begun", replayed: false };
+  }
+
+  async transcript(
+    utteranceId: string,
+  ): Promise<
+    | { readonly kind: "completed"; readonly transcript: string }
+    | { readonly kind: "pending" }
+    | { readonly kind: "unavailable" }
+  > {
+    if (!opaqueId(utteranceId)) {
+      return { kind: "unavailable" };
+    }
+    const state = await this.#storage.get();
+    if (state?.status !== "active" || this.#turn?.utteranceId !== utteranceId) {
+      return { kind: "unavailable" };
+    }
+    const completed = this.#turn.completed;
+    return completed === undefined
+      ? { kind: "pending" }
+      : { kind: "completed", transcript: completed.transcript };
+  }
+
   async terminate(): Promise<void> {
     if (this.#startInProgress) {
       this.#startCancelled = true;
@@ -473,6 +577,7 @@ export class JudgeRealtimeCallLifecycle {
     if (this.#termination !== undefined) {
       return this.#termination;
     }
+    this.#lifecycleVersion += 1;
     const operation = this.#terminate();
     this.#termination = operation;
     try {
@@ -485,6 +590,7 @@ export class JudgeRealtimeCallLifecycle {
   }
 
   async #terminate(): Promise<void> {
+    this.#turn = undefined;
     let state: StoredCallState | undefined;
     for (;;) {
       state = await this.#storage.get();
@@ -543,7 +649,26 @@ export class JudgeRealtimeCallLifecycle {
       typeof (event as { readonly type?: unknown }).type === "string"
         ? (event as { readonly type: string }).type
         : undefined;
+    if (eventType === "conversation.item.input_audio_transcription.failed") {
+      await this.terminate();
+      return;
+    }
     if (eventType === "input_audio_buffer.speech_started") {
+      const selectedProviderItemId = providerItemId(event);
+      if (
+        selectedProviderItemId === undefined ||
+        this.#turn === undefined ||
+        this.#turn.completed !== undefined ||
+        (this.#turn.providerItemId !== undefined &&
+          this.#turn.providerItemId !== selectedProviderItemId)
+      ) {
+        await this.terminate();
+        return;
+      }
+      this.#turn = {
+        ...this.#turn,
+        providerItemId: selectedProviderItemId,
+      };
       if (this.#responsePhase === "active") {
         if (this.#sidebandConnection === undefined) {
           await this.terminate();
@@ -559,6 +684,19 @@ export class JudgeRealtimeCallLifecycle {
       return;
     }
     if (eventType === "input_audio_buffer.speech_stopped") {
+      const selectedProviderItemId = providerItemId(event);
+      if (
+        selectedProviderItemId === undefined ||
+        this.#turn?.providerItemId !== selectedProviderItemId ||
+        this.#turn.stopped
+      ) {
+        await this.terminate();
+        return;
+      }
+      this.#turn = {
+        ...this.#turn,
+        stopped: true,
+      };
       if (this.#responsePhase === "cancelling") {
         this.#responseAfterCancelPending = true;
         return;
@@ -570,6 +708,10 @@ export class JudgeRealtimeCallLifecycle {
       await this.#requestResponse();
       return;
     }
+    const completedTranscription =
+      eventType === "conversation.item.input_audio_transcription.completed"
+        ? parseOpenAiRealtimeCompletedTranscription(event)
+        : undefined;
     if (eventType === "response.created") {
       if (this.#responsePhase === "idle" || this.#responseCreated) {
         await this.terminate();
@@ -586,7 +728,20 @@ export class JudgeRealtimeCallLifecycle {
       event,
       JUDGE_REALTIME_USAGE_LIMITS,
     );
-    if (result.kind === "ignored" || result.kind === "duplicate") {
+    if (result.kind === "ignored") {
+      return;
+    }
+    if (result.kind === "duplicate") {
+      const existing = this.#turn?.completed;
+      if (
+        completedTranscription !== undefined &&
+        (this.#turn?.providerItemId !== completedTranscription.itemId ||
+          existing?.eventId !== completedTranscription.eventId ||
+          existing?.seconds !== completedTranscription.seconds ||
+          existing?.transcript !== completedTranscription.transcript)
+      ) {
+        await this.terminate();
+      }
       return;
     }
     if (
@@ -600,6 +755,25 @@ export class JudgeRealtimeCallLifecycle {
     }
     if (result.kind === "invalid" || result.kind === "limit_exceeded") {
       await this.terminate();
+      return;
+    }
+    if (completedTranscription !== undefined) {
+      if (
+        this.#turn?.providerItemId !== completedTranscription.itemId ||
+        !this.#turn.stopped ||
+        this.#turn.completed !== undefined
+      ) {
+        await this.terminate();
+        return;
+      }
+      this.#turn = {
+        ...this.#turn,
+        completed: {
+          eventId: completedTranscription.eventId,
+          seconds: completedTranscription.seconds,
+          transcript: completedTranscription.transcript,
+        },
+      };
       return;
     }
     if (eventType === "response.done") {
@@ -681,7 +855,7 @@ export function createJudgeRealtimeUsageLimiter(
     },
     model: DEFAULT_OPENAI_REALTIME_MODEL,
     operation: "judge_realtime",
-    pricingVersion: GPT_REALTIME_2_1_PRICING_VERSION,
+    pricingVersion: JUDGE_REALTIME_PRICING_VERSION,
   });
 }
 
@@ -804,7 +978,7 @@ export class JudgeRealtimeCallController extends DurableObject<JudgeRealtimeBind
     }
     if (
       request.method !== "POST" ||
-      (url.pathname !== "/start" && url.pathname !== "/terminate")
+      !["/start", "/terminate", "/transcript", "/turn"].includes(url.pathname)
     ) {
       return jsonResponse({ code: "NOT_FOUND" }, 404);
     }
@@ -828,6 +1002,27 @@ export class JudgeRealtimeCallController extends DurableObject<JudgeRealtimeBind
       body = await request.json();
     } catch {
       return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+    }
+    if (url.pathname === "/turn" || url.pathname === "/transcript") {
+      const turn = parseTurnInput(body);
+      if (turn === undefined) {
+        return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+      }
+      if (url.pathname === "/turn") {
+        const result = await lifecycle.beginTurn(turn.utteranceId);
+        if (result.kind === "unavailable") {
+          return jsonResponse({ code: "REALTIME_UNAVAILABLE" }, 503);
+        }
+        if (result.kind === "conflict") {
+          return jsonResponse({ code: "TURN_ALREADY_STARTED" }, 409);
+        }
+        return jsonResponse(result, result.replayed ? 200 : 201);
+      }
+      const result = await lifecycle.transcript(turn.utteranceId);
+      if (result.kind === "unavailable") {
+        return jsonResponse({ code: "TURN_UNAVAILABLE" }, 409);
+      }
+      return jsonResponse(result, result.kind === "pending" ? 202 : 200);
     }
     const parsed = parseStartCallInput(body);
     if (parsed === undefined) {

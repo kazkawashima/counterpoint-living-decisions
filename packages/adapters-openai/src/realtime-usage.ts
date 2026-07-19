@@ -1,8 +1,13 @@
 export const GPT_REALTIME_2_1_PRICING_VERSION = "gpt-realtime-2.1-2026-07-19";
+export const GPT_REALTIME_WHISPER_MODEL = "gpt-realtime-whisper";
+export const JUDGE_REALTIME_PRICING_VERSION =
+  "gpt-realtime-2.1+gpt-realtime-whisper-2026-07-19";
 
 // Official per-million-token prices checked on 2026-07-19. Deci-micro-USD
 // keeps the $0.40 and $0.50 cached rates exact before conservative rounding.
 const MAX_PROVIDER_IDENTIFIER_LENGTH = 255;
+const MAX_TRANSCRIPT_LENGTH = 4_000;
+const GPT_REALTIME_WHISPER_MICRO_USD_PER_MINUTE = 17_000;
 const DECI_MICRO_USD_PER_TOKEN = {
   cachedAudioInput: 4,
   cachedImageInput: 5,
@@ -33,11 +38,22 @@ export interface OpenAiRealtimeResponseUsage {
   };
 }
 
+export interface OpenAiRealtimeTranscriptionUsage {
+  readonly eventId: string;
+  readonly itemId: string;
+  readonly seconds: number;
+}
+
+export interface OpenAiRealtimeCompletedTranscription extends OpenAiRealtimeTranscriptionUsage {
+  readonly transcript: string;
+}
+
 export interface OpenAiRealtimeUsageLimits {
   readonly costMicroUsd: number;
   readonly generationCount: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly transcriptionSeconds: number;
 }
 
 export interface OpenAiRealtimeUsageTotals {
@@ -45,10 +61,13 @@ export interface OpenAiRealtimeUsageTotals {
   readonly generationCount: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly transcriptionSeconds: number;
 }
 
 export interface OpenAiRealtimeUsageState {
-  readonly entries: readonly OpenAiRealtimeResponseUsage[];
+  readonly entries: readonly (
+    OpenAiRealtimeResponseUsage | OpenAiRealtimeTranscriptionUsage
+  )[];
   readonly trustworthy: boolean;
   readonly totals: OpenAiRealtimeUsageTotals;
 }
@@ -93,9 +112,27 @@ function tokenCount(value: unknown): number | undefined {
     : undefined;
 }
 
+function durationSeconds(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= Number.MAX_SAFE_INTEGER
+    ? value
+    : undefined;
+}
+
 function safeSum(values: readonly number[]): number | undefined {
   const total = values.reduce((sum, value) => sum + value, 0);
   return Number.isSafeInteger(total) ? total : undefined;
+}
+
+function safeDurationSum(values: readonly number[]): number | undefined {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return Number.isFinite(total) &&
+    total >= 0 &&
+    total <= Number.MAX_SAFE_INTEGER
+    ? total
+    : undefined;
 }
 
 function usageDetails(value: unknown):
@@ -245,6 +282,63 @@ export function parseOpenAiRealtimeResponseDoneUsage(
   };
 }
 
+export function parseOpenAiRealtimeCompletedTranscription(
+  value: unknown,
+): OpenAiRealtimeCompletedTranscription | undefined {
+  if (
+    !isRecord(value) ||
+    value.type !== "conversation.item.input_audio_transcription.completed"
+  ) {
+    return undefined;
+  }
+  const eventId = identifier(value.event_id);
+  const itemId = identifier(value.item_id);
+  const contentIndex = tokenCount(value.content_index);
+  const transcript = value.transcript;
+  const usage = value.usage;
+  if (
+    eventId === undefined ||
+    itemId === undefined ||
+    contentIndex === undefined ||
+    contentIndex !== 0 ||
+    typeof transcript !== "string" ||
+    transcript.length === 0 ||
+    transcript.length > MAX_TRANSCRIPT_LENGTH ||
+    transcript.trim().length === 0 ||
+    !isRecord(usage) ||
+    !exactKeys(usage, ["seconds", "type"]) ||
+    usage.type !== "duration"
+  ) {
+    return undefined;
+  }
+  const seconds = durationSeconds(usage.seconds);
+  if (seconds === undefined) {
+    return undefined;
+  }
+  return { eventId, itemId, seconds, transcript };
+}
+
+export function priceGptRealtimeWhisperUsageMicroUsd(
+  usage: OpenAiRealtimeTranscriptionUsage,
+): number {
+  const seconds = durationSeconds(usage.seconds);
+  if (seconds === undefined) {
+    throw new TypeError("Realtime transcription usage cannot be priced safely");
+  }
+  const rawMicroUsd =
+    (seconds * GPT_REALTIME_WHISPER_MICRO_USD_PER_MINUTE) / 60;
+  if (!Number.isFinite(rawMicroUsd) || rawMicroUsd > Number.MAX_SAFE_INTEGER) {
+    throw new RangeError(
+      "Realtime transcription usage price exceeds safe integer range",
+    );
+  }
+  return Number.isInteger(rawMicroUsd)
+    ? rawMicroUsd
+    : Math.ceil(
+        rawMicroUsd + Number.EPSILON * Math.max(1, Math.abs(rawMicroUsd)) * 4,
+      );
+}
+
 export function priceGptRealtime21UsageMicroUsd(
   usage: OpenAiRealtimeResponseUsage,
 ): number {
@@ -304,14 +398,15 @@ export function emptyOpenAiRealtimeUsageState(): OpenAiRealtimeUsageState {
       generationCount: 0,
       inputTokens: 0,
       outputTokens: 0,
+      transcriptionSeconds: 0,
     },
     trustworthy: true,
   };
 }
 
 function sameUsage(
-  left: OpenAiRealtimeResponseUsage,
-  right: OpenAiRealtimeResponseUsage,
+  left: OpenAiRealtimeResponseUsage | OpenAiRealtimeTranscriptionUsage,
+  right: OpenAiRealtimeResponseUsage | OpenAiRealtimeTranscriptionUsage,
 ): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -335,7 +430,8 @@ export function recordOpenAiRealtimeServerEvent(
     !validLimit(limits.costMicroUsd) ||
     !validLimit(limits.generationCount) ||
     !validLimit(limits.inputTokens) ||
-    !validLimit(limits.outputTokens)
+    !validLimit(limits.outputTokens) ||
+    !validLimit(limits.transcriptionSeconds)
   ) {
     throw new TypeError(
       "Realtime usage limits must be safe nonnegative integers",
@@ -347,22 +443,35 @@ export function recordOpenAiRealtimeServerEvent(
   if (!isRecord(event) || typeof event.type !== "string") {
     return { kind: "invalid", state: invalidState(state) };
   }
-  if (event.type === "conversation.item.input_audio_transcription.completed") {
-    return { kind: "invalid", state: invalidState(state) };
-  }
-  if (event.type !== "response.done") {
+  if (
+    event.type !== "response.done" &&
+    event.type !== "conversation.item.input_audio_transcription.completed"
+  ) {
     return { kind: "ignored", state };
   }
 
-  const parsed = parseOpenAiRealtimeResponseDoneUsage(event);
+  const completedTranscription =
+    event.type === "conversation.item.input_audio_transcription.completed"
+      ? parseOpenAiRealtimeCompletedTranscription(event)
+      : undefined;
+  const parsed =
+    completedTranscription === undefined
+      ? parseOpenAiRealtimeResponseDoneUsage(event)
+      : {
+          eventId: completedTranscription.eventId,
+          itemId: completedTranscription.itemId,
+          seconds: completedTranscription.seconds,
+        };
   if (parsed === undefined) {
     return { kind: "invalid", state: invalidState(state) };
   }
-  const duplicateResponse = state.entries.find(
-    ({ responseId }) => responseId === parsed.responseId,
+  const duplicateEntry = state.entries.find((entry) =>
+    "responseId" in parsed
+      ? "responseId" in entry && entry.responseId === parsed.responseId
+      : "itemId" in entry && entry.itemId === parsed.itemId,
   );
-  if (duplicateResponse !== undefined) {
-    return sameUsage(duplicateResponse, parsed)
+  if (duplicateEntry !== undefined) {
+    return sameUsage(duplicateEntry, parsed)
       ? { kind: "duplicate", state }
       : { kind: "invalid", state: invalidState(state) };
   }
@@ -370,25 +479,36 @@ export function recordOpenAiRealtimeServerEvent(
     return { kind: "invalid", state: invalidState(state) };
   }
 
-  const responseCostMicroUsd = priceGptRealtime21UsageMicroUsd(parsed);
+  const responseCostMicroUsd =
+    "responseId" in parsed
+      ? priceGptRealtime21UsageMicroUsd(parsed)
+      : priceGptRealtimeWhisperUsageMicroUsd(parsed);
   const costMicroUsd = safeSum([
     state.totals.costMicroUsd,
     responseCostMicroUsd,
   ]);
-  const generationCount = safeSum([state.totals.generationCount, 1]);
+  const generationCount = safeSum([
+    state.totals.generationCount,
+    "responseId" in parsed ? 1 : 0,
+  ]);
   const inputTokens = safeSum([
     state.totals.inputTokens,
-    parsed.input.totalTokens,
+    "responseId" in parsed ? parsed.input.totalTokens : 0,
   ]);
   const outputTokens = safeSum([
     state.totals.outputTokens,
-    parsed.output.totalTokens,
+    "responseId" in parsed ? parsed.output.totalTokens : 0,
+  ]);
+  const transcriptionSeconds = safeDurationSum([
+    state.totals.transcriptionSeconds,
+    "itemId" in parsed ? parsed.seconds : 0,
   ]);
   if (
     costMicroUsd === undefined ||
     generationCount === undefined ||
     inputTokens === undefined ||
-    outputTokens === undefined
+    outputTokens === undefined ||
+    transcriptionSeconds === undefined
   ) {
     return { kind: "invalid", state: invalidState(state) };
   }
@@ -399,6 +519,7 @@ export function recordOpenAiRealtimeServerEvent(
       generationCount,
       inputTokens,
       outputTokens,
+      transcriptionSeconds,
     },
     trustworthy: true,
   };
@@ -406,7 +527,8 @@ export function recordOpenAiRealtimeServerEvent(
     costMicroUsd > limits.costMicroUsd ||
     generationCount > limits.generationCount ||
     inputTokens > limits.inputTokens ||
-    outputTokens > limits.outputTokens
+    outputTokens > limits.outputTokens ||
+    transcriptionSeconds > limits.transcriptionSeconds
   ) {
     return { kind: "limit_exceeded", state: invalidState(next) };
   }

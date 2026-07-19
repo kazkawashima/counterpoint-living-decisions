@@ -1,7 +1,9 @@
 import {
   emptyOpenAiRealtimeUsageState,
+  parseOpenAiRealtimeCompletedTranscription,
   parseOpenAiRealtimeResponseDoneUsage,
   priceGptRealtime21UsageMicroUsd,
+  priceGptRealtimeWhisperUsageMicroUsd,
   recordOpenAiRealtimeServerEvent,
 } from "@counterpoint/adapters-openai";
 import { describe, expect, it } from "vitest";
@@ -11,6 +13,7 @@ const limits = {
   generationCount: 100,
   inputTokens: 800_000,
   outputTokens: 400_000,
+  transcriptionSeconds: 30,
 };
 
 function responseDone(
@@ -43,6 +46,20 @@ function responseDone(
       },
     },
     type: "response.done",
+    ...override,
+  };
+}
+
+function transcriptionCompleted(
+  override: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    content_index: 0,
+    event_id: "event-transcription-1",
+    item_id: "item-audio-1",
+    transcript: "private transcript not retained",
+    type: "conversation.item.input_audio_transcription.completed",
+    usage: { seconds: 30, type: "duration" },
     ...override,
   };
 }
@@ -92,6 +109,47 @@ describe("OpenAI Realtime usage accounting", () => {
       },
     };
     expect(priceGptRealtime21UsageMicroUsd(imageUsage)).toBe(7_212);
+  });
+
+  it("prices duration-based transcription without retaining its text", () => {
+    const parsed = parseOpenAiRealtimeCompletedTranscription(
+      transcriptionCompleted(),
+    );
+    expect(parsed).toEqual({
+      eventId: "event-transcription-1",
+      itemId: "item-audio-1",
+      seconds: 30,
+      transcript: "private transcript not retained",
+    });
+    if (parsed === undefined) {
+      throw new TypeError("Expected valid transcription usage");
+    }
+    expect(priceGptRealtimeWhisperUsageMicroUsd(parsed)).toBe(8_500);
+
+    const recorded = recordOpenAiRealtimeServerEvent(
+      emptyOpenAiRealtimeUsageState(),
+      transcriptionCompleted(),
+      limits,
+    );
+    expect(recorded.kind).toBe("recorded");
+    expect(recorded.state).toEqual({
+      entries: [
+        {
+          eventId: "event-transcription-1",
+          itemId: "item-audio-1",
+          seconds: 30,
+        },
+      ],
+      totals: {
+        costMicroUsd: 8_500,
+        generationCount: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        transcriptionSeconds: 30,
+      },
+      trustworthy: true,
+    });
+    expect(JSON.stringify(recorded.state)).not.toContain("private transcript");
   });
 
   it("refuses to price a caller-forged inconsistent usage object", () => {
@@ -202,6 +260,7 @@ describe("OpenAI Realtime usage accounting", () => {
       generationCount: 1,
       inputTokens: 132,
       outputTokens: 121,
+      transcriptionSeconds: 0,
     });
     expect(JSON.stringify(recorded.state)).not.toContain("private output");
   });
@@ -246,7 +305,7 @@ describe("OpenAI Realtime usage accounting", () => {
     expect(reusedEventId.state.trustworthy).toBe(false);
   });
 
-  it("fails closed on malformed events, transcription billing, and exceeded limits", () => {
+  it("fails closed on malformed events, unknown transcription billing, and exceeded limits", () => {
     const malformed = recordOpenAiRealtimeServerEvent(
       emptyOpenAiRealtimeUsageState(),
       "not-an-event",
@@ -258,6 +317,10 @@ describe("OpenAI Realtime usage accounting", () => {
     const transcription = recordOpenAiRealtimeServerEvent(
       emptyOpenAiRealtimeUsageState(),
       {
+        content_index: 0,
+        event_id: "event-transcription-1",
+        item_id: "item-audio-1",
+        transcript: "private transcript",
         type: "conversation.item.input_audio_transcription.completed",
         usage: { total_tokens: 1 },
       },
@@ -265,6 +328,16 @@ describe("OpenAI Realtime usage accounting", () => {
     );
     expect(transcription.kind).toBe("invalid");
     expect(transcription.state.trustworthy).toBe(false);
+
+    const transcriptionExceeded = recordOpenAiRealtimeServerEvent(
+      emptyOpenAiRealtimeUsageState(),
+      transcriptionCompleted({
+        usage: { seconds: 30.001, type: "duration" },
+      }),
+      limits,
+    );
+    expect(transcriptionExceeded.kind).toBe("limit_exceeded");
+    expect(transcriptionExceeded.state.trustworthy).toBe(false);
 
     const exceeded = recordOpenAiRealtimeServerEvent(
       emptyOpenAiRealtimeUsageState(),

@@ -6,6 +6,7 @@ import type {
 } from "@counterpoint/ports";
 
 import { DEFAULT_OPENAI_REALTIME_MODEL } from "./realtime-client-secrets.js";
+import { GPT_REALTIME_WHISPER_MODEL } from "./realtime-usage.js";
 
 export const OPENAI_REALTIME_CALLS_URL =
   "https://api.openai.com/v1/realtime/calls";
@@ -189,6 +190,9 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
         JSON.stringify({
           audio: {
             input: {
+              transcription: {
+                model: GPT_REALTIME_WHISPER_MODEL,
+              },
               turn_detection: {
                 create_response: false,
                 interrupt_response: false,

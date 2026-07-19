@@ -62,6 +62,37 @@ function responseDone(sequence = 1): Record<string, unknown> {
   };
 }
 
+function speechStarted(sequence: number): Record<string, unknown> {
+  return {
+    event_id: `event-speech-started-${String(sequence)}`,
+    item_id: `item-audio-${String(sequence)}`,
+    type: "input_audio_buffer.speech_started",
+  };
+}
+
+function speechStopped(sequence: number): Record<string, unknown> {
+  return {
+    audio_end_ms: sequence * 1_000,
+    event_id: `event-speech-stopped-${String(sequence)}`,
+    item_id: `item-audio-${String(sequence)}`,
+    type: "input_audio_buffer.speech_stopped",
+  };
+}
+
+function transcriptionCompleted(
+  sequence: number,
+  transcript = `Synthetic private transcript ${String(sequence)}`,
+): Record<string, unknown> {
+  return {
+    content_index: 0,
+    event_id: `event-transcription-${String(sequence)}`,
+    item_id: `item-audio-${String(sequence)}`,
+    transcript,
+    type: "conversation.item.input_audio_transcription.completed",
+    usage: { seconds: 1, type: "duration" },
+  };
+}
+
 class MemoryStorage implements JudgeRealtimeCallStorage {
   alarm: number | undefined;
   failPuts = 0;
@@ -214,6 +245,38 @@ class DelayedInitialGetStorage extends MemoryStorage {
   }
 }
 
+class DelayedStaleGetStorage extends MemoryStorage {
+  getStarted: Promise<void> | undefined;
+  #getGate: Promise<void> | undefined;
+  #releaseGet: (() => void) | undefined;
+  #reportGetStarted: (() => void) | undefined;
+
+  delayNextGet(): void {
+    this.getStarted = new Promise<void>((resolve) => {
+      this.#reportGetStarted = resolve;
+    });
+    this.#getGate = new Promise<void>((resolve) => {
+      this.#releaseGet = resolve;
+    });
+  }
+
+  override async get(): ReturnType<JudgeRealtimeCallStorage["get"]> {
+    const gate = this.#getGate;
+    if (gate === undefined) {
+      return super.get();
+    }
+    const snapshot = structuredClone(this.state);
+    this.#getGate = undefined;
+    this.#reportGetStarted?.();
+    await gate;
+    return snapshot;
+  }
+
+  releaseGet(): void {
+    this.#releaseGet?.();
+  }
+}
+
 function lifecycle(
   options: {
     readonly connector?: ManagedRealtimeCallConnector;
@@ -282,6 +345,17 @@ function lifecycle(
     storage,
     terminator,
   };
+}
+
+async function beginAndStopSpeech(
+  fixture: ReturnType<typeof lifecycle>,
+  sequence: number,
+): Promise<void> {
+  await expect(
+    fixture.instance.beginTurn(`utterance-${String(sequence)}`),
+  ).resolves.toEqual({ kind: "begun", replayed: false });
+  await fixture.sidebandObserver?.onProviderEvent(speechStarted(sequence));
+  await fixture.sidebandObserver?.onProviderEvent(speechStopped(sequence));
 }
 
 describe("JudgeRealtimeCallLifecycle", () => {
@@ -421,9 +495,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     const fixture = lifecycle();
     await fixture.instance.start(input);
 
-    await fixture.sidebandObserver?.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(fixture, 1);
     await fixture.sidebandObserver?.onProviderEvent({
       type: "response.created",
     });
@@ -436,6 +508,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
           generationCount: 1,
           inputTokens: 132,
           outputTokens: 121,
+          transcriptionSeconds: 0,
         },
         trustworthy: true,
       },
@@ -454,15 +527,12 @@ describe("JudgeRealtimeCallLifecycle", () => {
       throw new TypeError("Expected attached sideband observer");
     }
 
-    await observer.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(fixture, 1);
     expect(fixture.sidebandCreateResponse).toHaveBeenCalledOnce();
+    await observer.onProviderEvent(transcriptionCompleted(1));
     await observer.onProviderEvent({ type: "response.created" });
     await observer.onProviderEvent(responseDone());
-    await observer.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(fixture, 2);
 
     expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(2);
     expect(fixture.hangup).not.toHaveBeenCalled();
@@ -483,16 +553,15 @@ describe("JudgeRealtimeCallLifecycle", () => {
       throw new TypeError("Expected attached sideband observer");
     }
 
-    await observer.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(fixture, 1);
+    await observer.onProviderEvent(transcriptionCompleted(1));
     await observer.onProviderEvent({ type: "response.created" });
-    await observer.onProviderEvent({
-      type: "input_audio_buffer.speech_started",
+    await expect(fixture.instance.beginTurn("utterance-2")).resolves.toEqual({
+      kind: "begun",
+      replayed: false,
     });
-    await observer.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await observer.onProviderEvent(speechStarted(2));
+    await observer.onProviderEvent(speechStopped(2));
     expect(fixture.sidebandCancelResponse).toHaveBeenCalledOnce();
     expect(fixture.sidebandCreateResponse).toHaveBeenCalledOnce();
 
@@ -500,6 +569,145 @@ describe("JudgeRealtimeCallLifecycle", () => {
 
     expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(2);
     expect(fixture.hangup).not.toHaveBeenCalled();
+  });
+
+  it("relays one bound transcript transiently after durable usage accounting", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+
+    await expect(fixture.instance.beginTurn("utterance-1")).resolves.toEqual({
+      kind: "begun",
+      replayed: false,
+    });
+    await expect(fixture.instance.beginTurn("utterance-1")).resolves.toEqual({
+      kind: "begun",
+      replayed: true,
+    });
+    await expect(fixture.instance.transcript("utterance-1")).resolves.toEqual({
+      kind: "pending",
+    });
+    await fixture.sidebandObserver?.onProviderEvent(speechStarted(1));
+    await fixture.sidebandObserver?.onProviderEvent(speechStopped(1));
+    await fixture.sidebandObserver?.onProviderEvent(
+      transcriptionCompleted(1, "Synthetic owner-private transcript."),
+    );
+
+    await expect(fixture.instance.transcript("utterance-1")).resolves.toEqual({
+      kind: "completed",
+      transcript: "Synthetic owner-private transcript.",
+    });
+    await expect(fixture.instance.transcript("utterance-1")).resolves.toEqual({
+      kind: "completed",
+      transcript: "Synthetic owner-private transcript.",
+    });
+    expect(fixture.storage.state).toMatchObject({
+      sidebandUsage: {
+        entries: [
+          {
+            eventId: "event-transcription-1",
+            itemId: "item-audio-1",
+            seconds: 1,
+          },
+        ],
+        totals: {
+          costMicroUsd: 284,
+          transcriptionSeconds: 1,
+        },
+        trustworthy: true,
+      },
+      status: "active",
+    });
+    expect(JSON.stringify(fixture.storage.state)).not.toContain(
+      "Synthetic owner-private transcript.",
+    );
+
+    await expect(fixture.instance.beginTurn("utterance-2")).resolves.toEqual({
+      kind: "begun",
+      replayed: false,
+    });
+    await expect(fixture.instance.transcript("utterance-1")).resolves.toEqual({
+      kind: "unavailable",
+    });
+  });
+
+  it("does not begin a turn from stale active state after termination", async () => {
+    const storage = new DelayedStaleGetStorage();
+    const fixture = lifecycle({ storage });
+    await fixture.instance.start(input);
+    storage.delayNextGet();
+
+    const begin = fixture.instance.beginTurn("utterance-stale");
+    await storage.getStarted;
+    await fixture.instance.terminate();
+    storage.releaseGet();
+
+    await expect(begin).resolves.toEqual({ kind: "unavailable" });
+    await expect(
+      fixture.instance.transcript("utterance-stale"),
+    ).resolves.toEqual({ kind: "unavailable" });
+    expect(storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
+  });
+
+  it("terminates mismatched, conflicting, and failed transcript events", async () => {
+    const mismatch = lifecycle();
+    await mismatch.instance.start(input);
+    await mismatch.instance.beginTurn("utterance-1");
+    await mismatch.sidebandObserver?.onProviderEvent(speechStarted(1));
+    await mismatch.sidebandObserver?.onProviderEvent(speechStopped(1));
+    await mismatch.sidebandObserver?.onProviderEvent(transcriptionCompleted(2));
+    expect(mismatch.hangup).toHaveBeenCalledOnce();
+
+    const conflict = lifecycle();
+    await conflict.instance.start(input);
+    await beginAndStopSpeech(conflict, 1);
+    await conflict.sidebandObserver?.onProviderEvent(
+      transcriptionCompleted(1, "First transcript."),
+    );
+    await conflict.sidebandObserver?.onProviderEvent(
+      transcriptionCompleted(1, "Conflicting transcript."),
+    );
+    expect(conflict.hangup).toHaveBeenCalledOnce();
+    expect(JSON.stringify(conflict.storage.state)).not.toContain(
+      "Conflicting transcript.",
+    );
+
+    const failed = lifecycle();
+    await failed.instance.start(input);
+    await failed.instance.beginTurn("utterance-1");
+    await failed.sidebandObserver?.onProviderEvent(speechStarted(1));
+    await failed.sidebandObserver?.onProviderEvent({
+      content_index: 0,
+      error: { message: "provider-private-transcription-failure" },
+      event_id: "event-transcription-failed-1",
+      item_id: "item-audio-1",
+      type: "conversation.item.input_audio_transcription.failed",
+    });
+    expect(failed.hangup).toHaveBeenCalledOnce();
+    expect(JSON.stringify(failed.storage.state)).not.toContain(
+      "provider-private-transcription-failure",
+    );
+  });
+
+  it("fails closed when durable transcript usage outlives transient turn ownership", async () => {
+    const storage = new MemoryStorage();
+    const first = lifecycle({ storage });
+    await first.instance.start(input);
+    await beginAndStopSpeech(first, 1);
+    const event = transcriptionCompleted(1);
+    await first.sidebandObserver?.onProviderEvent(event);
+
+    const restarted = lifecycle({ storage, terminator: first.terminator });
+    await restarted.instance.recordProviderEvent(event);
+
+    expect(first.hangup).toHaveBeenCalledOnce();
+    expect(restarted.finalize).toHaveBeenCalledOnce();
+    expect(storage.state).toEqual({
+      settledAtEpochMs: 1_000,
+      status: "settled",
+    });
   });
 
   it("terminates an unsolicited provider response", async () => {
@@ -521,9 +729,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
   it("terminates duplicate response creation and provider command errors", async () => {
     const duplicateFixture = lifecycle();
     await duplicateFixture.instance.start(input);
-    await duplicateFixture.sidebandObserver?.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(duplicateFixture, 1);
     await duplicateFixture.sidebandObserver?.onProviderEvent({
       type: "response.created",
     });
@@ -534,9 +740,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
 
     const errorFixture = lifecycle();
     await errorFixture.instance.start(input);
-    await errorFixture.sidebandObserver?.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(errorFixture, 1);
     await errorFixture.sidebandObserver?.onProviderEvent({
       error: { message: "provider-private-command-error" },
       type: "error",
@@ -550,9 +754,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
   it("terminates a response completion without an observed creation", async () => {
     const fixture = lifecycle();
     await fixture.instance.start(input);
-    await fixture.sidebandObserver?.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(fixture, 1);
     await fixture.sidebandObserver?.onProviderEvent(responseDone());
 
     expect(fixture.hangup).toHaveBeenCalledOnce();
@@ -571,15 +773,12 @@ describe("JudgeRealtimeCallLifecycle", () => {
     }
 
     for (let sequence = 1; sequence <= 3; sequence += 1) {
-      await observer.onProviderEvent({
-        type: "input_audio_buffer.speech_stopped",
-      });
+      await beginAndStopSpeech(fixture, sequence);
+      await observer.onProviderEvent(transcriptionCompleted(sequence));
       await observer.onProviderEvent({ type: "response.created" });
       await observer.onProviderEvent(responseDone(sequence));
     }
-    await observer.onProviderEvent({
-      type: "input_audio_buffer.speech_stopped",
-    });
+    await beginAndStopSpeech(fixture, 4);
 
     expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(3);
     expect(fixture.hangup).toHaveBeenCalledOnce();
@@ -955,7 +1154,7 @@ describe("judge Realtime reservation gate", () => {
   const exactReservation = {
     model: "gpt-realtime-2.1",
     operation: "judge_realtime",
-    pricing_version: "gpt-realtime-2.1-2026-07-19",
+    pricing_version: "gpt-realtime-2.1+gpt-realtime-whisper-2026-07-19",
     reserved_cost_micro_usd: 25_000_000,
     reserved_generation_count: reservedUsage.generationCount,
     reserved_input_tokens: reservedUsage.estimatedInputTokens,

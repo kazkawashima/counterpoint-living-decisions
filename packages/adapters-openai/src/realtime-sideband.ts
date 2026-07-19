@@ -4,6 +4,8 @@ import type {
   ManagedRealtimeSidebandObserver,
 } from "@counterpoint/ports";
 
+import { GPT_REALTIME_WHISPER_MODEL } from "./realtime-usage.js";
+
 export const OPENAI_REALTIME_SIDEBAND_URL =
   "https://api.openai.com/v1/realtime";
 export const MAX_OPENAI_REALTIME_SIDEBAND_EVENT_BYTES = 64 * 1024;
@@ -120,7 +122,14 @@ function managedSessionConfigured(event: unknown): boolean {
   }
   const turnDetection = (input as { readonly turn_detection?: unknown })
     .turn_detection;
+  const transcription = (input as { readonly transcription?: unknown })
+    .transcription;
   return (
+    typeof transcription === "object" &&
+    transcription !== null &&
+    !Array.isArray(transcription) &&
+    (transcription as { readonly model?: unknown }).model ===
+      GPT_REALTIME_WHISPER_MODEL &&
     typeof turnDetection === "object" &&
     turnDetection !== null &&
     !Array.isArray(turnDetection) &&
@@ -137,6 +146,9 @@ function managedSessionUpdate(): string {
     session: {
       audio: {
         input: {
+          transcription: {
+            model: GPT_REALTIME_WHISPER_MODEL,
+          },
           turn_detection: {
             create_response: false,
             interrupt_response: false,

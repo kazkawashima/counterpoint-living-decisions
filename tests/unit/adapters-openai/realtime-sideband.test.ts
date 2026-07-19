@@ -62,6 +62,9 @@ class FakeSocket {
         session: {
           audio: {
             input: {
+              transcription: {
+                model: "gpt-realtime-whisper",
+              },
               turn_detection: {
                 create_response: false,
                 interrupt_response: false,
@@ -129,6 +132,9 @@ describe("OpenAiRealtimeSidebandConnector", () => {
         session: {
           audio: {
             input: {
+              transcription: {
+                model: "gpt-realtime-whisper",
+              },
               turn_detection: {
                 create_response: false,
                 interrupt_response: false,

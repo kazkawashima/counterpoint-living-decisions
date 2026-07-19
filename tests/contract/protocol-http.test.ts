@@ -4,6 +4,10 @@ import {
   AcquireSharedFloorRequestSchema,
   AcquireSharedFloorResponseSchema,
   ApproveDisclosureRequestSchema,
+  AwaitManagedRealtimeTranscriptRequestSchema,
+  AwaitManagedRealtimeTranscriptResponseSchema,
+  BeginManagedRealtimeTurnRequestSchema,
+  BeginManagedRealtimeTurnResponseSchema,
   CaptureUtteranceRequestSchema,
   CaptureUtteranceResponseSchema,
   ClearMeetingByokRequestSchema,
@@ -38,6 +42,7 @@ import {
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
+  ManagedCallIdSchema,
   MarkDecisionReadyRequestSchema,
   PreviewDisclosureRequestSchema,
   ProposeDisclosureRequestSchema,
@@ -67,10 +72,16 @@ import {
   SharedDisplayProjectionResponseSchema,
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
+  TerminateManagedRealtimeCallRequestSchema,
+  TerminateManagedRealtimeCallResponseSchema,
   UploadPrivateArtifactFieldsSchema,
   UploadPrivateArtifactResponseSchema,
   type AcquireSharedFloorRequest,
   type AcquireSharedFloorResponse,
+  type AwaitManagedRealtimeTranscriptRequest,
+  type AwaitManagedRealtimeTranscriptResponse,
+  type BeginManagedRealtimeTurnRequest,
+  type BeginManagedRealtimeTurnResponse,
   type CaptureUtteranceRequest,
   type CaptureUtteranceResponse,
   type ClearMeetingByokRequest,
@@ -91,6 +102,7 @@ import {
   type IssueRealtimeClientSecretRequest,
   type IssueRealtimeClientSecretResponse,
   type LoginRequest,
+  type ManagedCallId,
   type ResolveDecisionReviewRequest,
   type ResolveDecisionReviewResponse,
   type RevokeDisplayTokenRequest,
@@ -98,6 +110,8 @@ import {
   type ReleaseSharedFloorRequest,
   type ReleaseSharedFloorResponse,
   type SharedDisplayProjectionResponse,
+  type TerminateManagedRealtimeCallRequest,
+  type TerminateManagedRealtimeCallResponse,
   type UploadPrivateArtifactFields,
   type UploadPrivateArtifactResponse,
 } from "@counterpoint/protocol";
@@ -1252,7 +1266,7 @@ describe("strict v1 HTTP protocol", () => {
     ).toBe(true);
   });
 
-  it("keeps managed realtime call IDs and provider credentials server-side", () => {
+  it("exposes only an app-owned opaque handle for managed realtime calls", () => {
     const request = {
       channel: "shared",
       correlationId: "correlation-1",
@@ -1285,6 +1299,7 @@ describe("strict v1 HTTP protocol", () => {
     const response = {
       channel: "shared",
       correlationId: "correlation-1",
+      managedCallId: "managed-call-1",
       meetingId: "meeting-1",
       model: "gpt-realtime-2.1",
       sdpAnswer: "v=0\r\no=- 2 2 IN IP4 0.0.0.0\r\n",
@@ -1297,7 +1312,7 @@ describe("strict v1 HTTP protocol", () => {
     expect(
       CreateManagedRealtimeCallResponseSchema.safeParse({
         ...response,
-        callId: "rtc_private-provider-id",
+        providerCallId: "rtc_private-provider-id",
       }).success,
     ).toBe(false);
     expect(
@@ -1310,6 +1325,163 @@ describe("strict v1 HTTP protocol", () => {
       CreateManagedRealtimeCallResponseSchema.safeParse({
         ...response,
         apiKey: "sk-standard-key-must-never-appear",
+      }).success,
+    ).toBe(false);
+
+    const parsedManagedCallId = ManagedCallIdSchema.parse(
+      response.managedCallId,
+    );
+    expectTypeOf(parsedManagedCallId).toEqualTypeOf<ManagedCallId>();
+    expect(ManagedCallIdSchema.safeParse("").success).toBe(false);
+    expect(ManagedCallIdSchema.safeParse("managed call 1").success).toBe(false);
+    expect(ManagedCallIdSchema.safeParse("x".repeat(257)).success).toBe(false);
+  });
+
+  it("binds one opaque utterance to each managed realtime speech turn", () => {
+    const request = {
+      meetingId: "meeting-1",
+      managedCallId: "managed-call-1",
+      utteranceId: "utterance-1",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedRequest = BeginManagedRealtimeTurnRequestSchema.parse(request);
+    expectTypeOf(
+      parsedRequest,
+    ).toEqualTypeOf<BeginManagedRealtimeTurnRequest>();
+
+    for (const privateProviderField of [
+      { providerCallId: "rtc_private-provider-id" },
+      { callId: "rtc_private-provider-id" },
+      { apiKey: "sk-standard-key-must-never-appear" },
+      { providerMetadata: { itemId: "provider-item-1" } },
+    ]) {
+      expect(
+        BeginManagedRealtimeTurnRequestSchema.safeParse({
+          ...request,
+          ...privateProviderField,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      BeginManagedRealtimeTurnRequestSchema.safeParse({
+        ...request,
+        utteranceId: "",
+      }).success,
+    ).toBe(false);
+    expect(
+      BeginManagedRealtimeTurnRequestSchema.safeParse({
+        ...request,
+        utteranceId: "x".repeat(257),
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      meetingId: "meeting-1",
+      managedCallId: "managed-call-1",
+      utteranceId: "utterance-1",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedResponse =
+      BeginManagedRealtimeTurnResponseSchema.parse(response);
+    expectTypeOf(
+      parsedResponse,
+    ).toEqualTypeOf<BeginManagedRealtimeTurnResponse>();
+    expect(
+      BeginManagedRealtimeTurnResponseSchema.safeParse({
+        ...response,
+        participantId: "participant-1",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("returns only the bounded transcript for the owned managed turn", () => {
+    const request = {
+      meetingId: "meeting-1",
+      managedCallId: "managed-call-1",
+      utteranceId: "utterance-1",
+      correlationId: "correlation-2",
+    } as const;
+    const parsedRequest =
+      AwaitManagedRealtimeTranscriptRequestSchema.parse(request);
+    expectTypeOf(
+      parsedRequest,
+    ).toEqualTypeOf<AwaitManagedRealtimeTranscriptRequest>();
+    expect(
+      AwaitManagedRealtimeTranscriptRequestSchema.safeParse({
+        ...request,
+        providerResponseId: "provider-response-1",
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      ...request,
+      transcript: "Synthetic managed transcript.",
+    } as const;
+    const parsedResponse =
+      AwaitManagedRealtimeTranscriptResponseSchema.parse(response);
+    expectTypeOf(
+      parsedResponse,
+    ).toEqualTypeOf<AwaitManagedRealtimeTranscriptResponse>();
+    expect(
+      AwaitManagedRealtimeTranscriptResponseSchema.safeParse({
+        ...response,
+        transcript: "",
+      }).success,
+    ).toBe(false);
+    expect(
+      AwaitManagedRealtimeTranscriptResponseSchema.safeParse({
+        ...response,
+        transcript: "x".repeat(4001),
+      }).success,
+    ).toBe(false);
+    expect(
+      AwaitManagedRealtimeTranscriptResponseSchema.safeParse({
+        ...response,
+        providerMetadata: {
+          callId: "rtc_private-provider-id",
+          itemId: "provider-item-1",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("terminates managed calls by app-owned handle without provider metadata", () => {
+    const request = {
+      meetingId: "meeting-1",
+      managedCallId: "managed-call-1",
+      correlationId: "correlation-3",
+    } as const;
+    const parsedRequest =
+      TerminateManagedRealtimeCallRequestSchema.parse(request);
+    expectTypeOf(
+      parsedRequest,
+    ).toEqualTypeOf<TerminateManagedRealtimeCallRequest>();
+    expect(
+      TerminateManagedRealtimeCallRequestSchema.safeParse({
+        ...request,
+        providerCallId: "rtc_private-provider-id",
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      ...request,
+      terminated: true,
+    } as const;
+    const parsedResponse =
+      TerminateManagedRealtimeCallResponseSchema.parse(response);
+    expectTypeOf(
+      parsedResponse,
+    ).toEqualTypeOf<TerminateManagedRealtimeCallResponse>();
+    expect(
+      TerminateManagedRealtimeCallResponseSchema.safeParse({
+        ...response,
+        apiKey: "sk-standard-key-must-never-appear",
+      }).success,
+    ).toBe(false);
+    expect(
+      TerminateManagedRealtimeCallResponseSchema.safeParse({
+        ...response,
+        terminated: false,
       }).success,
     ).toBe(false);
   });

@@ -441,6 +441,21 @@ The canonical implementation-facing artifacts are:
   facilitator BYOK/data-channel path. A live Chromium smoke on 2026-07-19
   confirmed that the official unified Realtime endpoint accepts this
   media-only offer without exposing secrets or provider call IDs.
+- Input transcription is fixed to `gpt-realtime-whisper` and its official
+  duration usage is accounted separately from Realtime response tokens. The
+  checked USD 0.017/minute rate makes the 30-second maximum USD 0.0085; duration
+  cost and seconds now join the same content-free accumulator and reservation
+  limits. Missing, token-based, malformed, conflicting, or over-limit
+  transcription usage fails closed. The reservation pricing version now pins
+  both the Realtime and transcription rate cards.
+- Strict managed-call protocol contracts now expose only an opaque app handle,
+  utterance-bound begin-turn, bounded transcript retrieval, and termination.
+  Provider call IDs, item IDs, credentials, and metadata are rejected. The
+  Durable Object binds a pending app utterance to the server VAD item, persists
+  usage before making a completed transcript available, and retains transcript
+  text in memory only. Storage, status, usage entries, errors, and logs remain
+  content-free; mismatches, conflicting duplicates, transcription failure, and
+  restart loss terminate rather than reconstructing private state.
 - Sideband setup failure, attachment-time disconnect, provider disconnect,
   malformed/future billable telemetry, and observed reservation overflow all
   invoke authenticated hangup and settle the full reservation. Server-initiated
@@ -450,17 +465,15 @@ The canonical implementation-facing artifacts are:
 - Trustworthy measured usage does not yet reduce settlement; the full
   reservation remains the safe charge for every outcome.
 - The controller is intentionally not publicly routed. Remaining gates are a
-  separately priced and visibility-scoped transient transcript relay,
-  authenticated hosted API parity, an opaque app-owned call handle with
-  per-request ownership checks, production keyed IP-HMAC reservation input, and
-  settlement behavior that does not consume the entire daily allowance for
-  every attempt.
+  authenticated hosted API parity, server-side ownership checks for the opaque
+  app call handle, production keyed IP-HMAC reservation input, and settlement
+  behavior that does not consume the entire daily allowance for every attempt.
 - Direct Worker judge client-secret issuance is now intentionally fail-closed,
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
 - Plan 05 C5 now has a reproducible `npm run security:verify` foundation. Its
-  282-case matrix, including parser-normalized loopback notation, gives strong
+  283-case matrix, including parser-normalized loopback notation, gives strong
   IDOR/meeting/owner, session/display expiry, DNS-pinned SSRF/redirect,
   disclosure preview/prompt-injection, artifact, webhook, API/Realtime, and
   content-free log regression coverage. Its repository scan includes tracked
@@ -508,12 +521,13 @@ The canonical implementation-facing artifacts are:
   shutdown runbook forbids schema down migration and secret-value inspection.
   No remote resource, secret, migration, deployment, or repository visibility
   changed during this preparation.
-- C4 is not complete: transcript relay/accounting, safe public route wiring,
-  measured flagship limits, the web managed-call switch, structured judge AI
-  routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
-  broader content-free operator visibility remain.
-- The current verification baseline is 538 regular Vitest tests, 282 focused
-  security-matrix tests, and 66 Cloudflare-native tests, plus typecheck, lint,
+- C4 is not complete: safe authenticated public route wiring, opaque-call
+  ownership persistence, production IP-HMAC, measured flagship limits, the web
+  managed-call switch, structured judge AI routes after hosted API parity,
+  `USAGE_LIMIT_REACHED` HTTP integration, and broader content-free operator
+  visibility remain.
+- The current verification baseline is 542 regular Vitest tests, 283 focused
+  security-matrix tests, and 70 Cloudflare-native tests, plus typecheck, lint,
   formatting, architecture, secret scan, and Cloudflare configuration checks.
   The live media-only provider smoke also passed. No visible UI changed, so no
   browser capture was required.
@@ -525,16 +539,16 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 with the app-owned transient transcript relay. Price or
-conservatively reserve separately billed input transcription, bind one
-app-owned utterance to one managed speech turn, keep transcript text out of
-Durable Object storage/status/logs, and require authenticated ownership on
-every await/terminate request. Then add production keyed IP-HMAC reservation
-input and hosted API parity before enabling the public route or switching the
-judge UI. The UI switch requires browser E2E coverage and saved reel
-screenshots. Apply the same reservation boundary to structured judge AI only
-after hosted API parity exists. Keep remote Secret registration and deployment
-mutation behind an explicit deployment boundary.
+Continue Plan 05 C4 with production keyed IP-HMAC reservation input and
+server-owned opaque-call ownership. Authenticate and re-resolve meeting/judge
+authorization on every start, turn, transcript, and terminate request; never
+accept reservation, provider call, participant, or key-source identity from the
+browser. Complete the minimum hosted API parity needed by the flagship before
+enabling the public route or switching the judge UI. The UI switch requires
+browser E2E coverage and saved reel screenshots. Apply the same reservation
+boundary to structured judge AI only after hosted API parity exists. Keep
+remote Secret registration and deployment mutation behind an explicit
+deployment boundary.
 
 ## Open gates
 

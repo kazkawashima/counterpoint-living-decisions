@@ -166,6 +166,23 @@ C4 foundation notes:
   managed call when closed. A live 2026-07-19 smoke proved that the official
   unified Realtime endpoint accepts the resulting Chromium media-only offer;
   the smoke emits only model and pass/fail metadata.
+- Judge input transcription is fixed to `gpt-realtime-whisper`. The separately
+  billed completion event must carry exact duration usage; at the checked USD
+  0.017/minute rate, the 30-second call ceiling contributes at most USD 0.0085.
+  Duration cost and seconds join the same content-free accumulator, while
+  token-based, malformed, missing, or over-30-second transcription usage
+  terminates and conservatively settles the call. The combined
+  `gpt-realtime-2.1` plus transcription pricing version is pinned in each
+  reservation.
+- Strict public contracts now define one opaque app-managed call handle,
+  begin-turn binding, bounded transcript retrieval, and termination without
+  exposing provider call IDs, credentials, item IDs, or metadata. Inside the
+  Durable Object, a turn is registered before audio, bound to the
+  server-observed VAD item ID, and completed only after usage is durably
+  accounted. Transcript text remains in one transient in-memory slot and is
+  excluded from Durable Object storage, status, usage entries, errors, and
+  logs. Mismatch, conflict, transcription failure, or loss of transient
+  ownership across restart triggers hangup rather than permissive recovery.
 - Sideband setup failure, provider-side disconnect, malformed or future
   billable telemetry, and any observed reservation-dimension overflow
   immediately invoke authenticated hangup and conservatively finalize the full
@@ -175,8 +192,7 @@ C4 foundation notes:
   lower the charged reservation.
 - The controller is not publicly routed yet. The remaining safe-route gates
   are authenticated hosted API parity, keyed IP-HMAC reservation input,
-  app-owned opaque call ownership, and a visibility-scoped transcript relay
-  whose separately billed transcription is included in the reservation proof.
+  and server-side ownership of the opaque call handle on every request.
   Until those gates close, judge client-secret issuance and the public managed
   route remain fail-closed. No remote Secret registration occurs.
 
@@ -192,7 +208,7 @@ C4 foundation notes:
 - [ ] Re-run the C5 matrix against hosted Worker routes after API parity.
 
 The C5 foundation is reproducible through `npm run security:verify`. The
-current matrix exercises 282 authorization, owner isolation, session/display
+current matrix exercises 283 authorization, owner isolation, session/display
 expiry, SSRF/DNS pinning, redirect, artifact parser/size, webhook, disclosure,
 Realtime payload, API response, and structured-log cases. Parser-normalized
 decimal, hexadecimal, octal, short dotted, trailing-dot, and IPv4-embedded

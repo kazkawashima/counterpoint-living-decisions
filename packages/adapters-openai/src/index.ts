@@ -76,11 +76,17 @@ export {
 } from "./realtime-calls.js";
 export {
   GPT_REALTIME_2_1_PRICING_VERSION,
+  GPT_REALTIME_WHISPER_MODEL,
+  JUDGE_REALTIME_PRICING_VERSION,
   emptyOpenAiRealtimeUsageState,
+  parseOpenAiRealtimeCompletedTranscription,
   parseOpenAiRealtimeResponseDoneUsage,
   priceGptRealtime21UsageMicroUsd,
+  priceGptRealtimeWhisperUsageMicroUsd,
   recordOpenAiRealtimeServerEvent,
+  type OpenAiRealtimeCompletedTranscription,
   type OpenAiRealtimeResponseUsage,
+  type OpenAiRealtimeTranscriptionUsage,
   type OpenAiRealtimeUsageLimits,
   type OpenAiRealtimeUsageRecordResult,
   type OpenAiRealtimeUsageState,
