@@ -23,6 +23,21 @@ export interface ManagedRealtimeCallOwner {
   readonly userId: string;
 }
 
+export interface ManagedRealtimeStartClaim {
+  readonly createdAtEpoch: number;
+  readonly expiresAtEpoch: number;
+  readonly managedCallId: string;
+  readonly meetingId: string;
+  readonly participantId: string;
+  readonly requestFingerprint: string;
+  readonly sessionId: string;
+  readonly startKeyHash: string;
+  readonly userId: string;
+}
+
+export type ManagedRealtimeStartClaimResult =
+  "claimed" | "conflict" | "replayed" | "unavailable";
+
 interface ManagedRealtimeCallRow {
   readonly account_id: string;
   readonly channel: ManagedRealtimeCallChannel;
@@ -35,6 +50,43 @@ interface ManagedRealtimeCallRow {
   readonly session_id: string;
   readonly user_id: string;
 }
+
+interface ManagedRealtimeStartClaimRow {
+  readonly expires_at_epoch: number;
+  readonly managed_call_id: string;
+  readonly meeting_id: string;
+  readonly participant_id: string;
+  readonly request_fingerprint: string;
+  readonly session_id: string;
+  readonly user_id: string;
+}
+
+const SHA256_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/u;
+
+const CLAIM_START_SQL = `
+  INSERT INTO judge_managed_realtime_start_claims (
+    start_key_hash,
+    request_fingerprint,
+    managed_call_id,
+    meeting_id,
+    user_id,
+    session_id,
+    participant_id,
+    created_at_epoch,
+    expires_at_epoch
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(start_key_hash) DO UPDATE SET
+    request_fingerprint = excluded.request_fingerprint,
+    managed_call_id = excluded.managed_call_id,
+    meeting_id = excluded.meeting_id,
+    user_id = excluded.user_id,
+    session_id = excluded.session_id,
+    participant_id = excluded.participant_id,
+    created_at_epoch = excluded.created_at_epoch,
+    expires_at_epoch = excluded.expires_at_epoch
+  WHERE judge_managed_realtime_start_claims.expires_at_epoch
+    < excluded.created_at_epoch
+`;
 
 const INSERT_OWNERSHIP_SQL = `
   INSERT INTO judge_managed_realtime_calls (
@@ -104,6 +156,12 @@ function validateOwner(owner: ManagedRealtimeCallOwner): void {
   requireOpaque(owner.userId, "userId");
 }
 
+function requireSha256Fingerprint(value: string, label: string): void {
+  if (!SHA256_FINGERPRINT_PATTERN.test(value)) {
+    throw new TypeError(`${label} must be a sha256 fingerprint`);
+  }
+}
+
 function ownershipFromRow(
   row: ManagedRealtimeCallRow,
 ): ManagedRealtimeCallOwnership {
@@ -126,6 +184,78 @@ export class D1ManagedRealtimeCallOwnershipRepository {
 
   constructor(database: D1Database) {
     this.#database = database;
+  }
+
+  async claimStart(
+    claim: ManagedRealtimeStartClaim,
+  ): Promise<ManagedRealtimeStartClaimResult> {
+    requireSha256Fingerprint(claim.startKeyHash, "startKeyHash");
+    requireSha256Fingerprint(claim.requestFingerprint, "requestFingerprint");
+    requireOpaque(claim.managedCallId, "managedCallId");
+    requireOpaque(claim.meetingId, "meetingId");
+    requireOpaque(claim.participantId, "participantId");
+    requireOpaque(claim.sessionId, "sessionId");
+    requireOpaque(claim.userId, "userId");
+    requireEpoch(claim.createdAtEpoch, "createdAtEpoch");
+    requireEpoch(claim.expiresAtEpoch, "expiresAtEpoch");
+    if (claim.expiresAtEpoch < claim.createdAtEpoch) {
+      throw new TypeError("expiresAtEpoch must not precede createdAtEpoch");
+    }
+
+    const session = this.#database.withSession("first-primary");
+    const result = await session
+      .prepare(CLAIM_START_SQL)
+      .bind(
+        claim.startKeyHash,
+        claim.requestFingerprint,
+        claim.managedCallId,
+        claim.meetingId,
+        claim.userId,
+        claim.sessionId,
+        claim.participantId,
+        claim.createdAtEpoch,
+        claim.expiresAtEpoch,
+      )
+      .run();
+    if (result.meta.changes === 1) {
+      return "claimed";
+    }
+    if (result.meta.changes !== 0) {
+      throw new Error(
+        "Managed Realtime start claim changed an unexpected row count",
+      );
+    }
+
+    const existing = await session
+      .prepare(
+        `
+          SELECT
+            request_fingerprint,
+            managed_call_id,
+            meeting_id,
+            user_id,
+            session_id,
+            participant_id,
+            expires_at_epoch
+          FROM judge_managed_realtime_start_claims
+          WHERE start_key_hash = ?
+        `,
+      )
+      .bind(claim.startKeyHash)
+      .first<ManagedRealtimeStartClaimRow>();
+    if (existing === null) {
+      return "unavailable";
+    }
+    const sameOwner =
+      existing.meeting_id === claim.meetingId &&
+      existing.user_id === claim.userId &&
+      existing.session_id === claim.sessionId &&
+      existing.participant_id === claim.participantId;
+    return sameOwner &&
+      existing.request_fingerprint === claim.requestFingerprint &&
+      existing.expires_at_epoch >= claim.createdAtEpoch
+      ? "replayed"
+      : "conflict";
   }
 
   async create(

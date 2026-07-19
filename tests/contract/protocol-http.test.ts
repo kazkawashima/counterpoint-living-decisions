@@ -1270,6 +1270,7 @@ describe("strict v1 HTTP protocol", () => {
     const request = {
       channel: "shared",
       correlationId: "correlation-1",
+      idempotencyKey: "managed-call-start-1",
       meetingId: "meeting-1",
       sdpOffer: "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n",
     } as const;
@@ -1277,6 +1278,12 @@ describe("strict v1 HTTP protocol", () => {
     expectTypeOf(
       parsedRequest,
     ).toEqualTypeOf<CreateManagedRealtimeCallRequest>();
+    expect(
+      CreateManagedRealtimeCallRequestSchema.safeParse({
+        ...request,
+        idempotencyKey: undefined,
+      }).success,
+    ).toBe(false);
     expect(
       CreateManagedRealtimeCallRequestSchema.safeParse({
         ...request,

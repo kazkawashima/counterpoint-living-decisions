@@ -11,6 +11,7 @@ import {
   WebCryptoSessionTokenIssuer,
   type ManagedRealtimeCallOwner,
   type ManagedRealtimeCallOwnership,
+  type ManagedRealtimeStartClaim,
 } from "@counterpoint/adapters-cloudflare";
 
 import {
@@ -188,7 +189,88 @@ function owner(
   };
 }
 
+function startClaim(
+  fixtureValue: Fixture,
+  label: string,
+  nowEpoch = NOW_EPOCH,
+): ManagedRealtimeStartClaim {
+  const digest = Array.from(new TextEncoder().encode(label))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .padEnd(64, "a")
+    .slice(0, 64);
+  const requestDigest = digest.replaceAll("a", "b");
+  return {
+    createdAtEpoch: nowEpoch,
+    expiresAtEpoch: nowEpoch + 60,
+    managedCallId: `managed-claim-${label}`,
+    meetingId: fixtureValue.meetingId,
+    participantId: fixtureValue.participantId,
+    requestFingerprint: `sha256:${requestDigest}`,
+    sessionId: fixtureValue.sessionId,
+    startKeyHash: `sha256:${digest}`,
+    userId: fixtureValue.userId,
+  };
+}
+
 describe("D1 managed Realtime call ownership", () => {
+  it("claims a hashed start key once without storing request content", async () => {
+    const seeded = await fixture("start-claim");
+    const repository = new D1ManagedRealtimeCallOwnershipRepository(env.DB);
+    const claim = startClaim(seeded, "claim-once");
+
+    await expect(repository.claimStart(claim)).resolves.toBe("claimed");
+    await expect(repository.claimStart(claim)).resolves.toBe("replayed");
+    await expect(
+      repository.claimStart({
+        ...claim,
+        requestFingerprint: `sha256:${"c".repeat(64)}`,
+      }),
+    ).resolves.toBe("conflict");
+
+    const row = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT *
+          FROM judge_managed_realtime_start_claims
+          WHERE start_key_hash = ?
+        `,
+      )
+      .bind(claim.startKeyHash)
+      .first<Record<string, unknown>>();
+    expect(row).toMatchObject({
+      managed_call_id: claim.managedCallId,
+      meeting_id: seeded.meetingId,
+      request_fingerprint: claim.requestFingerprint,
+      start_key_hash: claim.startKeyHash,
+    });
+    expect(Object.keys(row ?? {})).not.toContain("sdp_offer");
+    expect(Object.keys(row ?? {})).not.toContain("provider_call_id");
+  });
+
+  it("lets exactly one concurrent request own a start key and permits reuse after expiry", async () => {
+    const seeded = await fixture("start-race");
+    const repository = new D1ManagedRealtimeCallOwnershipRepository(env.DB);
+    const first = startClaim(seeded, "claim-race");
+    const second = {
+      ...first,
+      managedCallId: "managed-claim-race-second",
+    };
+
+    const results = await Promise.all([
+      repository.claimStart(first),
+      repository.claimStart(second),
+    ]);
+    expect(results.sort()).toEqual(["claimed", "replayed"]);
+
+    const replacement = {
+      ...second,
+      createdAtEpoch: first.expiresAtEpoch + 1,
+      expiresAtEpoch: first.expiresAtEpoch + 61,
+    };
+    await expect(repository.claimStart(replacement)).resolves.toBe("claimed");
+  });
+
   it("binds one opaque handle to server-resolved identity and reservation data", async () => {
     const seeded = await fixture("persist");
     const repository = new D1ManagedRealtimeCallOwnershipRepository(env.DB);

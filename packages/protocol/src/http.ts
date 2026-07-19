@@ -546,6 +546,7 @@ export const IssueRealtimeClientSecretResponseSchema = z.strictObject({
 export const CreateManagedRealtimeCallRequestSchema = z.strictObject({
   meetingId: MeetingIdSchema,
   channel: RealtimeChannelSchema,
+  idempotencyKey: IdempotencyKeySchema,
   sdpOffer: RealtimeSdpSchema,
   ...OptionalCorrelationShape,
 });

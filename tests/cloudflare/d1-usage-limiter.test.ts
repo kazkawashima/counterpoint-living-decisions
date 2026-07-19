@@ -415,6 +415,140 @@ describe("D1UsageLimiter", () => {
     ).resolves.toMatchObject({ kind: "allowed" });
   });
 
+  it("reports reserved usage against every limit without exposing identifiers or content", async () => {
+    const clock = new MutableClock();
+    const usageLimiter = limiter(clock, {
+      accountRequestsPerWindow: 4,
+      concurrentReservations: 3,
+      costMicroUsdPerWindow: 1_000_000,
+      generationsPerWindow: 8,
+      ipRequestsPerWindow: 5,
+      meetingRequestsPerWindow: 6,
+      realtimeSecondsPerWindow: 100,
+      tokensPerWindow: 50,
+    });
+    const scopedSubject = subject("summary-reserved", {
+      accountId: "private-account-id",
+      ipAddress: "192.0.2.88",
+      meetingId: "private-meeting-id",
+    });
+    const reservation = await usageLimiter.reserve(scopedSubject, {
+      estimatedCostUsd: 0.8,
+      estimatedInputTokens: 20,
+      estimatedOutputTokens: 10,
+      generationCount: 4,
+      realtimeSeconds: 80,
+    });
+    expect(reservation).toMatchObject({ kind: "allowed" });
+
+    const summary = await usageLimiter.readUsageSummary(scopedSubject);
+
+    expect(summary).toEqual({
+      dimensions: {
+        account: { limit: 4, remaining: 3, used: 1 },
+        concurrency: { limit: 3, remaining: 2, used: 1 },
+        costMicroUsd: { limit: 1_000_000, remaining: 200_000, used: 800_000 },
+        generation: { limit: 8, remaining: 4, used: 4 },
+        ip: { limit: 5, remaining: 4, used: 1 },
+        meeting: { limit: 6, remaining: 5, used: 1 },
+        realtimeSeconds: { limit: 100, remaining: 20, used: 80 },
+        tokens: { limit: 50, remaining: 20, used: 30 },
+      },
+      rollingWindowSeconds: 24 * 60 * 60,
+    });
+    const serialized = JSON.stringify(summary);
+    expect(serialized).not.toContain(scopedSubject.accountId);
+    expect(serialized).not.toContain(scopedSubject.ipAddress);
+    expect(serialized).not.toContain(scopedSubject.meetingId);
+    if (reservation.kind === "allowed") {
+      expect(serialized).not.toContain(reservation.reservationId);
+    }
+    expect(serialized).not.toContain("private content");
+  });
+
+  it("uses finalized actuals, excludes releases, and expires at the exact rolling boundary", async () => {
+    const clock = new MutableClock();
+    const usageLimiter = limiter(clock, {
+      costMicroUsdPerWindow: 1_000_000,
+      generationsPerWindow: 10,
+      realtimeSecondsPerWindow: 100,
+      tokensPerWindow: 100,
+    });
+    const scopedSubject = subject("summary-lifecycle");
+    const finalized = await usageLimiter.reserve(scopedSubject, {
+      estimatedCostUsd: 0.8,
+      estimatedInputTokens: 20,
+      estimatedOutputTokens: 10,
+      generationCount: 4,
+      realtimeSeconds: 80,
+    });
+    const released = await usageLimiter.reserve(scopedSubject, {
+      estimatedCostUsd: 0.1,
+      estimatedInputTokens: 5,
+      estimatedOutputTokens: 5,
+      generationCount: 1,
+      realtimeSeconds: 10,
+    });
+    if (finalized.kind !== "allowed" || released.kind !== "allowed") {
+      throw new Error("Expected summary lifecycle reservations");
+    }
+    await usageLimiter.finalize(finalized.reservationId, {
+      estimatedCostUsd: 0.25,
+      estimatedInputTokens: 3,
+      estimatedOutputTokens: 2,
+      generationCount: 1,
+      realtimeSeconds: 8,
+    });
+    await usageLimiter.release(released.reservationId);
+
+    await expect(usageLimiter.readUsageSummary(scopedSubject)).resolves.toEqual(
+      {
+        dimensions: {
+          account: { limit: 100, remaining: 99, used: 1 },
+          concurrency: { limit: 100, remaining: 100, used: 0 },
+          costMicroUsd: {
+            limit: 1_000_000,
+            remaining: 750_000,
+            used: 250_000,
+          },
+          generation: { limit: 10, remaining: 9, used: 1 },
+          ip: { limit: 100, remaining: 99, used: 1 },
+          meeting: { limit: 100, remaining: 99, used: 1 },
+          realtimeSeconds: { limit: 100, remaining: 92, used: 8 },
+          tokens: { limit: 100, remaining: 95, used: 5 },
+        },
+        rollingWindowSeconds: 24 * 60 * 60,
+      },
+    );
+
+    clock.advanceSeconds(24 * 60 * 60 - 1);
+    expect(
+      (await usageLimiter.readUsageSummary(scopedSubject)).dimensions
+        .costMicroUsd.used,
+    ).toBe(250_000);
+
+    clock.advanceSeconds(1);
+    await expect(usageLimiter.readUsageSummary(scopedSubject)).resolves.toEqual(
+      {
+        dimensions: {
+          account: { limit: 100, remaining: 100, used: 0 },
+          concurrency: { limit: 100, remaining: 100, used: 0 },
+          costMicroUsd: {
+            limit: 1_000_000,
+            remaining: 1_000_000,
+            used: 0,
+          },
+          generation: { limit: 10, remaining: 10, used: 0 },
+          ip: { limit: 100, remaining: 100, used: 0 },
+          meeting: { limit: 100, remaining: 100, used: 0 },
+          realtimeSeconds: { limit: 100, remaining: 100, used: 0 },
+          tokens: { limit: 100, remaining: 100, used: 0 },
+        },
+        rollingWindowSeconds: 24 * 60 * 60,
+      },
+    );
+  });
+
   it("finalizes overlapping reservations in completion order", async () => {
     const clock = new MutableClock();
     const usageLimiter = limiter(clock);

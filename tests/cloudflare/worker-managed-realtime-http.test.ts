@@ -298,15 +298,17 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     const handler = createWorkerHandler();
     const namespace = fakeControllerNamespace();
     const environment = workerEnv(namespace);
+    const startBody = {
+      channel: "private",
+      idempotencyKey: "managed-worker-lifecycle",
+      meetingId: MEETING_ID,
+      sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+    } as const;
 
     const start = await handler.fetch!(
       request(
         `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
-        {
-          channel: "private",
-          meetingId: MEETING_ID,
-          sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
-        },
+        startBody,
       ),
       environment,
       {} as ExecutionContext,
@@ -317,6 +319,31 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     expect(typeof managedCallId).toBe("string");
     expect(started).not.toHaveProperty("providerCallId");
     expect(started).not.toHaveProperty("safetyIdentifier");
+
+    const replay = await handler.fetch!(
+      request(
+        `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        startBody,
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(replay.status).toBe(409);
+    await expect(jsonBody(replay)).resolves.toMatchObject({
+      code: "CONFLICT",
+      details: { reason: "MANAGED_REALTIME_START_ALREADY_CLAIMED" },
+    });
+    const reservationCount = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM judge_usage_reservations
+          WHERE account_id = ? AND meeting_id = ?
+        `,
+      )
+      .bind(JUDGE_USER_ID, MEETING_ID)
+      .first<{ readonly count: number }>();
+    expect(reservationCount?.count).toBe(1);
 
     const crossMeetingTurn = await handler.fetch!(
       request(
@@ -398,6 +425,7 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
         `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
         {
           channel: "private",
+          idempotencyKey: "managed-worker-after-lifecycle",
           meetingId: MEETING_ID,
           sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
         },
@@ -410,6 +438,9 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       code: "USAGE_LIMIT_REACHED",
     });
     await env.DB.batch([
+      env.DB.prepare(
+        "DELETE FROM judge_managed_realtime_start_claims WHERE meeting_id = ? AND user_id = ?",
+      ).bind(MEETING_ID, JUDGE_USER_ID),
       env.DB.prepare(
         "DELETE FROM judge_managed_realtime_calls WHERE meeting_id = ? AND user_id = ?",
       ).bind(MEETING_ID, JUDGE_USER_ID),

@@ -12,6 +12,8 @@ import type { Clock, RealtimeChannel, UsageLimiter } from "@counterpoint/ports";
 import type {
   ManagedRealtimeCallOwner,
   ManagedRealtimeCallOwnership,
+  ManagedRealtimeStartClaim,
+  ManagedRealtimeStartClaimResult,
 } from "@counterpoint/adapters-cloudflare";
 import { apiErrorResponse, apiJsonResponse } from "@counterpoint/http-api";
 
@@ -27,6 +29,9 @@ import {
 import type { JudgeIpReservationInput } from "./judge-ip-reservation.js";
 
 export interface JudgeManagedRealtimeOwnershipRepository {
+  claimStart(
+    claim: ManagedRealtimeStartClaim,
+  ): Promise<ManagedRealtimeStartClaimResult>;
   create(
     ownership: ManagedRealtimeCallOwnership,
   ): Promise<"created" | "unavailable">;
@@ -175,6 +180,13 @@ function ownerFromAuthorization(
   };
 }
 
+async function sha256Fingerprint(
+  dependencies: JudgeManagedRealtimeHttpDependencies,
+  value: string,
+): Promise<string> {
+  return `sha256:${await dependencies.tokens.digest(value)}`;
+}
+
 async function cleanupStart(
   dependencies: JudgeManagedRealtimeHttpDependencies,
   owner: ManagedRealtimeCallOwner,
@@ -232,6 +244,54 @@ async function startManagedCall(input: {
   let controller: JudgeManagedRealtimeControllerStub | undefined;
   let controllerRequestStarted = false;
   try {
+    const managedCallId = `managed-${crypto.randomUUID()}`;
+    const startKeyHash = await sha256Fingerprint(
+      input.dependencies,
+      JSON.stringify([
+        "counterpoint:managed-realtime-start-key:v1",
+        authorization.authorization.userId,
+        authorization.authorization.sessionId,
+        input.meetingId,
+        parsed.data.idempotencyKey,
+      ]),
+    );
+    const sdpFingerprint = await sha256Fingerprint(
+      input.dependencies,
+      parsed.data.sdpOffer,
+    );
+    const requestFingerprint = await sha256Fingerprint(
+      input.dependencies,
+      JSON.stringify([
+        "counterpoint:managed-realtime-start-request:v1",
+        parsed.data.channel,
+        sdpFingerprint,
+      ]),
+    );
+    const claim = await input.dependencies.ownerships.claimStart({
+      createdAtEpoch: nowEpoch,
+      expiresAtEpoch: nowEpoch + JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
+      managedCallId,
+      meetingId: input.meetingId,
+      participantId: authorization.authorization.participantId,
+      requestFingerprint,
+      sessionId: authorization.authorization.sessionId,
+      startKeyHash,
+      userId: authorization.authorization.userId,
+    });
+    if (claim === "replayed") {
+      return apiErrorResponse("CONFLICT", input.correlationId, {
+        reason: "MANAGED_REALTIME_START_ALREADY_CLAIMED",
+      });
+    }
+    if (claim === "conflict") {
+      return apiErrorResponse("CONFLICT", input.correlationId, {
+        reason: "IDEMPOTENCY_KEY_REUSED",
+      });
+    }
+    if (claim !== "claimed") {
+      return apiErrorResponse("REALTIME_UNAVAILABLE", input.correlationId);
+    }
+
     const reservation = await input.dependencies.usage.reserve(
       {
         accountId: authorization.authorization.userId,
@@ -247,7 +307,6 @@ async function startManagedCall(input: {
     }
     reservationId = reservation.reservationId;
 
-    const managedCallId = `managed-${crypto.randomUUID()}`;
     owner = ownerFromAuthorization(managedCallId, authorization.authorization);
     const ownership: ManagedRealtimeCallOwnership = {
       accountId: authorization.authorization.userId,

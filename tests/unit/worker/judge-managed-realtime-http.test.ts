@@ -4,6 +4,8 @@ import { WebCryptoSessionTokenIssuer } from "@counterpoint/adapters-cloudflare";
 import type {
   ManagedRealtimeCallOwnership,
   ManagedRealtimeCallOwner,
+  ManagedRealtimeStartClaim,
+  ManagedRealtimeStartClaimResult,
 } from "@counterpoint/adapters-cloudflare";
 import type {
   MeetingRepository,
@@ -91,6 +93,9 @@ function fixture(): Fixture {
   const ownerships: JudgeManagedRealtimeOwnershipRepository & {
     created?: ManagedRealtimeCallOwnership;
   } = {
+    claimStart() {
+      return Promise.resolve("claimed");
+    },
     async create(ownership) {
       ownerships.created = ownership;
       return "created";
@@ -192,6 +197,7 @@ describe("Worker managed Realtime HTTP boundary", () => {
       operation: "start",
       request: request({
         channel: "private",
+        idempotencyKey: "managed-start-create",
         meetingId: MEETING_ID,
         sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
       }),
@@ -234,6 +240,7 @@ describe("Worker managed Realtime HTTP boundary", () => {
       operation: "start",
       request: request({
         channel: "private",
+        idempotencyKey: "managed-start-turn-fixture",
         meetingId: MEETING_ID,
         sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
       }),
@@ -274,6 +281,7 @@ describe("Worker managed Realtime HTTP boundary", () => {
       operation: "start",
       request: request({
         channel: "private",
+        idempotencyKey: "managed-start-mismatch",
         meetingId: "other-meeting",
         sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
       }),
@@ -285,5 +293,110 @@ describe("Worker managed Realtime HTTP boundary", () => {
     });
     expect(fixtureValue.usage.reserve).not.toHaveBeenCalled();
     expect(fixtureValue.controllerRequests).toHaveLength(0);
+  });
+
+  it("claims an idempotency key before reserving usage and suppresses replays", async () => {
+    const fixtureValue = fixture();
+    let storedClaim: ManagedRealtimeStartClaim | undefined;
+    fixtureValue.ownerships.claimStart = vi.fn(
+      (
+        claim: ManagedRealtimeStartClaim,
+      ): Promise<ManagedRealtimeStartClaimResult> => {
+        if (storedClaim === undefined) {
+          storedClaim = claim;
+          return Promise.resolve("claimed");
+        }
+        return Promise.resolve(
+          storedClaim.startKeyHash === claim.startKeyHash &&
+            storedClaim.requestFingerprint === claim.requestFingerprint
+            ? "replayed"
+            : "conflict",
+        );
+      },
+    );
+    const body = {
+      channel: "private",
+      idempotencyKey: "managed-start-idempotent",
+      meetingId: MEETING_ID,
+      sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+    } as const;
+
+    const first = await handleJudgeManagedRealtimeHttp({
+      correlationId: "correlation-managed-idempotent-first",
+      dependencies: fixtureValue.dependencies,
+      meetingId: MEETING_ID,
+      operation: "start",
+      request: request(body),
+    });
+    const replay = await handleJudgeManagedRealtimeHttp({
+      correlationId: "correlation-managed-idempotent-replay",
+      dependencies: fixtureValue.dependencies,
+      meetingId: MEETING_ID,
+      operation: "start",
+      request: request(body),
+    });
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(409);
+    await expect(replay.json()).resolves.toMatchObject({
+      code: "CONFLICT",
+      details: { reason: "MANAGED_REALTIME_START_ALREADY_CLAIMED" },
+    });
+    expect(fixtureValue.usage.reserve).toHaveBeenCalledTimes(1);
+    expect(fixtureValue.controllerRequests).toHaveLength(1);
+    expect(storedClaim).toMatchObject({
+      meetingId: MEETING_ID,
+      participantId: PARTICIPANT_ID,
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+    });
+    expect(storedClaim?.startKeyHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(storedClaim?.requestFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(JSON.stringify(storedClaim)).not.toContain("m=audio");
+  });
+
+  it("rejects idempotency-key reuse with changed SDP before reserving usage", async () => {
+    const fixtureValue = fixture();
+    let firstClaim: ManagedRealtimeStartClaim | undefined;
+    fixtureValue.ownerships.claimStart = vi.fn(
+      (
+        claim: ManagedRealtimeStartClaim,
+      ): Promise<ManagedRealtimeStartClaimResult> => {
+        if (firstClaim === undefined) {
+          firstClaim = claim;
+          return Promise.resolve("claimed");
+        }
+        return Promise.resolve(
+          firstClaim.requestFingerprint === claim.requestFingerprint
+            ? "replayed"
+            : "conflict",
+        );
+      },
+    );
+    const base = {
+      channel: "private",
+      idempotencyKey: "managed-start-conflict",
+      meetingId: MEETING_ID,
+    } as const;
+    await handleJudgeManagedRealtimeHttp({
+      correlationId: "correlation-managed-conflict-first",
+      dependencies: fixtureValue.dependencies,
+      meetingId: MEETING_ID,
+      operation: "start",
+      request: request({ ...base, sdpOffer: "v=0\r\ns=first\r\n" }),
+    });
+    const conflict = await handleJudgeManagedRealtimeHttp({
+      correlationId: "correlation-managed-conflict-second",
+      dependencies: fixtureValue.dependencies,
+      meetingId: MEETING_ID,
+      operation: "start",
+      request: request({ ...base, sdpOffer: "v=0\r\ns=changed\r\n" }),
+    });
+
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      details: { reason: "IDEMPOTENCY_KEY_REUSED" },
+    });
+    expect(fixtureValue.usage.reserve).toHaveBeenCalledTimes(1);
   });
 });

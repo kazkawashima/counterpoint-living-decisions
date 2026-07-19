@@ -38,6 +38,26 @@ export interface D1UsageLimiterOptions {
   readonly pricingVersion: string;
 }
 
+export interface D1UsageSummaryDimension {
+  readonly limit: number;
+  readonly remaining: number;
+  readonly used: number;
+}
+
+export interface D1UsageSummary {
+  readonly dimensions: {
+    readonly account: D1UsageSummaryDimension;
+    readonly concurrency: D1UsageSummaryDimension;
+    readonly costMicroUsd: D1UsageSummaryDimension;
+    readonly generation: D1UsageSummaryDimension;
+    readonly ip: D1UsageSummaryDimension;
+    readonly meeting: D1UsageSummaryDimension;
+    readonly realtimeSeconds: D1UsageSummaryDimension;
+    readonly tokens: D1UsageSummaryDimension;
+  };
+  readonly rollingWindowSeconds: number;
+}
+
 interface StoredReservationRow {
   readonly actual_cost_micro_usd: number | null;
   readonly actual_generation_count: number | null;
@@ -327,6 +347,17 @@ function normalizedAggregate(row: UsageAggregateRow): UsageAggregateRow {
   };
 }
 
+function summaryDimension(
+  used: number,
+  limit: number,
+): D1UsageSummaryDimension {
+  return {
+    limit,
+    remaining: Math.max(0, limit - used),
+    used,
+  };
+}
+
 function sameActual(
   row: StoredReservationRow,
   actual: NormalizedUsage,
@@ -611,6 +642,69 @@ export class D1UsageLimiter implements UsageLimiter {
     throw new Error("Finalized usage reservation cannot be released");
   }
 
+  async readUsageSummary(subject: UsageSubject): Promise<D1UsageSummary> {
+    if (typeof subject !== "object" || subject === null) {
+      throw new TypeError("subject must be an object");
+    }
+    requireNonEmpty(subject.accountId, "subject.accountId");
+    requireNonEmpty(subject.ipAddress, "subject.ipAddress");
+    requireNonEmpty(subject.meetingId, "subject.meetingId");
+
+    const ipHash = await this.#hashIp(subject.ipAddress);
+    if (!KEYED_IP_HASH_PATTERN.test(ipHash)) {
+      throw new TypeError(
+        "IP hash must be a lowercase keyed hmac-sha256 digest",
+      );
+    }
+
+    const now = unixSeconds(this.#clock);
+    const aggregate = await this.#usageAggregate(
+      this.#database.withSession("first-primary"),
+      subject,
+      ipHash,
+      now,
+      now - ROLLING_WINDOW_SECONDS,
+    );
+
+    return {
+      dimensions: {
+        account: summaryDimension(
+          aggregate.account_requests,
+          this.#limits.accountRequestsPerWindow,
+        ),
+        concurrency: summaryDimension(
+          aggregate.concurrent_reservations,
+          this.#limits.concurrentReservations,
+        ),
+        costMicroUsd: summaryDimension(
+          aggregate.cost_micro_usd,
+          this.#limits.costMicroUsdPerWindow,
+        ),
+        generation: summaryDimension(
+          aggregate.generation_count,
+          this.#limits.generationsPerWindow,
+        ),
+        ip: summaryDimension(
+          aggregate.ip_requests,
+          this.#limits.ipRequestsPerWindow,
+        ),
+        meeting: summaryDimension(
+          aggregate.meeting_requests,
+          this.#limits.meetingRequestsPerWindow,
+        ),
+        realtimeSeconds: summaryDimension(
+          aggregate.realtime_seconds,
+          this.#limits.realtimeSecondsPerWindow,
+        ),
+        tokens: summaryDimension(
+          aggregate.token_count,
+          this.#limits.tokensPerWindow,
+        ),
+      },
+      rollingWindowSeconds: ROLLING_WINDOW_SECONDS,
+    };
+  }
+
   async #deniedLimit(
     session: D1DatabaseSession,
     subject: UsageSubject,
@@ -619,14 +713,13 @@ export class D1UsageLimiter implements UsageLimiter {
     now: number,
     cutoff: number,
   ): Promise<UsageLimitDimension | undefined> {
-    const row = await session
-      .prepare(READ_USAGE_SQL)
-      .bind(subject.accountId, ipHash, subject.meetingId, now, cutoff)
-      .first<UsageAggregateRow>();
-    if (row === null) {
-      throw new Error("D1 usage aggregate query returned no row");
-    }
-    const aggregate = normalizedAggregate(row);
+    const aggregate = await this.#usageAggregate(
+      session,
+      subject,
+      ipHash,
+      now,
+      cutoff,
+    );
 
     if (
       aggregate.account_requests + 1 >
@@ -674,6 +767,23 @@ export class D1UsageLimiter implements UsageLimiter {
       return "cost";
     }
     return undefined;
+  }
+
+  async #usageAggregate(
+    session: D1DatabaseSession,
+    subject: UsageSubject,
+    ipHash: string,
+    now: number,
+    cutoff: number,
+  ): Promise<UsageAggregateRow> {
+    const row = await session
+      .prepare(READ_USAGE_SQL)
+      .bind(subject.accountId, ipHash, subject.meetingId, now, cutoff)
+      .first<UsageAggregateRow>();
+    if (row === null) {
+      throw new Error("D1 usage aggregate query returned no row");
+    }
+    return normalizedAggregate(row);
   }
 
   async #reservation(

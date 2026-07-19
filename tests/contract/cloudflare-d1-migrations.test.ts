@@ -31,6 +31,7 @@ const expectedMigrationNames = [
   "0006_judge_usage_reservations.sql",
   "0007_judge_managed_realtime_calls.sql",
   "0008_hosted_flagship_seed.sql",
+  "0009_judge_managed_realtime_start_claims.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -119,6 +120,21 @@ const expectedTablesAfterMigration = [
     "sessions",
     "users",
   ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_realtime_calls",
+    "judge_managed_realtime_start_claims",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
 ] as const;
 
 const expectedTableColumns = {
@@ -171,6 +187,17 @@ const expectedTableColumns = {
     "created_at_epoch",
     "expires_at_epoch",
     "terminated_at_epoch",
+  ],
+  judge_managed_realtime_start_claims: [
+    "start_key_hash",
+    "request_fingerprint",
+    "managed_call_id",
+    "meeting_id",
+    "user_id",
+    "session_id",
+    "participant_id",
+    "created_at_epoch",
+    "expires_at_epoch",
   ],
   judge_usage_reservations: [
     "reservation_id",
@@ -394,6 +421,7 @@ describe("Cloudflare D1 migrations", () => {
     const sharedTableNames = expectedTableNames.filter(
       (name) =>
         name !== "judge_managed_realtime_calls" &&
+        name !== "judge_managed_realtime_start_claims" &&
         name !== "judge_usage_reservations",
     );
 
@@ -429,6 +457,7 @@ describe("Cloudflare D1 migrations", () => {
         "audit_history_meeting_position",
         "judge_managed_realtime_calls_active_expiry",
         "judge_managed_realtime_calls_owner",
+        "judge_managed_realtime_start_claims_expiry",
         "judge_usage_reservations_account_window",
         "judge_usage_reservations_active",
         "judge_usage_reservations_ip_window",
@@ -444,6 +473,7 @@ describe("Cloudflare D1 migrations", () => {
         "judge_managed_realtime_calls_owner_immutable",
         "judge_managed_realtime_calls_reservation_guard",
         "judge_managed_realtime_calls_terminal",
+        "judge_managed_realtime_start_claims_scope_immutable",
         "judge_usage_reservations_global_cost_insert",
         "judge_usage_reservations_global_cost_update",
         "judge_usage_reservations_monotonic_insert",

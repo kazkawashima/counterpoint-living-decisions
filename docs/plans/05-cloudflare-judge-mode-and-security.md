@@ -226,9 +226,24 @@ C4 foundation notes:
   `CF-Connecting-IP` plus the distinct HMAC Secret is still mandatory, and the
   route remains fail-closed until hosted parity proof, measured limits, and
   bounded settlement are complete. No remote Secret registration occurs.
+- Managed-call start now requires an idempotency key. Migration 0009 stores
+  only a user/session/meeting-scoped key hash, request fingerprint, opaque app
+  call handle, owner identifiers, and bounded expiry before any usage
+  reservation or provider dispatch. Concurrent or lost-response retries cannot
+  create a second USD 25 reservation; exact retries fail closed as already
+  claimed, changed payloads fail as key reuse, and expired claims may be
+  replaced. SDP, provider IDs, credentials, and private content are never
+  persisted in the claim.
+- The D1 limiter now exposes a content-free rolling-24-hour summary for all
+  eight enforced dimensions. Reserved work reports its full estimate,
+  finalized work reports actual usage, released work is excluded, and each
+  dimension returns only used, limit, and remaining values. This is the
+  adapter foundation for operator visibility; an authenticated operator route
+  and UI remain open.
 - Cloudflare-pool integration now exercises the enabled route with a synthetic
   controller: judge authentication, cross-meeting rejection, turn/transcript
-  forwarding, termination settlement, and the next-call
+  forwarding, duplicate-start reservation suppression, termination settlement,
+  and the next-call
   `USAGE_LIMIT_REACHED` response are covered without contacting OpenAI.
 
 ### C5 — Security hardening

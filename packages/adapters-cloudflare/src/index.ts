@@ -15,12 +15,16 @@ export {
   type ManagedRealtimeCallChannel,
   type ManagedRealtimeCallOwner,
   type ManagedRealtimeCallOwnership,
+  type ManagedRealtimeStartClaim,
+  type ManagedRealtimeStartClaimResult,
 } from "./d1-managed-realtime-calls.js";
 export {
   D1UsageLimiter,
   JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
   type D1UsageLimiterLimits,
   type D1UsageLimiterOptions,
+  type D1UsageSummary,
+  type D1UsageSummaryDimension,
 } from "./d1-usage-limiter.js";
 export { createKeyedIpHash, type KeyedIpHash } from "./keyed-ip-hash.js";
 export { R2ArtifactStore } from "./r2-artifacts.js";

@@ -226,6 +226,7 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
         {
           body: JSON.stringify({
             channel: "private",
+            idempotencyKey: "managed-start-provider-guard",
             meetingId: MEETING_ID,
             sdpOffer: "v=0\r\ns=must-not-reach-provider\r\n",
           }),
@@ -259,6 +260,7 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
         {
           body: JSON.stringify({
             channel: "private",
+            idempotencyKey: "managed-start-missing-ip",
             meetingId: MEETING_ID,
             sdpOffer: "v=0\r\ns=missing-ip-header\r\n",
           }),

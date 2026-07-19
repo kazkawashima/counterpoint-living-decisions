@@ -615,11 +615,24 @@ The canonical implementation-facing artifacts are:
   transcript forwarding, termination settlement, and the next-call
   `USAGE_LIMIT_REACHED` boundary. The test uses a synthetic controller stub, so
   no provider call or API spend occurs.
+- Managed Realtime start now claims a required idempotency key before the
+  USD 25 usage reservation. Migration 0009 persists only scoped SHA-256
+  fingerprints, owner identifiers, an opaque app handle, and expiry; it stores
+  no SDP, provider ID, credential, or private content. Exact concurrent/retry
+  requests cannot create another reservation, changed payloads conflict, and
+  an integration assertion proves one ledger row after replay.
+- The D1 limiter now returns a content-free rolling-24-hour summary across
+  account, keyed-IP, meeting, concurrency, cost, generation, Realtime seconds,
+  and tokens. It counts reservations at full estimate, finalized rows at actual
+  usage, excludes releases, and exposes only used/limit/remaining. This closes
+  the storage/query foundation for operator visibility; an authenticated
+  operator HTTP/UI surface remains open.
 - C4 is not complete: broader judge billable-path coverage, measured flagship
   limits, the web managed-call switch, structured judge AI routes, and broader
   content-free operator visibility remain. The managed realtime route adapter
-  is covered by three unit cases, a four-case Worker gate suite, and the new
-  three-case Cloudflare integration suite; it remains disabled by default.
+  now includes explicit duplicate-start and changed-payload unit coverage,
+  a four-case Worker gate suite, and Cloudflare integration coverage; it remains
+  disabled by default.
   Full hosted security-matrix rerun, approved provider enablement, and
   structured judge AI remain later slices.
 - The current regular baseline is 631 Vitest tests, with typecheck, formatting,
@@ -635,7 +648,7 @@ The canonical implementation-facing artifacts are:
   sandbox denied their required `0.0.0.0` listen. The hosted flagship Worker
   target now passes four integration cases, and the Worker-specific browser
   E2E passes the SPA/login/workspace/AI-preview journey against Wrangler.
-  The full Cloudflare pool now passes 10 files and 86 tests after giving its
+  The full Cloudflare pool now passes 10 files and 90 tests after giving its
   migration hooks and integration cases explicit cold-start timeouts. No
   visible UI changed, so no new screenshot was required. Reel
   shooting and reel-material organization are deferred from the active goal;
@@ -650,11 +663,12 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 with the hosted C5 security-matrix rerun and an approved
-provider/deployment boundary. Then extend Worker proof to real Durable Object
-lifecycle behavior and measure the flagship to replace full-cap-per-attempt
-settlement with safe derived limits before enabling the public judge route or
-switching the judge UI.
+Continue Plan 05 by exposing the new content-free usage summary only through a
+strict authenticated operator boundary, then extend Worker proof to real
+Durable Object lifecycle behavior and measure the flagship to replace
+full-cap-per-attempt settlement with safe derived limits. The hosted C5
+security-matrix rerun and provider/deployment proof remain behind the approved
+remote boundary.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is
