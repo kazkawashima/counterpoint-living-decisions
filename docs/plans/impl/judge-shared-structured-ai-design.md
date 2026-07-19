@@ -128,24 +128,34 @@ each attempt independently from its response model. Cached input is charged at
 the uncached rate. Unsupported model identity, incomplete billing, arithmetic
 overflow, or usage outside the reservation settles the full envelope.
 
-The exact bounded input is the UTF-8 byte length of `JSON.stringify()` applied
-to the provider input object with `meetingId` removed, matching the concrete
-adapter request. The request-scoped decorator measures it before claim,
-reservation, or provider work. More than 65,536 bytes returns
-`VALIDATION_FAILED`; tests prove zero claim, ledger, and provider calls.
+Private disclosure retains its existing 64 KiB source-text limit. For Decision
+synthesis and assumption invalidation, the exact bounded input is the UTF-8
+byte length of `JSON.stringify()` applied to the complete provider input object
+with `meetingId` removed, matching the concrete adapter request. The
+request-scoped decorator measures it before reconciliation, claim, reservation,
+or provider work. More than 65,536 bytes returns `VALIDATION_FAILED`; tests
+prove zero reconciliation, claim, ledger, and provider calls.
 
 ### Durable operation state
 
-Migration 0011 extends managed structured-AI claims with:
+Migration 0011 adds a repeat-safe
+`judge_managed_ai_operation_lifecycle` companion table keyed to the unchanged
+0010 claim table. `CREATE TABLE/INDEX IF NOT EXISTS` and one
+`INSERT OR IGNORE ... SELECT` backfill allow the repository's required second
+migration application without rewriting lifecycle state. The companion stores:
 
 - `status`: `legacy_blocked`, `reserved`, `provider_started`, or `settled`
 - one opaque server-generated `reservation_id`
 - lease, provider-start, settlement, and reuse timestamps
 
 The initial atomic claim stores status `reserved`, the reservation ID, and a
-120-second lease before the usage row is inserted. The concrete D1 limiter
-accepts that caller-generated reservation ID. Provider work can begin only
-after:
+120-second lease before the usage row is inserted. The 0010 parent and 0011
+lifecycle row are inserted in one `D1DatabaseSession.batch()` transaction, so
+a failure between statements commits neither. Pre-provider abandonment
+generation-conditionally deletes that parent and relies on `ON DELETE CASCADE`;
+the old `release()` API can delete only legacy parent rows without lifecycle
+companions. The concrete D1 limiter accepts the caller-generated reservation ID
+plus request fingerprint. Provider work can begin only after:
 
 1. the reservation insert returns granted; and
 2. a generation-bound conditional update durably changes the claim from
@@ -168,10 +178,18 @@ expiry it checks the named ledger row:
   and do not invoke provider
 
 Inserting a caller-generated reservation ID is idempotent only when all
-immutable fields match exactly. An uncertain insert retry returns the original
-grant for an exact row and never creates a second row. Tests cover exact
-recovery, a same-ID collision, a field mismatch, and an exception after the D1
-insert became durable.
+immutable fields and the caller-supplied request fingerprint match exactly.
+Stored creation/expiry timestamps are authoritative: even after the clock
+advances, an uncertain insert retry returns the original grant and timestamps
+for an exact row and never creates a second row. Tests cover exact recovery, a
+same-ID collision, a field mismatch, and an exception after the D1 insert
+became durable.
+
+Until private disclosure migrates to the generic lifecycle, its legacy
+`claim()` and `release()` signatures remain callable. Their SQL is hardened in
+the same repository change: expired replacement and deletion both require that
+no lifecycle companion exists. Thus neither a `legacy_blocked` row nor any new
+lifecycle generation can be replaced or cascade-deleted through the old API.
 
 A `provider_started` claim is never replaced by lease expiry. An exact retry
 first reads its named reservation. If already finalized with either trustworthy
@@ -186,8 +204,9 @@ bypasses the claim forever. If provider work succeeded but event append never
 became durable, the same logical operation may run again only after the old
 full charge has left the rolling-24-hour window.
 
-The bounded reconciliation command scans stale `reserved` and
-`provider_started` rows without content. It:
+The bounded reconciliation command scans at most 20 stale `reserved` and
+`provider_started` rows without content, ordered by stale timestamp and then
+claim hash. It:
 
 - releases an expired pre-provider reservation only after a conditional claim
   transition proves provider work never started
@@ -195,9 +214,15 @@ The bounded reconciliation command scans stale `reserved` and
 - marks finalized rows settled
 - never deletes or releases provider-started usage
 
-The same reconciliation runs in bounded form before a new managed structured
-operation. An operator runbook exposes the identical credential-free command
-for recovery from prolonged D1 failure.
+Each row commits independently, and the result reports only attempted, settled,
+released, and failed counts. A shared adapters-cloudflare statement module owns
+the stale selection and every generation/status-conditional transition; the
+Worker repository and operator executor both import it. The same reconciliation
+runs before a new managed structured operation. `npm run judge:reconcile --
+<target> --dry-run|--apply` exposes the identical provider-credential-free
+command for recovery from prolonged D1 failure. Apply sources the same approval
+helper as deployment, including `CLOUDFLARE_DEPLOYMENT_APPROVED`, exact
+production confirmation, clean-tree, and optional `GITHUB_SHA` checks.
 
 Migration 0011 copies every pre-existing 0010 row to `legacy_blocked`, with no
 reservation ID and no automatic reuse. The old schema cannot prove whether
@@ -224,8 +249,8 @@ created such rows, but the migration does not rely on that fact.
 It performs:
 
 ```text
-reconcile bounded stale content-free rows
-→ validate exact UTF-8 provider input size
+validate exact UTF-8 provider input size
+→ reconcile bounded stale content-free rows
 → generate and persist reservation ID in atomic claim
 → insert or recover the named usage reservation
 → durably mark provider started
