@@ -257,6 +257,12 @@ C4 foundation notes:
   ownership terminated, releases the full-cap reservation, and leaves only
   content-free hashed start-claim metadata. A successful real-DO provider
   lifecycle remains an explicit approved-provider gate.
+- The reproducible measurement harness is documented in
+  [`impl/judge-realtime-usage-measurement.md`](./impl/judge-realtime-usage-measurement.md).
+  It accepts only the five content-free counters, rejects identifiers and
+  content, and reports deterministic min/max/p50/p95/p99 values. It does not
+  derive or mutate production limits without the required approved-provider
+  sample set.
 
 ### C5 — Security hardening
 

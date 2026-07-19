@@ -646,7 +646,14 @@ The canonical implementation-facing artifacts are:
   terminates ownership, releases the reservation, and persists no SDP or
   provider ID. The successful real-DO lifecycle still requires the approved
   provider boundary.
-- The current regular baseline is 634 Vitest tests and the contract project
+- A content-free Judge Realtime measurement harness now accepts strict JSONL
+  rows containing only cost, generation, input-token, output-token, and
+  Realtime-second counters and emits deterministic distribution summaries. Its
+  collection protocol requires at least 20 approved-provider flagship
+  sessions, trustworthy totals, 100% headroom above observed maxima, and
+  worst-case rate-card validation before any production limit changes. No
+  synthetic fixture is represented as measured production usage.
+- The current regular baseline is 636 Vitest tests and the contract project
   passes 116 tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted
