@@ -45,11 +45,14 @@ const roleProjection = {
     dissent: [],
     actions: [],
     decisions: [],
+    utterances: [],
+    sharedFloor: null,
   },
   privateWorkspace: {
     sources: [],
     disclosureCandidates: [],
     inferenceSuggestions: [],
+    utterances: [],
   },
   correlationId: "correlation-1",
 } as const;

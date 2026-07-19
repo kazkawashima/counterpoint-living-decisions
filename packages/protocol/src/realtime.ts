@@ -87,6 +87,8 @@ export const RealtimeRoleProjectionSchema = RoleProjectionResponseSchema.pick({
     sources: z.array(RealtimePrivateSourceMetadataSchema),
     disclosureCandidates: z.array(DisclosureCandidateSchema),
     inferenceSuggestions: z.array(InferenceSuggestionSchema),
+    utterances:
+      RoleProjectionResponseSchema.shape.privateWorkspace.shape.utterances,
   }),
 });
 

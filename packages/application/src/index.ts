@@ -186,3 +186,17 @@ export {
   type RealtimeSecretFailure,
   type SafetyIdentifierHash,
 } from "./realtime-secrets.js";
+export {
+  SHARED_FLOOR_LEASE_MS,
+  acquireSharedFloor,
+  captureUtterance,
+  releaseSharedFloor,
+  type AcquireSharedFloorInput,
+  type AcquireSharedFloorResult,
+  type CaptureUtteranceInput,
+  type CaptureUtteranceResult,
+  type ReleaseSharedFloorInput,
+  type ReleaseSharedFloorResult,
+  type UtteranceDependencies,
+  type UtteranceFailure,
+} from "./utterances.js";

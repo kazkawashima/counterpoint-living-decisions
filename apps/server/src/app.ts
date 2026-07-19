@@ -10,6 +10,8 @@ import {
   authorizeDisplayToken,
   authenticateSession,
   authenticateSessionById,
+  acquireSharedFloor,
+  captureUtterance,
   commitDecision,
   clearMeetingByok,
   clearMeetingByokLeasesBySession,
@@ -32,6 +34,7 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  releaseSharedFloor,
   receiveRegulatoryChange,
   recommitDecision,
   rejectDecision,
@@ -50,6 +53,7 @@ import {
   type DisclosureDependencies,
   type InvalidationEvaluationView,
   type InvalidationReviewFailure,
+  type UtteranceFailure,
 } from "@counterpoint/application";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import {
@@ -71,6 +75,10 @@ import type {
 import {
   ApproveDisclosureRequestSchema,
   ApproveDisclosureResponseSchema,
+  AcquireSharedFloorRequestSchema,
+  AcquireSharedFloorResponseSchema,
+  CaptureUtteranceRequestSchema,
+  CaptureUtteranceResponseSchema,
   ClearMeetingByokRequestSchema,
   ClearMeetingByokResponseSchema,
   CommitDecisionRequestSchema,
@@ -121,6 +129,8 @@ import {
   RealtimeTicketRequestSchema,
   RealtimeTicketResponseSchema,
   RealtimeTicketSchema,
+  ReleaseSharedFloorRequestSchema,
+  ReleaseSharedFloorResponseSchema,
   RevokeDisplayTokenRequestSchema,
   RevokeDisplayTokenResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
@@ -488,6 +498,18 @@ function invalidationReviewFailureResponse(
         failure.code === "INVALID_STATE_TRANSITION"
       ? errorResponse(context, failure.code)
       : errorResponse(context, "VALIDATION_FAILED");
+}
+
+function utteranceFailureResponse(
+  context: AppContext,
+  failure: UtteranceFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? errorResponse(context, "CONFLICT", {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : errorResponse(context, failure.code);
 }
 
 function decisionReviewResolutionFailureResponse(
@@ -1291,6 +1313,139 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       );
     },
   );
+
+  app.post(
+    "/api/v1/meetings/:meetingId/realtime/shared-floor",
+    async (context) => {
+      const request = await parseJson(context, AcquireSharedFloorRequestSchema);
+      if (
+        request.kind === "rejected" ||
+        request.value.meetingId !== context.req.param("meetingId")
+      ) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        request.value.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const result = await acquireSharedFloor(
+        runtime.decisions,
+        resolved.authorization,
+        {
+          correlationId: context.get("correlationId"),
+          meetingId: request.value.meetingId,
+          utteranceId: request.value.utteranceId,
+        },
+      );
+      if (result.kind === "failed") {
+        return utteranceFailureResponse(context, result);
+      }
+      return context.json(
+        AcquireSharedFloorResponseSchema.parse({
+          correlationId: result.correlationId,
+          leaseExpiresAt: result.leaseExpiresAt,
+          meetingId: result.meetingId,
+          participantId: result.participantId,
+          utteranceId: result.utteranceId,
+        }),
+        201,
+      );
+    },
+  );
+
+  app.delete(
+    "/api/v1/meetings/:meetingId/realtime/shared-floor",
+    async (context) => {
+      const request = await parseJson(context, ReleaseSharedFloorRequestSchema);
+      if (
+        request.kind === "rejected" ||
+        request.value.meetingId !== context.req.param("meetingId")
+      ) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        request.value.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const result = await releaseSharedFloor(
+        runtime.decisions,
+        resolved.authorization,
+        request.value,
+      );
+      if (result.kind === "failed") {
+        return utteranceFailureResponse(context, result);
+      }
+      return context.json(
+        ReleaseSharedFloorResponseSchema.parse({
+          correlationId: result.correlationId,
+          meetingId: result.meetingId,
+          releasedAt: result.releasedAt,
+          utteranceId: result.utteranceId,
+        }),
+      );
+    },
+  );
+
+  app.post("/api/v1/meetings/:meetingId/utterances", async (context) => {
+    const request = await parseJson(context, CaptureUtteranceRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await captureUtterance(
+      runtime.decisions,
+      resolved.authorization,
+      request.value,
+    );
+    if (result.kind === "failed") {
+      return utteranceFailureResponse(context, result);
+    }
+    return context.json(
+      CaptureUtteranceResponseSchema.parse({
+        correlationId: result.correlationId,
+        meetingId: result.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          result.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        replayed: result.replayed,
+        utterance: result.utterance,
+      }),
+      result.replayed ? 200 : 201,
+    );
+  });
 
   app.post("/api/v1/meetings/:meetingId/display-tokens", async (context) => {
     const request = await parseJson(context, IssueDisplayTokenRequestSchema);

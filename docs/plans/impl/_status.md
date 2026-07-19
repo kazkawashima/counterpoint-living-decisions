@@ -8,8 +8,9 @@ Updated: 2026-07-19
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
 The revocable read-only shared display and A6 transient BYOK/client-secret
-backend are also complete. Direct browser WebRTC is connected with an explicit
-no-microphone lifecycle; A7 voice controls and hosted judge mode are next.**
+path are also complete. Direct browser WebRTC is connected, and A7 now has the
+server-side shared-floor, immutable-channel, transcript-deduplication, and
+role-projection boundaries. Push-to-talk UI and hosted judge mode are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -258,14 +259,24 @@ The canonical implementation-facing artifacts are:
   degraded while shared remains connected, and participant mobile
   reduced-motion states. Four screenshots and a nine-second synthetic
   connect-to-degraded clip accompany the E2E.
-- The complete verification surface now passes 279 unit/contract/integration
+- A7 now exposes strict acquire/release shared-floor and capture-utterance HTTP
+  contracts. The server grants a 15-second lease atomically, rejects concurrent
+  speakers with `SHARED_FLOOR_BUSY`, expires stale ownership before the next
+  grant, and binds shared capture to the acquiring participant and immutable
+  `utteranceId`.
+- Exact utterance retries replay without appending; reusing an utterance ID
+  with changed channel, text, timestamp, or participant fails. Private
+  utterances remain owner-private while shared utterances and active floor
+  state enter participant role projections and realtime snapshots.
+- The complete verification surface now passes 292 unit/contract/integration
   tests and all 11 browser E2E scenarios, in addition to build, lint,
   typecheck, formatting, and architecture checks.
 
 ## In progress
 
-- Continue with A7 explicit push-to-talk and shared-floor interaction without
-  changing the completed text fallback or A6 channel isolation.
+- Continue with A7 explicit push-to-talk controls and text-equivalent capture
+  while preserving the completed shared-floor and A6 channel isolation
+  boundaries.
 
 ## Not started
 
@@ -275,10 +286,10 @@ The canonical implementation-facing artifacts are:
 
 Continue Plan 03 in
 [`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md)
-at A7: add explicit push-to-talk, immutable utterance channel selection,
-shared-floor exclusion, transcript idempotency, and text-equivalent commands.
-Keep the allowlisted judge-managed source and USD 25 product spend gate in Plan
-05.
+at A7: add explicit push-to-talk around the completed immutable-channel,
+shared-floor, and transcript-idempotency backend; surface floor-busy state and
+make typed text use the same capture command. Keep the allowlisted
+judge-managed source and USD 25 product spend gate in Plan 05.
 
 ## Open gates
 

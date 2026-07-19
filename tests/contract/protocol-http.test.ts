@@ -1,7 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
+  AcquireSharedFloorRequestSchema,
+  AcquireSharedFloorResponseSchema,
   ApproveDisclosureRequestSchema,
+  CaptureUtteranceRequestSchema,
+  CaptureUtteranceResponseSchema,
   ClearMeetingByokRequestSchema,
   ClearMeetingByokResponseSchema,
   CommitDecisionRequestSchema,
@@ -44,6 +48,8 @@ import {
   RejectDisclosureRequestSchema,
   RejectInvalidationReviewResponseSchema,
   RecommitDecisionRevisionResponseSchema,
+  ReleaseSharedFloorRequestSchema,
+  ReleaseSharedFloorResponseSchema,
   ResolveDecisionReviewRequestSchema,
   ResolveDecisionReviewResponseSchema,
   RevokeDisplayTokenRequestSchema,
@@ -56,6 +62,10 @@ import {
   SharedDisplayProjectionResponseSchema,
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
+  type AcquireSharedFloorRequest,
+  type AcquireSharedFloorResponse,
+  type CaptureUtteranceRequest,
+  type CaptureUtteranceResponse,
   type ClearMeetingByokRequest,
   type ClearMeetingByokResponse,
   type ConfigureMeetingByokRequest,
@@ -76,6 +86,8 @@ import {
   type ResolveDecisionReviewResponse,
   type RevokeDisplayTokenRequest,
   type RevokeDisplayTokenResponse,
+  type ReleaseSharedFloorRequest,
+  type ReleaseSharedFloorResponse,
   type SharedDisplayProjectionResponse,
 } from "@counterpoint/protocol";
 
@@ -1208,6 +1220,188 @@ describe("strict v1 HTTP protocol", () => {
         channel: "shared",
       }).success,
     ).toBe(true);
+  });
+
+  it("acquires and releases the shared floor with server-derived ownership", () => {
+    const acquireRequest = {
+      meetingId: "meeting-1",
+      utteranceId: "utterance-1",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedAcquireRequest =
+      AcquireSharedFloorRequestSchema.parse(acquireRequest);
+    expectTypeOf(
+      parsedAcquireRequest,
+    ).toEqualTypeOf<AcquireSharedFloorRequest>();
+    expect(
+      AcquireSharedFloorRequestSchema.safeParse({
+        ...acquireRequest,
+        participantId: "participant-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      AcquireSharedFloorRequestSchema.safeParse({
+        ...acquireRequest,
+        ownerParticipantId: "participant-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      AcquireSharedFloorRequestSchema.safeParse({
+        meetingId: "meeting-1",
+        utteranceId: "utterance-1",
+      }).success,
+    ).toBe(true);
+
+    const acquireResponse = {
+      meetingId: "meeting-1",
+      utteranceId: "utterance-1",
+      participantId: "participant-1",
+      leaseExpiresAt: "2026-07-19T12:01:00.000Z",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedAcquireResponse =
+      AcquireSharedFloorResponseSchema.parse(acquireResponse);
+    expectTypeOf(
+      parsedAcquireResponse,
+    ).toEqualTypeOf<AcquireSharedFloorResponse>();
+    expect(
+      AcquireSharedFloorResponseSchema.safeParse({
+        ...acquireResponse,
+        leaseExpiresAt: "2026-07-19 12:01:00",
+      }).success,
+    ).toBe(false);
+
+    const releaseRequest = {
+      meetingId: "meeting-1",
+      utteranceId: "utterance-1",
+    } as const;
+    const parsedReleaseRequest =
+      ReleaseSharedFloorRequestSchema.parse(releaseRequest);
+    expectTypeOf(
+      parsedReleaseRequest,
+    ).toEqualTypeOf<ReleaseSharedFloorRequest>();
+    expect(
+      ReleaseSharedFloorRequestSchema.safeParse({
+        ...releaseRequest,
+        visibility: "shared",
+      }).success,
+    ).toBe(false);
+    expect(
+      ReleaseSharedFloorRequestSchema.safeParse({
+        ...releaseRequest,
+        correlationId: "correlation-2",
+      }).success,
+    ).toBe(false);
+
+    const releaseResponse = {
+      meetingId: "meeting-1",
+      utteranceId: "utterance-1",
+      releasedAt: "2026-07-19T12:00:30.000Z",
+      correlationId: "correlation-2",
+    } as const;
+    const parsedReleaseResponse =
+      ReleaseSharedFloorResponseSchema.parse(releaseResponse);
+    expectTypeOf(
+      parsedReleaseResponse,
+    ).toEqualTypeOf<ReleaseSharedFloorResponse>();
+    expect(
+      ReleaseSharedFloorResponseSchema.safeParse({
+        ...releaseResponse,
+        releasedAt: "2026-07-19T12:00:30+09:00",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("captures bounded private or shared utterances without client-selected ownership", () => {
+    const request = {
+      meetingId: "meeting-1",
+      utteranceId: "utterance-1",
+      channel: "private",
+      text: "A synthetic private concern.",
+      capturedAt: "2026-07-19T12:00:00.000Z",
+    } as const;
+    const parsedRequest = CaptureUtteranceRequestSchema.parse(request);
+    expectTypeOf(parsedRequest).toEqualTypeOf<CaptureUtteranceRequest>();
+
+    for (const forbidden of [
+      { participantId: "participant-1" },
+      { ownerParticipantId: "participant-1" },
+      { visibility: "private" },
+    ]) {
+      expect(
+        CaptureUtteranceRequestSchema.safeParse({
+          ...request,
+          ...forbidden,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      CaptureUtteranceRequestSchema.safeParse({
+        ...request,
+        channel: "participant-private",
+      }).success,
+    ).toBe(false);
+    expect(
+      CaptureUtteranceRequestSchema.safeParse({
+        ...request,
+        channel: "shared",
+      }).success,
+    ).toBe(true);
+    expect(
+      CaptureUtteranceRequestSchema.safeParse({
+        ...request,
+        capturedAt: "2026-07-19 12:00:00",
+      }).success,
+    ).toBe(false);
+    expect(
+      CaptureUtteranceRequestSchema.safeParse({
+        ...request,
+        text: "",
+      }).success,
+    ).toBe(false);
+    expect(
+      CaptureUtteranceRequestSchema.safeParse({
+        ...request,
+        text: "x".repeat(4000),
+      }).success,
+    ).toBe(true);
+    expect(
+      CaptureUtteranceRequestSchema.safeParse({
+        ...request,
+        text: "x".repeat(4001),
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      meetingId: "meeting-1",
+      utterance: {
+        utteranceId: "utterance-1",
+        participantId: "participant-1",
+        channel: "private",
+        text: "A synthetic private concern.",
+        capturedAt: "2026-07-19T12:00:00.000Z",
+      },
+      replayed: false,
+      position: 5,
+      correlationId: "correlation-1",
+    } as const;
+    const parsedResponse = CaptureUtteranceResponseSchema.parse(response);
+    expectTypeOf(parsedResponse).toEqualTypeOf<CaptureUtteranceResponse>();
+    expect(
+      CaptureUtteranceResponseSchema.safeParse({
+        ...response,
+        utterance: {
+          ...response.utterance,
+          visibility: "private",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      CaptureUtteranceResponseSchema.safeParse({
+        ...response,
+        channel: "private",
+      }).success,
+    ).toBe(false);
   });
 
   it("issues and revokes display tokens with strict meeting-scoped DTOs", () => {

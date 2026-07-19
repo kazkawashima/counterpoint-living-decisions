@@ -12,7 +12,9 @@ import {
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import type { RealtimeSecretIssuer } from "@counterpoint/ports";
 import {
+  AcquireSharedFloorResponseSchema,
   ApproveDisclosureResponseSchema,
+  CaptureUtteranceResponseSchema,
   ClearMeetingByokResponseSchema,
   CommitDecisionResponseSchema,
   ConfigureMeetingByokResponseSchema,
@@ -39,7 +41,9 @@ import {
   ReadinessResponseSchema,
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  ReleaseSharedFloorResponseSchema,
   RevokeDisplayTokenResponseSchema,
+  RoleProjectionResponseSchema,
   ReviewInvalidationResponseSchema,
   ResolveDecisionReviewResponseSchema,
   SaveDecisionDraftResponseSchema,
@@ -424,6 +428,230 @@ describe("Node HTTP flagship shell", () => {
     );
     expect(missing.status).toBe(400);
     expect(JSON.stringify(await missing.json())).not.toContain(standardApiKey);
+  });
+
+  it("excludes simultaneous shared speakers and captures idempotent private/shared utterances", async () => {
+    const { app, runtime } = await fixture();
+    const meetingId = "meeting-global-ai-rollout";
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const participant = await login(app, "legal", "counterpoint-legal");
+    const facilitatorHeaders = {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const participantHeaders = {
+      authorization: `Bearer ${participant.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const facilitatorUtteranceId = "utterance-facilitator-shared";
+    const participantUtteranceId = "utterance-participant-shared";
+
+    const acquiredResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/shared-floor`,
+      {
+        body: JSON.stringify({
+          meetingId,
+          utteranceId: facilitatorUtteranceId,
+        }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(acquiredResponse.status).toBe(201);
+    expect(
+      AcquireSharedFloorResponseSchema.parse(await acquiredResponse.json()),
+    ).toMatchObject({
+      meetingId,
+      participantId: "participant-product",
+      utteranceId: facilitatorUtteranceId,
+    });
+
+    const busyResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/shared-floor`,
+      {
+        body: JSON.stringify({
+          meetingId,
+          utteranceId: participantUtteranceId,
+        }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(busyResponse.status).toBe(409);
+    expect(ErrorEnvelopeSchema.parse(await busyResponse.json())).toMatchObject({
+      code: "SHARED_FLOOR_BUSY",
+    });
+
+    const privateInput = {
+      capturedAt: "2026-07-19T12:00:00.000Z",
+      channel: "private",
+      meetingId,
+      text: "Synthetic owner-private transcript.",
+      utteranceId: "utterance-legal-private",
+    } as const;
+    const privateResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/utterances`,
+      {
+        body: JSON.stringify(privateInput),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(privateResponse.status).toBe(201);
+    expect(
+      CaptureUtteranceResponseSchema.parse(await privateResponse.json()),
+    ).toMatchObject({
+      replayed: false,
+      utterance: {
+        channel: "private",
+        participantId: "participant-legal",
+        text: privateInput.text,
+      },
+    });
+
+    const sharedInput = {
+      capturedAt: "2026-07-19T12:00:01.000Z",
+      channel: "shared",
+      meetingId,
+      text: "Synthetic shared transcript.",
+      utteranceId: facilitatorUtteranceId,
+    } as const;
+    const sharedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/utterances`,
+      {
+        body: JSON.stringify(sharedInput),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(sharedResponse.status).toBe(201);
+    expect(
+      CaptureUtteranceResponseSchema.parse(await sharedResponse.json()),
+    ).toMatchObject({
+      replayed: false,
+      utterance: {
+        channel: "shared",
+        participantId: "participant-product",
+      },
+    });
+
+    const facilitatorProjectionResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers: facilitatorHeaders },
+    );
+    const facilitatorProjection = RoleProjectionResponseSchema.parse(
+      await facilitatorProjectionResponse.json(),
+    );
+    expect(facilitatorProjection.shared).toMatchObject({
+      sharedFloor: {
+        participantId: "participant-product",
+      },
+      utterances: [
+        {
+          channel: "shared",
+          text: sharedInput.text,
+          utteranceId: facilitatorUtteranceId,
+        },
+      ],
+    });
+    expect(facilitatorProjection.privateWorkspace.utterances).toEqual([]);
+
+    const participantProjectionResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers: participantHeaders },
+    );
+    const participantProjection = RoleProjectionResponseSchema.parse(
+      await participantProjectionResponse.json(),
+    );
+    expect(participantProjection.shared.utterances).toEqual(
+      facilitatorProjection.shared.utterances,
+    );
+    expect(participantProjection.privateWorkspace.utterances).toEqual([
+      expect.objectContaining({
+        channel: "private",
+        text: privateInput.text,
+        utteranceId: privateInput.utteranceId,
+      }),
+    ]);
+    expect(JSON.stringify(facilitatorProjection)).not.toContain(
+      privateInput.text,
+    );
+
+    const replayResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/utterances`,
+      {
+        body: JSON.stringify(sharedInput),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(replayResponse.status).toBe(200);
+    expect(
+      CaptureUtteranceResponseSchema.parse(await replayResponse.json()),
+    ).toMatchObject({ replayed: true });
+
+    const changedChannel = await app.request(
+      `/api/v1/meetings/${meetingId}/utterances`,
+      {
+        body: JSON.stringify({ ...sharedInput, channel: "private" }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(changedChannel.status).toBe(409);
+    expect(
+      ErrorEnvelopeSchema.parse(await changedChannel.json()),
+    ).toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+
+    const participantRelease = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/shared-floor`,
+      {
+        body: JSON.stringify({
+          meetingId,
+          utteranceId: facilitatorUtteranceId,
+        }),
+        headers: participantHeaders,
+        method: "DELETE",
+      },
+    );
+    expect(participantRelease.status).toBe(403);
+
+    const releasedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/shared-floor`,
+      {
+        body: JSON.stringify({
+          meetingId,
+          utteranceId: facilitatorUtteranceId,
+        }),
+        headers: facilitatorHeaders,
+        method: "DELETE",
+      },
+    );
+    expect(releasedResponse.status).toBe(200);
+    expect(
+      ReleaseSharedFloorResponseSchema.parse(await releasedResponse.json()),
+    ).toMatchObject({
+      meetingId,
+      utteranceId: facilitatorUtteranceId,
+    });
+
+    const records = await runtime.decisions.events.load(meetingId);
+    const privateEvent = records.find(
+      ({ event }) =>
+        event.eventType === "UtteranceCaptured" &&
+        String(event.payload.utterance.id) === privateInput.utteranceId,
+    )?.event;
+    expect(privateEvent).toMatchObject({
+      eventType: "UtteranceCaptured",
+      ownerParticipantId: "participant-legal",
+      visibility: "private",
+    });
+    expect(JSON.stringify(privateEvent)).toContain(privateInput.text);
+    expect(
+      records
+        .filter(({ event }) => event.visibility === "shared")
+        .map(({ event }) => JSON.stringify(event)),
+    ).not.toContain(privateInput.text);
   });
 
   it("issues a digest-only shared display token, rotates it, and revokes access", async () => {

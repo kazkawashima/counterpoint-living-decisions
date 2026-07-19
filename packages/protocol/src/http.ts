@@ -24,6 +24,7 @@ import {
   ResetRequestIdSchema,
   ServerDerivedActorSchema,
   SourceArtifactIdSchema,
+  UtteranceIdSchema,
   UserIdSchema,
   UtcIsoTimestampSchema,
 } from "./primitives.js";
@@ -274,6 +275,20 @@ export type DisclosureOutgoingPayload = z.infer<
 export type DisclosureCandidate = z.infer<typeof DisclosureCandidateSchema>;
 export type InferenceSuggestion = z.infer<typeof InferenceSuggestionSchema>;
 
+const UtteranceTextSchema = z.string().min(1).max(4000);
+export const UtteranceChannelSchema = z.enum(["private", "shared"]);
+export const CapturedUtteranceSchema = z.strictObject({
+  utteranceId: UtteranceIdSchema,
+  participantId: ParticipantIdSchema,
+  channel: UtteranceChannelSchema,
+  text: UtteranceTextSchema,
+  capturedAt: UtcIsoTimestampSchema,
+});
+export const SharedFloorProjectionSchema = z.strictObject({
+  participantId: ParticipantIdSchema,
+  leaseExpiresAt: UtcIsoTimestampSchema,
+});
+
 export const SharedEvidenceSchema = z.strictObject({
   evidenceId: EvidenceIdSchema,
   exactSnippet: NonEmptyTextSchema,
@@ -424,11 +439,14 @@ export const RoleProjectionResponseSchema = z.strictObject({
     dissent: z.array(SharedDissentSchema),
     actions: z.array(SharedActionSchema),
     decisions: z.array(DecisionSchema),
+    utterances: z.array(CapturedUtteranceSchema),
+    sharedFloor: SharedFloorProjectionSchema.nullable(),
   }),
   privateWorkspace: z.strictObject({
     sources: z.array(PrivateTextSourceFixtureSchema),
     disclosureCandidates: z.array(DisclosureCandidateSchema),
     inferenceSuggestions: z.array(InferenceSuggestionSchema),
+    utterances: z.array(CapturedUtteranceSchema),
   }),
   ...RequiredCorrelationShape,
 });
@@ -515,6 +533,64 @@ export type IssueRealtimeClientSecretRequest = z.infer<
 >;
 export type IssueRealtimeClientSecretResponse = z.infer<
   typeof IssueRealtimeClientSecretResponseSchema
+>;
+
+export const AcquireSharedFloorRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  utteranceId: UtteranceIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const AcquireSharedFloorResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  utteranceId: UtteranceIdSchema,
+  participantId: ParticipantIdSchema,
+  leaseExpiresAt: UtcIsoTimestampSchema,
+  ...RequiredCorrelationShape,
+});
+export const ReleaseSharedFloorRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  utteranceId: UtteranceIdSchema,
+});
+export const ReleaseSharedFloorResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  utteranceId: UtteranceIdSchema,
+  releasedAt: UtcIsoTimestampSchema,
+  ...RequiredCorrelationShape,
+});
+export const CaptureUtteranceRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  utteranceId: UtteranceIdSchema,
+  channel: UtteranceChannelSchema,
+  text: UtteranceTextSchema,
+  capturedAt: UtcIsoTimestampSchema,
+});
+export const CaptureUtteranceResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  utterance: CapturedUtteranceSchema,
+  replayed: z.boolean(),
+  position: MeetingPositionSchema,
+  ...RequiredCorrelationShape,
+});
+
+export type UtteranceChannel = z.infer<typeof UtteranceChannelSchema>;
+export type AcquireSharedFloorRequest = z.infer<
+  typeof AcquireSharedFloorRequestSchema
+>;
+export type AcquireSharedFloorResponse = z.infer<
+  typeof AcquireSharedFloorResponseSchema
+>;
+export type ReleaseSharedFloorRequest = z.infer<
+  typeof ReleaseSharedFloorRequestSchema
+>;
+export type ReleaseSharedFloorResponse = z.infer<
+  typeof ReleaseSharedFloorResponseSchema
+>;
+export type CaptureUtteranceRequest = z.infer<
+  typeof CaptureUtteranceRequestSchema
+>;
+export type CapturedUtterance = z.infer<typeof CapturedUtteranceSchema>;
+export type CaptureUtteranceResponse = z.infer<
+  typeof CaptureUtteranceResponseSchema
 >;
 
 const DisplayTokenSchema = z.string().min(1).max(4096);

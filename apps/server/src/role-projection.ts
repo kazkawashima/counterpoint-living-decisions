@@ -60,6 +60,18 @@ function isVisibleTo(event: DomainEvent, participantId: string): boolean {
   );
 }
 
+function utteranceView(
+  utterance: ReturnType<typeof replayMeeting>["shared"]["utterances"][number],
+) {
+  return {
+    capturedAt: utterance.capturedAt,
+    channel: utterance.channel,
+    participantId: utterance.participantId,
+    text: utterance.text,
+    utteranceId: utterance.id,
+  };
+}
+
 function privateDisclosureCandidates(
   events: readonly DomainEvent[],
   participantId: string,
@@ -259,6 +271,10 @@ export async function roleProjectionFor(
           authorization.participantId,
           activePrivateEvents,
         );
+  const privateWorkspace = projection.privateWorkspaces.find(
+    ({ ownerParticipantId }) =>
+      ownerParticipantId === authorization.participantId,
+  );
   return RoleProjectionResponseSchema.parse({
     capabilities: [...authorization.capabilities],
     correlationId,
@@ -282,6 +298,7 @@ export async function roleProjectionFor(
         authorization.participantId,
       ),
       sources,
+      utterances: (privateWorkspace?.utterances ?? []).map(utteranceView),
     },
     shared: {
       actions: projection.shared.actions.map(
@@ -331,6 +348,8 @@ export async function roleProjectionFor(
           statement,
         }),
       ),
+      sharedFloor: projection.shared.sharedFloor ?? null,
+      utterances: projection.shared.utterances.map(utteranceView),
     },
   });
 }
@@ -378,6 +397,7 @@ export async function realtimeRoleProjectionFor(
       disclosureCandidates: projection.privateWorkspace.disclosureCandidates,
       inferenceSuggestions: projection.privateWorkspace.inferenceSuggestions,
       sources,
+      utterances: projection.privateWorkspace.utterances,
     },
   });
 }

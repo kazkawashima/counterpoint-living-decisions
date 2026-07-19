@@ -46,6 +46,7 @@ function projection(
       disclosureCandidates: [],
       inferenceSuggestions: [],
       sources: [],
+      utterances: [],
     },
     shared: {
       actions: [],
@@ -55,6 +56,8 @@ function projection(
       participants: [],
       position,
       premises: [],
+      sharedFloor: null,
+      utterances: [],
     },
   });
 }
