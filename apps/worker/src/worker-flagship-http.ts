@@ -59,6 +59,7 @@ import {
   DeterministicAssumptionInvalidationModel,
   DeterministicSharedDecisionModel,
   OpenAiAssumptionInvalidationEvaluator,
+  OpenAiCandidateError,
   OpenAiPrivateDisclosureProposer,
   OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
@@ -77,6 +78,11 @@ import type {
   SessionRepository,
   SessionTokenIssuer,
 } from "@counterpoint/ports";
+import {
+  JudgePrivateDisclosureError,
+  runJudgePrivateDisclosure,
+  type JudgePrivateDisclosureRuntimeDependencies,
+} from "./judge-private-disclosure.js";
 import {
   ApproveDisclosureRequestSchema,
   ApproveDisclosureResponseSchema,
@@ -148,6 +154,8 @@ export interface WorkerFlagshipHttpDependencies {
   readonly sessions: SessionRepository;
   readonly tokens: SessionTokenIssuer;
   readonly authorizationPolicy?: UserAuthorizationPolicy;
+  readonly deterministicPrivateDisclosureEnabled?: boolean;
+  readonly judgePrivateDisclosure?: JudgePrivateDisclosureRuntimeDependencies;
 }
 
 export interface WorkerFlagshipD1Bindings {
@@ -334,6 +342,9 @@ export function createWorkerFlagshipDependencies(
     passwords: new ScryptPasswordVerifier(),
     sessions: new D1SessionRepository(bindings.DB),
     tokens: new WebCryptoSessionTokenIssuer(),
+    ...(bindings.OPENAI_MODE === "deterministic"
+      ? { deterministicPrivateDisclosureEnabled: true }
+      : {}),
   };
 }
 
@@ -1173,23 +1184,82 @@ export async function handleWorkerFlagshipHttp(input: {
     if (proposeDisclosureRequest === undefined) {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
-    const disclosureDependencies: DisclosureDependencies =
-      proposeDisclosureRequest.assistance === "ai_preferred"
-        ? dependencies.disclosures
-        : (() => {
-            const { artifacts, clock, events, hash, ids, projections } =
-              dependencies.disclosures;
-            return { artifacts, clock, events, hash, ids, projections };
-          })();
-    const result = await proposeDisclosure(
-      disclosureDependencies,
-      resolved.authorization,
-      {
-        ...proposeDisclosureRequest,
-        correlationId,
-        expectedPosition: await dependencies.events.position(meetingId),
-      },
-    );
+    const manualDisclosureDependencies = (): DisclosureDependencies => {
+      const { artifacts, clock, events, hash, ids, projections } =
+        dependencies.disclosures;
+      return { artifacts, clock, events, hash, ids, projections };
+    };
+    const expectedPosition = await dependencies.events.position(meetingId);
+    let result: Awaited<ReturnType<typeof proposeDisclosure>>;
+    try {
+      if (proposeDisclosureRequest.assistance === "ai_preferred") {
+        const aiRequest = {
+          ...proposeDisclosureRequest,
+          assistance: "ai_preferred" as const,
+        };
+        const managed = dependencies.judgePrivateDisclosure;
+        if (
+          managed === undefined &&
+          (dependencies.deterministicPrivateDisclosureEnabled !== true ||
+            dependencies.disclosures.candidateProposer === undefined)
+        ) {
+          return apiErrorResponse("OPENAI_UNAVAILABLE", correlationId);
+        }
+        if (managed === undefined) {
+          result = await proposeDisclosure(
+            dependencies.disclosures,
+            resolved.authorization,
+            {
+              ...aiRequest,
+              correlationId,
+              expectedPosition,
+            },
+          );
+        } else {
+          if (!resolved.authorization.capabilities.has("judge:managed-ai")) {
+            return apiErrorResponse("JUDGE_MODE_FORBIDDEN", correlationId);
+          }
+          result = await runJudgePrivateDisclosure({
+            authorization: resolved.authorization,
+            claims: managed.claims,
+            clock: dependencies.clock,
+            dependencies: manualDisclosureDependencies(),
+            execute: (disclosureDependencies) =>
+              proposeDisclosure(
+                disclosureDependencies,
+                resolved.authorization,
+                {
+                  ...aiRequest,
+                  correlationId,
+                  expectedPosition,
+                },
+              ),
+            ipAddress: managed.ipAddress,
+            proposer: managed.proposer,
+            request: aiRequest,
+            usage: managed.usage,
+          });
+        }
+      } else {
+        result = await proposeDisclosure(
+          manualDisclosureDependencies(),
+          resolved.authorization,
+          {
+            ...proposeDisclosureRequest,
+            correlationId,
+            expectedPosition,
+          },
+        );
+      }
+    } catch (error) {
+      if (error instanceof JudgePrivateDisclosureError) {
+        return apiErrorResponse(error.code, correlationId, error.details);
+      }
+      if (error instanceof OpenAiCandidateError) {
+        return apiErrorResponse("OPENAI_UNAVAILABLE", correlationId);
+      }
+      throw error;
+    }
     if (result.kind === "failed") {
       return result.code === "CONFLICT"
         ? apiErrorResponse("CONFLICT", correlationId, {
