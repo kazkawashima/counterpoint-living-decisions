@@ -21,6 +21,8 @@ interface RenderedConfig {
     readonly remote: boolean;
   }[];
   readonly vars: {
+    readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
+    readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
     readonly OPENAI_MODE: string;
     readonly RUNTIME_MODE: string;
   };
@@ -44,6 +46,10 @@ const baseConfig = {
     },
   ],
   vars: {
+    JUDGE_IP_HMAC_SECRET: "must-never-render-as-a-var",
+    JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "enabled",
+    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+    OPENAI_API_KEY_JUDGE: "must-never-render-as-a-var",
     OPENAI_MODE: "disabled",
     RUNTIME_MODE: "preview",
   },
@@ -91,6 +97,8 @@ describe("Cloudflare remote deploy configuration", () => {
           },
         ],
         vars: {
+          JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+          JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
           OPENAI_MODE: "disabled",
           RUNTIME_MODE: input.target,
         },

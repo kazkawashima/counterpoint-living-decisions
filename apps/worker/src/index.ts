@@ -1,10 +1,15 @@
 import {
+  D1ManagedAiOperationClaimRepository,
   D1MeetingRepository,
   D1ManagedRealtimeCallOwnershipRepository,
   D1SessionRepository,
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
-import { OpenAiRealtimeClientSecretIssuer } from "@counterpoint/adapters-openai";
+import {
+  OpenAiPrivateDisclosureModel,
+  OpenAiPrivateDisclosureProposer,
+  OpenAiRealtimeClientSecretIssuer,
+} from "@counterpoint/adapters-openai";
 import {
   apiErrorResponse,
   handleIssueRealtimeClientSecretHttp,
@@ -29,6 +34,17 @@ import { createJudgeRealtimeUsageLimiter } from "./judge-realtime-call-controlle
 import { handleJudgeManagedRealtimeHttp } from "./judge-managed-realtime-http.js";
 import { handleJudgeUsageSummaryHttp } from "./judge-usage-http.js";
 import type { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
+import type {
+  ConcretePrivateDisclosureProposer,
+  JudgePrivateDisclosureRuntimeDependencies,
+} from "./judge-private-disclosure.js";
+import {
+  PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
+  PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS,
+  PRIVATE_DISCLOSURE_MODEL,
+  PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
+  createJudgePrivateDisclosureUsageLimiter,
+} from "./judge-structured-ai.js";
 import {
   createWorkerFlagshipDependencies,
   handleWorkerFlagshipHttp,
@@ -57,14 +73,27 @@ const EXPECTED_D1_MIGRATIONS = [
 interface JudgeWorkerBindings {
   readonly JUDGE_IP_HMAC_SECRET?: string;
   readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED?: string;
+  readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED?: string;
   readonly JUDGE_USER_ID?: string;
   readonly OPENAI_API_KEY_JUDGE?: string;
+  readonly OPENAI_MODE?: "disabled" | "deterministic";
+  readonly OPENAI_MODEL?: string;
 }
 
 export type Env = Readonly<
-  Omit<WorkerBindings, "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED"> &
+  Omit<
+    WorkerBindings,
+    | "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED"
+    | "JUDGE_STRUCTURED_AI_ROUTE_ENABLED"
+    | "OPENAI_MODE"
+    | "OPENAI_MODEL"
+  > &
     JudgeWorkerBindings
 >;
+
+export interface CreateWorkerHandlerOptions {
+  readonly judgePrivateDisclosureProposer?: ConcretePrivateDisclosureProposer;
+}
 
 interface DependencyProbe {
   readonly available: boolean;
@@ -117,6 +146,57 @@ function judgeManagedRealtimeRouteEnabled(env: Env): boolean {
     nonEmptyTrimmed(env.OPENAI_API_KEY_JUDGE) &&
     nonEmptyTrimmed(env.JUDGE_IP_HMAC_SECRET)
   );
+}
+
+function judgeStructuredAiRouteConfigured(env: Env): boolean {
+  const apiKey = env.OPENAI_API_KEY_JUDGE;
+  const ipSecret = env.JUDGE_IP_HMAC_SECRET;
+  return (
+    String(env.JUDGE_STRUCTURED_AI_ROUTE_ENABLED) === "enabled" &&
+    judgeUserId(env) !== undefined &&
+    nonEmptyTrimmed(apiKey) &&
+    nonEmptyTrimmed(ipSecret) &&
+    apiKey !== ipSecret
+  );
+}
+
+async function createJudgePrivateDisclosureRuntime(
+  env: Env,
+  request: Request,
+  clock: () => string,
+  injectedProposer?: ConcretePrivateDisclosureProposer,
+): Promise<JudgePrivateDisclosureRuntimeDependencies | undefined> {
+  if (!judgeStructuredAiRouteConfigured(env)) {
+    return undefined;
+  }
+  const ipReservation = await resolveJudgeIpReservationInput(
+    request,
+    env.JUDGE_IP_HMAC_SECRET,
+  );
+  if (ipReservation === undefined) {
+    return undefined;
+  }
+  const proposer =
+    injectedProposer ??
+    new OpenAiPrivateDisclosureProposer({
+      maxAttempts: PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
+      model: PRIVATE_DISCLOSURE_MODEL,
+      modelAdapter: new OpenAiPrivateDisclosureModel({
+        apiKey: env.OPENAI_API_KEY_JUDGE!,
+        maxOutputTokens: PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS,
+        timeoutMs: PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
+      }),
+    });
+  return {
+    claims: new D1ManagedAiOperationClaimRepository(env.DB),
+    ipAddress: ipReservation.ipAddress,
+    proposer,
+    usage: createJudgePrivateDisclosureUsageLimiter(env.DB, {
+      clock,
+      hashIp: ipReservation.hashIp,
+      ids: (namespace) => `${namespace}-${crypto.randomUUID()}`,
+    }),
+  };
 }
 
 async function probeDatabase(database: D1Database): Promise<DependencyProbe> {
@@ -236,7 +316,9 @@ function apiParityPendingResponse(): Response {
   );
 }
 
-export function createWorkerHandler(): ExportedHandler<Env> {
+export function createWorkerHandler(
+  options: CreateWorkerHandlerOptions = {},
+): ExportedHandler<Env> {
   return {
     async fetch(request, env) {
       const url = new URL(request.url);
@@ -375,9 +457,37 @@ export function createWorkerHandler(): ExportedHandler<Env> {
             return apiErrorResponse("VALIDATION_FAILED", correlationId);
           }
         }
+        const allowlistedJudgeUserId = judgeUserId(env);
+        const flagshipClock = {
+          now: () =>
+            new Date(Math.floor(Date.now() / 1_000) * 1_000).toISOString(),
+        };
+        const judgePrivateDisclosure =
+          flagshipOperation === "propose-disclosure"
+            ? await createJudgePrivateDisclosureRuntime(
+                env,
+                request,
+                flagshipClock.now,
+                options.judgePrivateDisclosureProposer,
+              )
+            : undefined;
         return handleWorkerFlagshipHttp({
           correlationId,
-          dependencies: createWorkerFlagshipDependencies(env),
+          dependencies: {
+            ...createWorkerFlagshipDependencies(env, {
+              clock: flagshipClock,
+            }),
+            ...(allowlistedJudgeUserId === undefined
+              ? {}
+              : {
+                  authorizationPolicy: {
+                    judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
+                  },
+                }),
+            ...(judgePrivateDisclosure === undefined
+              ? {}
+              : { judgePrivateDisclosure }),
+          },
           ...(meetingId === undefined ? {} : { meetingId }),
           operation: flagshipOperation,
           request,

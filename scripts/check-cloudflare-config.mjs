@@ -102,6 +102,11 @@ export function validateCloudflareConfiguration(config, packageJson) {
     violations,
   );
   expectCondition(
+    config.vars?.JUDGE_STRUCTURED_AI_ROUTE_ENABLED === "disabled",
+    "JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled.",
+    violations,
+  );
+  expectCondition(
     packageJson.scripts?.["dev:worker"]?.includes("--ip 0.0.0.0") === true,
     "dev:worker must bind Wrangler to 0.0.0.0.",
     violations,

@@ -246,8 +246,9 @@ function toBase64Url(bytes: Uint8Array): string {
 
 export function createWorkerFlagshipDependencies(
   bindings: WorkerFlagshipD1Bindings,
+  options: { readonly clock?: Clock } = {},
 ): WorkerFlagshipHttpDependencies {
-  const clock = nowClock();
+  const clock = options.clock ?? nowClock();
   const events = new D1EventStore(
     bindings.DB,
     createJsonCodec(parseStoredDomainEvent),

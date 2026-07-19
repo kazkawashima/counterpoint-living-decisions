@@ -1,9 +1,10 @@
 /// <reference types="@cloudflare/vitest-pool-workers/types" />
 
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
+import type { PrivateDisclosureProposal } from "@counterpoint/adapters-openai";
 import {
   ApproveDisclosureResponseSchema,
   CommitDecisionResponseSchema,
@@ -45,6 +46,172 @@ function workerEnv(): Env {
     JUDGE_MANAGED_REALTIME_ROUTE_ENABLED:
       env.JUDGE_MANAGED_REALTIME_ROUTE_ENABLED,
   };
+}
+
+function judgeWorkerEnv(overrides: Partial<Env> = {}): Env {
+  return {
+    ...workerEnv(),
+    JUDGE_IP_HMAC_SECRET: "judge-ip-hmac-secret-material-0001",
+    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+    JUDGE_USER_ID: "product",
+    OPENAI_API_KEY_JUDGE: "test-only-never-sent",
+    ...overrides,
+  };
+}
+
+async function login(
+  handler: ReturnType<typeof createWorkerHandler>,
+  environment: Env,
+  userId = "product",
+  password = "counterpoint-product",
+): Promise<string> {
+  const response = await handler.fetch!(
+    workerRequest(
+      new Request("https://203.0.113.40/api/v1/login", {
+        body: JSON.stringify({ password, userId }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    ),
+    environment,
+    {} as ExecutionContext,
+  );
+  expect(response.status).toBe(200);
+  return String((await json(response)).bearerToken);
+}
+
+async function registerSource(input: {
+  readonly authorization: string;
+  readonly environment: Env;
+  readonly handler: ReturnType<typeof createWorkerHandler>;
+  readonly idempotencyKey: string;
+  readonly text: string;
+}): Promise<{
+  readonly position: number;
+  readonly sourceArtifactId: string;
+}> {
+  const response = await input.handler.fetch!(
+    workerRequest(
+      new Request("https://203.0.113.40/api/v1/disclosures/sources/text", {
+        body: JSON.stringify({
+          expectedPosition: 0,
+          idempotencyKey: input.idempotencyKey,
+          meetingId: FLAGSHIP_MEETING_ID,
+          text: input.text,
+          title: "Managed AI integration source",
+        }),
+        headers: {
+          authorization: input.authorization,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }),
+    ),
+    input.environment,
+    {} as ExecutionContext,
+  );
+  expect(response.status).toBe(201);
+  const body = RegisterPrivateTextSourceFixtureResponseSchema.parse(
+    await json(response),
+  );
+  return {
+    position: body.position,
+    sourceArtifactId: body.source.sourceArtifactId,
+  };
+}
+
+function proposeRequest(input: {
+  readonly authorization: string;
+  readonly expectedPosition: number;
+  readonly ipAddress?: string;
+  readonly idempotencyKey: string;
+  readonly sourceArtifactId: string;
+  readonly sourceText?: string;
+}): Request {
+  const exactSnippet = input.sourceText?.slice(0, 12) ?? "placeholder";
+  return new Request("https://203.0.113.40/api/v1/disclosures/proposals", {
+    body: JSON.stringify({
+      assistance: "ai_preferred",
+      exactSnippet,
+      expectedPosition: input.expectedPosition,
+      idempotencyKey: input.idempotencyKey,
+      meetingId: FLAGSHIP_MEETING_ID,
+      sourceArtifactId: input.sourceArtifactId,
+      sourceRange: { end: exactSnippet.length, start: 0 },
+    }),
+    headers: {
+      authorization: input.authorization,
+      "CF-Connecting-IP": input.ipAddress ?? "203.0.113.40",
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+}
+
+function meteredProposal(
+  sourceArtifactId: string,
+  text: string,
+): PrivateDisclosureProposal {
+  const exactSnippet = text.slice(0, Math.min(text.length, 24));
+  return {
+    ai: {
+      candidates: [
+        {
+          confidence: 1,
+          exactSnippet,
+          reason: "Provider-free metered fake.",
+          sourceRange: { end: exactSnippet.length, start: 0 },
+          sourceReferenceId: sourceArtifactId,
+        },
+      ],
+      confidence: 1,
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      inputReferenceIds: [sourceArtifactId],
+      model: "gpt-5.6",
+      operation: "private_evidence_disclosure",
+      promptVersion: "private-evidence-v1",
+      reason: "Provider-free metered fake.",
+      schemaVersion: "1",
+    },
+    billing: {
+      attemptCount: 1,
+      attempts: [{ inputTokens: 120, outputTokens: 20 }],
+      inputTokens: 120,
+      outputTokens: 20,
+    },
+    exactSnippet,
+    sourceRange: { end: exactSnippet.length, start: 0 },
+  };
+}
+
+async function resetFlagship(input: {
+  readonly authorization: string;
+  readonly environment: Env;
+  readonly handler: ReturnType<typeof createWorkerHandler>;
+  readonly idempotencyKey: string;
+}): Promise<void> {
+  const response = await input.handler.fetch!(
+    workerRequest(
+      new Request(
+        `https://203.0.113.40/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+        {
+          body: JSON.stringify({
+            expectedPosition: 0,
+            idempotencyKey: input.idempotencyKey,
+            meetingId: FLAGSHIP_MEETING_ID,
+          }),
+          headers: {
+            authorization: input.authorization,
+            "content-type": "application/json",
+          },
+          method: "POST",
+        },
+      ),
+    ),
+    input.environment,
+    {} as ExecutionContext,
+  );
+  expect(response.status).toBe(200);
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
@@ -1081,4 +1248,467 @@ describe("Cloudflare Worker hosted flagship API", () => {
       code: "FORBIDDEN",
     });
   }, 15_000);
+});
+
+describe("Cloudflare Worker judge structured-AI gate", () => {
+  beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM judge_managed_ai_operation_claims").run();
+    await env.DB.prepare("DELETE FROM judge_usage_reservations").run();
+  });
+
+  it("settles metered judge usage without persisting private content", async () => {
+    const proposer = {
+      propose: vi.fn(
+        async (input: {
+          readonly sourceArtifactId: string;
+          readonly text: string;
+        }) => meteredProposal(input.sourceArtifactId, input.text),
+      ),
+    };
+    const handler = createWorkerHandler({
+      judgePrivateDisclosureProposer: proposer,
+    });
+    const environment = judgeWorkerEnv();
+    const bearerToken = await login(handler, environment);
+    const authorization = `Bearer ${bearerToken}`;
+    await resetFlagship({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-success-reset",
+    });
+    const privateText = "Confidential rollout constraint for the judge.";
+    const source = await registerSource({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-success-source",
+      text: privateText,
+    });
+
+    const response = await handler.fetch!(
+      workerRequest(
+        proposeRequest({
+          authorization,
+          expectedPosition: source.position,
+          idempotencyKey: "judge-structured-success-proposal",
+          sourceArtifactId: source.sourceArtifactId,
+        }),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+
+    const responseBody = await json(response);
+    expect({ body: responseBody, status: response.status }).toMatchObject({
+      status: 201,
+    });
+    expect(proposer.propose).toHaveBeenCalledTimes(1);
+    const replay = await handler.fetch!(
+      workerRequest(
+        proposeRequest({
+          authorization,
+          expectedPosition: source.position,
+          idempotencyKey: "judge-structured-success-proposal",
+          sourceArtifactId: source.sourceArtifactId,
+        }),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(replay.status).toBe(201);
+    await expect(json(replay)).resolves.toMatchObject({
+      candidate: responseBody.candidate,
+    });
+    expect(proposer.propose).toHaveBeenCalledTimes(1);
+    await expect(
+      env.DB.prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM judge_usage_reservations
+          WHERE operation = 'private_evidence_disclosure'
+        `,
+      ).first<{ count: number }>(),
+    ).resolves.toMatchObject({ count: 1 });
+    const reservation = await env.DB.prepare(
+      `
+        SELECT *
+        FROM judge_usage_reservations
+        WHERE operation = 'private_evidence_disclosure'
+      `,
+    ).first<Record<string, unknown>>();
+    expect(reservation).toMatchObject({
+      actual_cost_micro_usd: 1200,
+      actual_generation_count: 1,
+      actual_input_tokens: 120,
+      actual_output_tokens: 20,
+      operation: "private_evidence_disclosure",
+      status: "finalized",
+    });
+    expect(reservation?.ip_hash).toMatch(/^hmac-sha256:[a-f0-9]{64}$/u);
+
+    const claims = await env.DB.prepare(
+      "SELECT * FROM judge_managed_ai_operation_claims",
+    ).all<Record<string, unknown>>();
+    const rows = JSON.stringify([...claims.results, reservation]);
+    expect(rows).not.toContain(privateText);
+    expect(rows).not.toContain(source.sourceArtifactId);
+    expect(rows).not.toContain("test-only-never-sent");
+  });
+
+  it("suppresses a concurrent duplicate and conflicts a changed source", async () => {
+    let releaseProvider!: () => void;
+    const providerBlocked = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    let markProviderStarted!: () => void;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    const proposer = {
+      propose: vi.fn(
+        async (input: {
+          readonly sourceArtifactId: string;
+          readonly text: string;
+        }) => {
+          markProviderStarted();
+          await providerBlocked;
+          return meteredProposal(input.sourceArtifactId, input.text);
+        },
+      ),
+    };
+    const handler = createWorkerHandler({
+      judgePrivateDisclosureProposer: proposer,
+    });
+    const environment = judgeWorkerEnv();
+    const authorization = `Bearer ${await login(handler, environment)}`;
+    await resetFlagship({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-duplicate-reset",
+    });
+    const firstSource = await registerSource({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-duplicate-source",
+      text: "First confidential source.",
+    });
+    const request = () =>
+      workerRequest(
+        proposeRequest({
+          authorization,
+          expectedPosition: firstSource.position,
+          idempotencyKey: "judge-structured-duplicate-proposal",
+          sourceArtifactId: firstSource.sourceArtifactId,
+        }),
+      );
+
+    const first = handler.fetch!(
+      request(),
+      environment,
+      {} as ExecutionContext,
+    );
+    try {
+      await providerStarted;
+      const duplicate = await handler.fetch!(
+        request(),
+        environment,
+        {} as ExecutionContext,
+      );
+      expect(duplicate.status).toBe(503);
+      await expect(json(duplicate)).resolves.toMatchObject({
+        code: "OPENAI_UNAVAILABLE",
+      });
+    } finally {
+      releaseProvider();
+    }
+    expect((await first).status).toBe(201);
+    expect(proposer.propose).toHaveBeenCalledTimes(1);
+
+    const secondSource = await registerSource({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-changed-source",
+      text: "Second confidential source.",
+    });
+    const changed = await handler.fetch!(
+      workerRequest(
+        proposeRequest({
+          authorization,
+          expectedPosition: secondSource.position,
+          idempotencyKey: "judge-structured-duplicate-proposal",
+          sourceArtifactId: secondSource.sourceArtifactId,
+        }),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(changed.status).toBe(409);
+    await expect(json(changed)).resolves.toMatchObject({
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    expect(proposer.propose).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies exhausted and ordinary-user managed work before the provider", async () => {
+    const proposer = {
+      propose: vi.fn(
+        async (input: {
+          readonly sourceArtifactId: string;
+          readonly text: string;
+        }) => meteredProposal(input.sourceArtifactId, input.text),
+      ),
+    };
+    const handler = createWorkerHandler({
+      judgePrivateDisclosureProposer: proposer,
+    });
+    const environment = judgeWorkerEnv();
+    const authorization = `Bearer ${await login(handler, environment)}`;
+    await resetFlagship({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-exhausted-reset",
+    });
+    const source = await registerSource({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-exhausted-source",
+      text: "Budget protected source.",
+    });
+    await env.DB.prepare(
+      `
+        INSERT INTO judge_usage_reservations (
+          reservation_id,
+          request_fingerprint,
+          account_id,
+          ip_hash,
+          meeting_id,
+          operation,
+          model,
+          pricing_version,
+          reserved_cost_micro_usd,
+          reserved_input_tokens,
+          reserved_output_tokens,
+          reserved_generation_count,
+          reserved_realtime_seconds,
+          actual_cost_micro_usd,
+          actual_input_tokens,
+          actual_output_tokens,
+          actual_generation_count,
+          actual_realtime_seconds,
+          status,
+          reserved_at_epoch,
+          active_until_epoch,
+          finalized_at_epoch
+        ) VALUES (
+          'exhausted-budget',
+          'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'product',
+          'hmac-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          ?,
+          'test_budget',
+          'test-model',
+          'test-v1',
+          25000000,
+          0,
+          0,
+          0,
+          0,
+          25000000,
+          0,
+          0,
+          0,
+          0,
+          'finalized',
+          unixepoch(),
+          unixepoch() + 120,
+          unixepoch()
+        )
+      `,
+    )
+      .bind(FLAGSHIP_MEETING_ID)
+      .run();
+
+    const exhausted = await handler.fetch!(
+      workerRequest(
+        proposeRequest({
+          authorization,
+          expectedPosition: source.position,
+          idempotencyKey: "judge-structured-exhausted-proposal",
+          sourceArtifactId: source.sourceArtifactId,
+        }),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    const exhaustedBody = await json(exhausted);
+    expect({ body: exhaustedBody, status: exhausted.status }).toMatchObject({
+      status: 429,
+    });
+    expect(exhaustedBody).toMatchObject({
+      code: "USAGE_LIMIT_REACHED",
+      details: { limit: "cost" },
+    });
+    expect(proposer.propose).not.toHaveBeenCalled();
+
+    const ordinaryEnvironment = judgeWorkerEnv({
+      JUDGE_USER_ID: "product",
+    });
+    const ordinaryAuthorization = `Bearer ${await login(
+      handler,
+      ordinaryEnvironment,
+      "safety",
+      "counterpoint-safety",
+    )}`;
+    const ordinary = await handler.fetch!(
+      workerRequest(
+        proposeRequest({
+          authorization: ordinaryAuthorization,
+          expectedPosition: source.position,
+          idempotencyKey: "judge-structured-ordinary-proposal",
+          sourceArtifactId: source.sourceArtifactId,
+        }),
+      ),
+      ordinaryEnvironment,
+      {} as ExecutionContext,
+    );
+    expect(ordinary.status).toBe(403);
+    await expect(json(ordinary)).resolves.toMatchObject({
+      code: "JUDGE_MODE_FORBIDDEN",
+    });
+    expect(proposer.propose).not.toHaveBeenCalled();
+  });
+
+  it("keeps manual work off the ledger and fails closed when live wiring is unsafe", async () => {
+    const proposer = {
+      propose: vi.fn(
+        async (input: {
+          readonly sourceArtifactId: string;
+          readonly text: string;
+        }) => meteredProposal(input.sourceArtifactId, input.text),
+      ),
+    };
+    const handler = createWorkerHandler({
+      judgePrivateDisclosureProposer: proposer,
+    });
+    const environment = judgeWorkerEnv();
+    const authorization = `Bearer ${await login(handler, environment)}`;
+    await resetFlagship({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-manual-reset",
+    });
+    const sourceText = "Manual path remains provider-free.";
+    const source = await registerSource({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-structured-manual-source",
+      text: sourceText,
+    });
+    const manual = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.40/api/v1/disclosures/proposals", {
+          body: JSON.stringify({
+            assistance: "manual",
+            exactSnippet: sourceText,
+            expectedPosition: source.position,
+            idempotencyKey: "judge-structured-manual-proposal",
+            meetingId: FLAGSHIP_MEETING_ID,
+            sourceArtifactId: source.sourceArtifactId,
+            sourceRange: { end: sourceText.length, start: 0 },
+          }),
+          headers: {
+            authorization,
+            "CF-Connecting-IP": "203.0.113.40",
+            "content-type": "application/json",
+          },
+          method: "POST",
+        }),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(manual.status).toBe(201);
+    expect(proposer.propose).not.toHaveBeenCalled();
+    await expect(
+      env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM judge_usage_reservations",
+      ).first<{ count: number }>(),
+    ).resolves.toMatchObject({ count: 0 });
+    await expect(
+      env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM judge_managed_ai_operation_claims",
+      ).first<{ count: number }>(),
+    ).resolves.toMatchObject({ count: 0 });
+
+    for (const unsafe of [
+      {
+        environment: judgeWorkerEnv({
+          JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+          OPENAI_MODE: "disabled",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({
+          JUDGE_IP_HMAC_SECRET: "short",
+          OPENAI_MODE: "disabled",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({
+          OPENAI_API_KEY_JUDGE: "",
+          OPENAI_MODE: "disabled",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({
+          JUDGE_USER_ID: "",
+          OPENAI_MODE: "disabled",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({
+          JUDGE_IP_HMAC_SECRET: "shared-secret-material",
+          OPENAI_API_KEY_JUDGE: "shared-secret-material",
+          OPENAI_MODE: "disabled",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({ OPENAI_MODE: "disabled" }),
+        ipAddress: "203.0.113.40, 198.51.100.1",
+      },
+      {
+        environment: judgeWorkerEnv({ OPENAI_MODE: "disabled" }),
+        ipAddress: "",
+      },
+    ]) {
+      const response = await handler.fetch!(
+        workerRequest(
+          proposeRequest({
+            authorization,
+            expectedPosition: source.position + 1,
+            ...(unsafe.ipAddress === undefined
+              ? {}
+              : { ipAddress: unsafe.ipAddress }),
+            idempotencyKey: crypto.randomUUID(),
+            sourceArtifactId: source.sourceArtifactId,
+          }),
+        ),
+        unsafe.environment,
+        {} as ExecutionContext,
+      );
+      expect(response.status).toBe(503);
+      await expect(json(response)).resolves.toMatchObject({
+        code: "OPENAI_UNAVAILABLE",
+      });
+    }
+    expect(proposer.propose).not.toHaveBeenCalled();
+  });
 });

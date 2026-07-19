@@ -80,8 +80,17 @@ export function renderCloudflareDeployConfiguration(input) {
   r2.bucket_name = r2BucketName;
   r2.preview_bucket_name = r2BucketName;
   r2.remote = true;
+  const {
+    JUDGE_IP_HMAC_SECRET: _judgeIpHmacSecret,
+    OPENAI_API_KEY_JUDGE: _openAiApiKeyJudge,
+    ...safeVars
+  } = base.vars ?? {};
+  void _judgeIpHmacSecret;
+  void _openAiApiKeyJudge;
   base.vars = {
-    ...base.vars,
+    ...safeVars,
+    JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
     OPENAI_MODE: "disabled",
     RUNTIME_MODE: target,
   };

@@ -1,4 +1,5 @@
 import {
+  D1UsageLimiter,
   JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
   type D1UsageLimiterLimits,
 } from "@counterpoint/adapters-cloudflare";
@@ -72,7 +73,9 @@ export const PRIVATE_DISCLOSURE_OPERATION =
 export const PRIVATE_DISCLOSURE_MODEL = DEFAULT_OPENAI_MODEL;
 export const PRIVATE_DISCLOSURE_PRICING_VERSION =
   "openai-gpt-5.6-conservative-2026-07-20";
-// Two 20-second provider timeouts plus bounded retry/backoff and settlement.
+export const PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS = 20_000;
+export const PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS = 700;
+// Two provider timeouts plus bounded retry/backoff and settlement.
 export const PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS = 120;
 export const PRIVATE_DISCLOSURE_MAX_ATTEMPTS =
   ADAPTER_PRIVATE_DISCLOSURE_MAX_ATTEMPTS;
@@ -85,6 +88,39 @@ export const PRIVATE_DISCLOSURE_RESERVED_USAGE: UsageRequest = {
   generationCount: PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
   realtimeSeconds: 0,
 };
+
+const PRIVATE_DISCLOSURE_MAX_PROVIDER_DURATION_MS =
+  PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS * PRIVATE_DISCLOSURE_MAX_ATTEMPTS;
+if (
+  PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS * 1_000 <=
+  PRIVATE_DISCLOSURE_MAX_PROVIDER_DURATION_MS
+) {
+  throw new Error(
+    "Private disclosure claim TTL must exceed the maximum provider duration.",
+  );
+}
+
+export function createJudgePrivateDisclosureUsageLimiter(
+  database: D1Database,
+  options: {
+    readonly clock: () => string;
+    readonly hashIp: (ipAddress: string) => Promise<string>;
+    readonly ids: (namespace: string) => string;
+  },
+): D1UsageLimiter {
+  return new D1UsageLimiter(database, {
+    clock: options.clock,
+    hashIp: options.hashIp,
+    ids: options.ids,
+    limits: {
+      ...JUDGE_GLOBAL_USAGE_LIMITS,
+      reservationTtlSeconds: PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS,
+    },
+    model: PRIVATE_DISCLOSURE_MODEL,
+    operation: PRIVATE_DISCLOSURE_OPERATION,
+    pricingVersion: PRIVATE_DISCLOSURE_PRICING_VERSION,
+  });
+}
 
 export function assertPrivateDisclosureSourceWithinLimit(
   sourceText: string,
