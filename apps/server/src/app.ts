@@ -10,9 +10,11 @@ import {
   commitDecision,
   createMeeting,
   dispositionDecisionCandidate,
+  evaluateAssumptionInvalidation,
   injectDemoRegulatoryChange,
   joinMeetingByCode,
   listAssignedMeetings,
+  listAssumptionInvalidationEvaluations,
   login,
   logout,
   markDecisionReady,
@@ -30,6 +32,7 @@ import {
   type DecisionFailure,
   type DisclosureFailure,
   type DisclosureDependencies,
+  type InvalidationEvaluationView,
 } from "@counterpoint/application";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import {
@@ -68,6 +71,7 @@ import {
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListInvalidationEvaluationsResponseSchema,
   ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
   ListSharedExternalEventsResponseSchema,
@@ -458,6 +462,59 @@ function externalEventReceiptView(event: DomainExternalEvent) {
     source: event.source,
     sourceReference: event.sourceReference,
   };
+}
+
+function invalidationEvaluationView(evaluation: InvalidationEvaluationView) {
+  return {
+    affectedActionIds: evaluation.affectedActionIds,
+    affectedPremiseIds: evaluation.affectedPremiseIds,
+    confidence: evaluation.confidence,
+    decision: decisionView(evaluation.decision, evaluation.generatedAt),
+    evidenceReferenceIds: evaluation.evidenceReferenceIds,
+    externalEventId: evaluation.externalEventId,
+    generatedAt: evaluation.generatedAt,
+    inputReferenceIds: evaluation.inputReferenceIds,
+    model: evaluation.model,
+    operation: evaluation.operation,
+    outputSchemaVersion: evaluation.outputSchemaVersion,
+    promptVersion: evaluation.promptVersion,
+    reason: evaluation.reason,
+    suggestionId: evaluation.suggestionId,
+  };
+}
+
+async function attemptInvalidationEvaluation(
+  runtime: ServerRuntime,
+  input: {
+    readonly correlationId: string;
+    readonly externalEventId: string;
+    readonly meetingId: string;
+  },
+): Promise<void> {
+  try {
+    const result = await evaluateAssumptionInvalidation(
+      runtime.invalidationEvaluations,
+      input,
+    );
+    if (result.kind === "failed") {
+      console.warn(
+        JSON.stringify({
+          code: result.code,
+          event: "assumption_invalidation.evaluation_deferred",
+          externalEventId: input.externalEventId,
+          meetingId: input.meetingId,
+        }),
+      );
+    }
+  } catch {
+    console.warn(
+      JSON.stringify({
+        event: "assumption_invalidation.evaluation_deferred",
+        externalEventId: input.externalEventId,
+        meetingId: input.meetingId,
+      }),
+    );
+  }
 }
 
 async function resolvedDecisionMutation(
@@ -913,6 +970,47 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       }),
     );
   });
+
+  app.get(
+    "/api/v1/meetings/:meetingId/invalidation-evaluations",
+    async (context) => {
+      const query = RoleProjectionQuerySchema.safeParse({
+        meetingId: context.req.param("meetingId"),
+      });
+      if (!query.success) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        query.data.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const records = await runtime.invalidationEvaluations.events.load(
+        query.data.meetingId,
+      );
+      return context.json(
+        ListInvalidationEvaluationsResponseSchema.parse({
+          correlationId: context.get("correlationId"),
+          evaluations: listAssumptionInvalidationEvaluations(records).map(
+            invalidationEvaluationView,
+          ),
+          meetingId: query.data.meetingId,
+          position: await participantVisiblePosition(
+            runtime,
+            query.data.meetingId,
+            resolved.authorization.participantId,
+          ),
+        }),
+      );
+    },
+  );
 
   app.post("/api/v1/disclosures/sources/text", async (context) => {
     const request = await parseJson(
@@ -1599,6 +1697,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         }
         return errorResponse(context, "VALIDATION_FAILED");
       }
+      await attemptInvalidationEvaluation(runtime, {
+        correlationId: result.correlationId,
+        externalEventId: result.event.id,
+        meetingId: request.data.meetingId,
+      });
       return context.json(
         RegulatoryChangeWebhookResponseSchema.parse({
           correlationId: result.correlationId,
@@ -1673,6 +1776,11 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         }
         return errorResponse(context, "VALIDATION_FAILED");
       }
+      await attemptInvalidationEvaluation(runtime, {
+        correlationId: result.correlationId,
+        externalEventId: result.event.id,
+        meetingId: meetingScope,
+      });
       return context.json(
         InjectDemoRegulatoryChangeResponseSchema.parse({
           correlationId: result.correlationId,
@@ -1779,8 +1887,10 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     const entries = records.flatMap(({ event, position }) => {
       if (
         ![
+          "AssumptionInvalidationSuggested",
           "DecisionCommitted",
           "DecisionDrafted",
+          "DecisionMarkedAtRisk",
           "DecisionMarkedReady",
           "MonitoringStarted",
         ].includes(event.eventType)
@@ -1789,8 +1899,13 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       }
       if (
         query.data.decisionId !== undefined &&
-        (!("decision" in event.payload) ||
-          String(event.payload.decision.id) !== String(query.data.decisionId))
+        !(
+          (event.eventType === "AssumptionInvalidationSuggested" &&
+            String(event.payload.decisionId) ===
+              String(query.data.decisionId)) ||
+          ("decision" in event.payload &&
+            String(event.payload.decision.id) === String(query.data.decisionId))
+        )
       ) {
         return [];
       }

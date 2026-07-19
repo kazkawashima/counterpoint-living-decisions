@@ -12,6 +12,9 @@ const clipDirectory = resolve("docs/media/clips/decision-commit");
 const regulatoryScreenshotDirectory = resolve(
   "docs/media/screenshots/regulatory-event",
 );
+const invalidationScreenshotDirectory = resolve(
+  "docs/media/screenshots/assumption-invalidation",
+);
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -26,6 +29,7 @@ test.beforeAll(async () => {
   await mkdir(screenshotDirectory, { recursive: true });
   await mkdir(clipDirectory, { recursive: true });
   await mkdir(regulatoryScreenshotDirectory, { recursive: true });
+  await mkdir(invalidationScreenshotDirectory, { recursive: true });
 });
 
 test("facilitator commits a grounded Decision that participants can revisit", async ({
@@ -184,15 +188,18 @@ test("facilitator commits a grounded Decision that participants can revisit", as
       .getByText("External event received", { exact: false }),
   ).toBeVisible();
   await expect(
-    facilitatorPage.getByText(
-      "Evaluation pending · Decision remains MONITORING",
-      { exact: false },
-    ),
+    facilitatorPage.getByText("AT_RISK · AI suggestion"),
+  ).toBeVisible();
+  await expect(
+    facilitatorPage.getByText("AI inferred · Human review required"),
+  ).toBeVisible();
+  await expect(
+    facilitatorPage.getByText("REVIEW_REQUIRED has not been confirmed"),
   ).toBeVisible();
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
-    path: `${regulatoryScreenshotDirectory}/2026-07-19-event-received-evaluation-pending-desktop.png`,
+    path: `${invalidationScreenshotDirectory}/2026-07-19-at-risk-facilitator-desktop.png`,
   });
 
   await facilitatorPage.reload();
@@ -203,7 +210,9 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     facilitatorPage.getByText("Revision 2 · COMMITTED"),
   ).toBeVisible();
-  await expect(facilitatorPage.getByText("Monitoring active")).toBeVisible();
+  await expect(
+    facilitatorPage.getByText("AT_RISK · AI suggestion"),
+  ).toBeVisible();
   await expect(
     facilitatorPage.locator(".regulatory-event-receipt"),
   ).toContainText("External event received");
@@ -230,7 +239,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     }),
   ).toBeVisible();
   await expect(
-    participantPage.getByText("Shared · Human committed"),
+    participantPage.getByText("Shared · AI inferred risk"),
   ).toBeVisible();
   await expect(
     participantPage.getByText("2 / 5 readiness checks"),
@@ -239,11 +248,14 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     participantPage.getByText("5 / 5 readiness checks"),
   ).toBeVisible();
   await expect(
-    participantPage.getByText("MONITORING", { exact: true }),
+    participantPage.getByText("AT_RISK", { exact: true }),
   ).toBeVisible();
   await expect(
     participantPage.locator(".shared-regulatory-event"),
   ).toContainText("External event received");
+  await expect(
+    participantPage.locator(".shared-risk-suggestion"),
+  ).toContainText("no automatic review confirmation");
   await expect(
     participantPage.getByRole("button", {
       name: "Generate Decision candidate",
@@ -264,6 +276,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     fullPage: true,
     path: `${regulatoryScreenshotDirectory}/2026-07-19-participant-event-received-desktop.png`,
   });
+  await participantPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${invalidationScreenshotDirectory}/2026-07-19-at-risk-participant-desktop.png`,
+  });
 
   await participantPage.setViewportSize({ height: 844, width: 390 });
   await participantPage.emulateMedia({ reducedMotion: "reduce" });
@@ -271,6 +288,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     animations: "disabled",
     fullPage: true,
     path: `${screenshotDirectory}/2026-07-19-committed-mobile-reduced-motion.png`,
+  });
+  await participantPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${invalidationScreenshotDirectory}/2026-07-19-at-risk-mobile-reduced-motion.png`,
   });
   await participantContext.close();
 });

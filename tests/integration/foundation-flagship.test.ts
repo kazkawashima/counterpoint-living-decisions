@@ -169,6 +169,7 @@ function completeFlagshipEvents(): readonly DomainEvent[] {
     sharedEvent("AssumptionInvalidationSuggested", 11, {
       suggestionId: invalidationSuggestionId,
       decisionId: ids.decision,
+      activeRevisionId: monitoring.activeRevisionId,
       externalEventId: externalEvent.id,
       affectedPremiseIds: [ids.premiseEurope],
       affectedActionIds: [ids.actionEurope],
@@ -181,6 +182,11 @@ function completeFlagshipEvents(): readonly DomainEvent[] {
         reason: nonEmptyText(
           "The regulatory change may invalidate the rollout premise",
         ),
+      },
+      provenance: {
+        generatedAt: timestamp("2026-07-20T09:00:01.000Z"),
+        operation: nonEmptyText("assumption_invalidation"),
+        outputSchemaVersion: nonEmptyText("1"),
       },
     }),
     sharedEvent("DecisionMarkedAtRisk", 12, {

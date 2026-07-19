@@ -41,12 +41,12 @@ history.
 
 ### D4 — GPT-5.6 invalidation evaluation
 
-- [ ] Build structured input from active revision, confirmed premises, monitor
+- [x] Build structured input from active revision, confirmed premises, monitor
       condition, and external event.
-- [ ] Validate affected premise/Action references.
-- [ ] Append `AssumptionInvalidationSuggested`.
-- [ ] Move Decision to `AT_RISK`.
-- [ ] Record model, prompt version, confidence, reason, and input references.
+- [x] Validate affected premise/Action references.
+- [x] Append `AssumptionInvalidationSuggested`.
+- [x] Move Decision to `AT_RISK`.
+- [x] Record model, prompt version, confidence, reason, and input references.
 
 ### D5 — Human review
 

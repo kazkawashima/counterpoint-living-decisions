@@ -36,3 +36,22 @@ export {
   type SharedDecisionSynthesis,
   type SharedDecisionSynthesisInput,
 } from "./decision-synthesis.js";
+export {
+  ASSUMPTION_INVALIDATION_OPERATION,
+  ASSUMPTION_INVALIDATION_PROMPT_VERSION,
+  ASSUMPTION_INVALIDATION_SCHEMA_VERSION,
+  AssumptionInvalidationModelOutputSchema,
+  DeterministicAssumptionInvalidationModel,
+  OpenAiAssumptionInvalidationEvaluator,
+  OpenAiAssumptionInvalidationModel,
+  createOpenAiAssumptionInvalidationEvaluator,
+  type AssumptionInvalidationAiEnvelope,
+  type AssumptionInvalidationCandidate,
+  type AssumptionInvalidationEvaluation,
+  type AssumptionInvalidationEvaluationInput,
+  type AssumptionInvalidationModel,
+  type AssumptionInvalidationModelRequest,
+  type AssumptionInvalidationModelResult,
+  type OpenAiAssumptionInvalidationEvaluatorOptions,
+  type OpenAiAssumptionInvalidationModelOptions,
+} from "./invalidation-evaluation.js";

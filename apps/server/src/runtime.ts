@@ -19,11 +19,14 @@ import {
   SystemClock,
 } from "@counterpoint/adapters-node";
 import {
+  createOpenAiAssumptionInvalidationEvaluator,
   createOpenAiPrivateDisclosureProposer,
   createOpenAiSharedDecisionSynthesizer,
+  DeterministicAssumptionInvalidationModel,
   DeterministicPrivateDisclosureModel,
   DeterministicSharedDecisionModel,
   OpenAiPrivateDisclosureProposer,
+  OpenAiAssumptionInvalidationEvaluator,
   OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
 import type {
@@ -31,6 +34,7 @@ import type {
   DecisionDependencies,
   DisclosureDependencies,
   ExternalEventDependencies,
+  InvalidationEvaluationDependencies,
 } from "@counterpoint/application";
 import {
   domainEventTypes,
@@ -57,6 +61,7 @@ export interface ServerRuntime {
   readonly decisions: DecisionDependencies;
   readonly disclosures: DisclosureDependencies;
   readonly externalEvents: ExternalEventDependencies;
+  readonly invalidationEvaluations: InvalidationEvaluationDependencies;
   readonly facilitatorUserIds: ReadonlySet<string>;
   readonly ids: IdGenerator;
   readonly identities: IdentityRepository;
@@ -119,6 +124,30 @@ function decisionSynthesizer(configuration: ServerConfiguration) {
     throw new Error("Live OpenAI mode requires a server-side API key");
   }
   return createOpenAiSharedDecisionSynthesizer({
+    apiKey: configuration.openAiApiKey,
+    logger: {
+      log(entry) {
+        console.info(JSON.stringify(entry));
+      },
+    },
+    model: configuration.openAiModel,
+  });
+}
+
+function invalidationEvaluator(configuration: ServerConfiguration) {
+  if (configuration.openAiMode === "disabled") {
+    return undefined;
+  }
+  if (configuration.openAiMode === "deterministic") {
+    return new OpenAiAssumptionInvalidationEvaluator({
+      model: configuration.openAiModel,
+      modelAdapter: new DeterministicAssumptionInvalidationModel(),
+    });
+  }
+  if (configuration.openAiApiKey === undefined) {
+    throw new Error("Live OpenAI mode requires a server-side API key");
+  }
+  return createOpenAiAssumptionInvalidationEvaluator({
     apiKey: configuration.openAiApiKey,
     logger: {
       log(entry) {
@@ -240,6 +269,8 @@ export async function createLocalServerRuntime(
     }
     const configuredCandidateProposer = candidateProposer(configuration);
     const configuredDecisionSynthesizer = decisionSynthesizer(configuration);
+    const configuredInvalidationEvaluator =
+      invalidationEvaluator(configuration);
     const events = new SqliteEventStore(
       database,
       createJsonCodec(parseStoredDomainEvent),
@@ -291,6 +322,16 @@ export async function createLocalServerRuntime(
       externalEvents: {
         clock,
         events,
+        ids,
+        projections,
+      },
+      invalidationEvaluations: {
+        clock,
+        ...(configuredInvalidationEvaluator === undefined
+          ? {}
+          : { evaluator: configuredInvalidationEvaluator }),
+        events,
+        hash: sha256,
         ids,
         projections,
       },

@@ -8,6 +8,7 @@ import {
   InjectDemoRegulatoryChangeResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListInvalidationEvaluationsResponseSchema,
   ListSharedDecisionsResponseSchema,
   ListSharedExternalEventsResponseSchema,
   ListSharedEvidenceResponseSchema,
@@ -36,6 +37,7 @@ import {
   type ListSharedDecisionsResponse,
   type ListSharedExternalEventsResponse,
   type ListSharedEvidenceResponse,
+  type ListInvalidationEvaluationsResponse,
   type MarkDecisionReadyRequest,
   type MarkDecisionReadyResponse,
   type PreviewDisclosureResponse,
@@ -58,6 +60,7 @@ export type {
   DecisionHistoryQuery,
   DecisionHistoryResponse,
   InjectDemoRegulatoryChangeResponse,
+  ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
   DispositionSharedDecisionCandidateResponse,
   MarkDecisionReadyRequest,
@@ -323,6 +326,19 @@ export async function listSharedExternalEvents(
     session,
   );
   return ListSharedExternalEventsResponseSchema.parse(body);
+}
+
+export async function listInvalidationEvaluations(
+  session: StoredSession,
+  meetingId: string,
+  signal?: AbortSignal,
+): Promise<ListInvalidationEvaluationsResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/invalidation-evaluations`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return ListInvalidationEvaluationsResponseSchema.parse(body);
 }
 
 export async function joinMeeting(

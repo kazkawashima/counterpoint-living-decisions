@@ -6,6 +6,7 @@ import type {
   DecisionHistoryResponse,
   DispositionSharedDecisionCandidateResponse,
   ExternalEventReceipt,
+  InvalidationEvaluation,
   PreviewDisclosureResponse,
   SharedEvidence,
   SharedDecisionSynthesisCandidate,
@@ -22,6 +23,7 @@ import {
   injectDemoRegulatoryChange,
   joinMeeting,
   listMeetings,
+  listInvalidationEvaluations,
   listSharedDecisions,
   listSharedEvidence,
   listSharedExternalEvents,
@@ -390,9 +392,11 @@ interface DecisionDraftForm {
 function SharedDecisionCard({
   decision,
   externalEvent,
+  invalidation,
 }: {
   readonly decision: DecisionView;
   readonly externalEvent: ExternalEventReceipt | undefined;
+  readonly invalidation: InvalidationEvaluation | undefined;
 }) {
   const readinessCount = Object.values(decision.readiness).filter(
     Boolean,
@@ -401,13 +405,17 @@ function SharedDecisionCard({
   return (
     <section
       aria-labelledby={`shared-decision-${decision.decisionId}`}
-      className="shared-decision-card"
+      className={`shared-decision-card${invalidation === undefined ? "" : " at-risk"}`}
     >
       <div className="shared-decision-seal" aria-hidden="true">
-        ✓
+        {invalidation === undefined ? "✓" : "!"}
       </div>
       <div>
-        <p className="zone-label shared">Shared · Human committed</p>
+        <p className="zone-label shared">
+          {invalidation === undefined
+            ? "Shared · Human committed"
+            : "Shared · AI inferred risk"}
+        </p>
         <h2 id={`shared-decision-${decision.decisionId}`}>
           {decision.snapshot.title}
         </h2>
@@ -432,7 +440,25 @@ function SharedDecisionCard({
         <div className="shared-regulatory-event">
           <span>External event received</span>
           <strong>{externalEvent.jurisdiction}</strong>
-          <small>Evaluation pending · Decision remains MONITORING</small>
+          <small>
+            {invalidation === undefined
+              ? "Evaluation pending · Decision remains MONITORING"
+              : "Evaluation recorded · Human review still required"}
+          </small>
+        </div>
+      )}
+      {invalidation === undefined ? null : (
+        <div className="shared-risk-suggestion" role="status">
+          <span>AT_RISK · AI suggestion</span>
+          <strong>
+            {Math.round(invalidation.confidence * 100)}% confidence
+          </strong>
+          <p>{invalidation.reason}</p>
+          <small>
+            {invalidation.affectedPremiseIds.length} affected premise ·{" "}
+            {invalidation.affectedActionIds.length} affected Action · no
+            automatic review confirmation
+          </small>
         </div>
       )}
     </section>
@@ -443,9 +469,11 @@ function FacilitatorDecisionPanel({
   evidence,
   existingDecision,
   existingExternalEvent,
+  existingInvalidation,
   meeting,
   onDecisionChange,
   onExternalEventChange,
+  onInvalidationChange,
   onPositionChange,
   position,
   session,
@@ -453,15 +481,18 @@ function FacilitatorDecisionPanel({
   readonly evidence: SharedEvidence;
   readonly existingDecision: DecisionView | undefined;
   readonly existingExternalEvent: ExternalEventReceipt | undefined;
+  readonly existingInvalidation: InvalidationEvaluation | undefined;
   readonly meeting: AssignedMeeting;
   readonly onDecisionChange: (decision: DecisionView) => void;
   readonly onExternalEventChange: (event: ExternalEventReceipt) => void;
+  readonly onInvalidationChange: (evaluation: InvalidationEvaluation) => void;
   readonly onPositionChange: (position: AssignedMeeting["position"]) => void;
   readonly position: AssignedMeeting["position"];
   readonly session: StoredSession;
 }) {
   const [phase, setPhase] = useState<
     | "ai-unavailable"
+    | "at-risk"
     | "candidate"
     | "committed"
     | "committing"
@@ -477,15 +508,17 @@ function FacilitatorDecisionPanel({
     | "starting-monitor"
     | "synthesizing"
   >(
-    existingDecision?.status === "MONITORING"
-      ? "monitoring"
-      : existingDecision?.status === "COMMITTED"
-        ? "committed"
-        : existingDecision?.status === "DECISION_READY"
-          ? "ready"
-          : existingDecision?.status === "DRAFT"
-            ? "draft"
-            : "idle",
+    existingDecision?.status === "AT_RISK"
+      ? "at-risk"
+      : existingDecision?.status === "MONITORING"
+        ? "monitoring"
+        : existingDecision?.status === "COMMITTED"
+          ? "committed"
+          : existingDecision?.status === "DECISION_READY"
+            ? "ready"
+            : existingDecision?.status === "DRAFT"
+              ? "draft"
+              : "idle",
   );
   const [candidate, setCandidate] =
     useState<SharedDecisionSynthesisCandidate>();
@@ -497,6 +530,7 @@ function FacilitatorDecisionPanel({
   const [history, setHistory] = useState<DecisionHistoryResponse>();
   const [audit, setAudit] = useState<DecisionAuditResponse>();
   const [externalEvent, setExternalEvent] = useState(existingExternalEvent);
+  const [invalidation, setInvalidation] = useState(existingInvalidation);
   const [receivingExternalEvent, setReceivingExternalEvent] = useState(false);
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<DecisionDraftForm>({
@@ -526,7 +560,8 @@ function FacilitatorDecisionPanel({
   useEffect(() => {
     if (
       existingDecision?.status !== "COMMITTED" &&
-      existingDecision?.status !== "MONITORING"
+      existingDecision?.status !== "MONITORING" &&
+      existingDecision?.status !== "AT_RISK"
     ) {
       return;
     }
@@ -853,6 +888,31 @@ function FacilitatorDecisionPanel({
       advancePosition(response.position);
       setExternalEvent(response.event);
       onExternalEventChange(response.event);
+      const [evaluationState, decisionState, nextAudit] = await Promise.all([
+        listInvalidationEvaluations(session, meeting.meetingId),
+        listSharedDecisions(session, meeting.meetingId),
+        decision === undefined
+          ? Promise.resolve(undefined)
+          : getDecisionAudit(session, {
+              decisionId: decision.decisionId,
+              meetingId: meeting.meetingId,
+            }),
+      ]);
+      const nextEvaluation = evaluationState.evaluations.at(-1);
+      const nextDecision = decisionState.decisions.at(-1);
+      if (nextEvaluation !== undefined && nextDecision !== undefined) {
+        setInvalidation(nextEvaluation);
+        onInvalidationChange(nextEvaluation);
+        setDecision(nextDecision);
+        onDecisionChange(nextDecision);
+        setAudit(nextAudit);
+        advancePosition(
+          evaluationState.position >= decisionState.position
+            ? evaluationState.position
+            : decisionState.position,
+        );
+        setPhase("at-risk");
+      }
     } catch (cause) {
       setError(messageFor(cause));
     } finally {
@@ -1152,15 +1212,24 @@ function FacilitatorDecisionPanel({
         </div>
       ) : null}
 
-      {(phase === "committed" || phase === "monitoring") &&
+      {(phase === "committed" ||
+        phase === "monitoring" ||
+        phase === "at-risk") &&
       decision !== undefined ? (
-        <div className="committed-decision" aria-live="polite">
+        <div
+          className={`committed-decision${phase === "at-risk" ? " at-risk" : ""}`}
+          aria-live="polite"
+        >
           <div className="commit-seal" aria-hidden="true">
-            <span>✓</span>
+            <span>{phase === "at-risk" ? "!" : "✓"}</span>
           </div>
           <div>
             <p className="zone-label shared">
-              {phase === "monitoring" ? "Monitoring active" : "Human committed"}
+              {phase === "at-risk"
+                ? "AT_RISK · AI suggestion"
+                : phase === "monitoring"
+                  ? "Monitoring active"
+                  : "Human committed"}
             </p>
             <h3>{decision.snapshot.title}</h3>
             <p>{decision.snapshot.outcome}</p>
@@ -1233,9 +1302,39 @@ function FacilitatorDecisionPanel({
               <strong>{externalEvent.jurisdiction}</strong>
               <p>{externalEvent.description}</p>
               <small>
-                Evaluation pending · Decision remains MONITORING · Effective{" "}
-                {externalEvent.effectiveAt.slice(0, 10)}
+                {invalidation === undefined
+                  ? "Evaluation pending · Decision remains MONITORING"
+                  : "Evaluation recorded · Human review still required"}{" "}
+                · Effective {externalEvent.effectiveAt.slice(0, 10)}
               </small>
+            </div>
+          )}
+          {invalidation === undefined ? null : (
+            <div className="invalidation-risk-pulse" role="status">
+              <div className="risk-pulse-orbit" aria-hidden="true">
+                <span>!</span>
+              </div>
+              <div>
+                <span>AI inferred · Human review required</span>
+                <strong>
+                  Assumption invalidation suggested ·{" "}
+                  {Math.round(invalidation.confidence * 100)}%
+                </strong>
+                <p>{invalidation.reason}</p>
+                <div className="risk-reference-chain">
+                  <span>
+                    Premise {invalidation.affectedPremiseIds[0]?.slice(0, 12)}…
+                  </span>
+                  <span aria-hidden="true">→</span>
+                  <span>
+                    Action {invalidation.affectedActionIds[0]?.slice(0, 12)}…
+                  </span>
+                </div>
+                <small>
+                  Revision {decision.activeRevision} remains immutable ·
+                  REVIEW_REQUIRED has not been confirmed
+                </small>
+              </div>
             </div>
           )}
         </div>
@@ -1279,6 +1378,8 @@ function WorkspaceShell({
   const [sharedDecision, setSharedDecision] = useState<DecisionView>();
   const [sharedExternalEvent, setSharedExternalEvent] =
     useState<ExternalEventReceipt>();
+  const [sharedInvalidation, setSharedInvalidation] =
+    useState<InvalidationEvaluation>();
   const [error, setError] = useState<string>();
   const [selectedSnippet, setSelectedSnippet] = useState(
     SYNTHETIC_EXACT_SNIPPET,
@@ -1298,21 +1399,35 @@ function WorkspaceShell({
       listSharedEvidence(session, meeting.meetingId, controller.signal),
       listSharedDecisions(session, meeting.meetingId, controller.signal),
       listSharedExternalEvents(session, meeting.meetingId, controller.signal),
+      listInvalidationEvaluations(
+        session,
+        meeting.meetingId,
+        controller.signal,
+      ),
     ])
-      .then(([evidenceState, decisionState, externalEventState]) => {
-        const nextPosition =
-          evidenceState.position >= decisionState.position &&
-          evidenceState.position >= externalEventState.position
-            ? evidenceState.position
-            : decisionState.position >= externalEventState.position
-              ? decisionState.position
-              : externalEventState.position;
-        setPosition(nextPosition);
-        onPositionChange(nextPosition);
-        setEvidence(evidenceState.evidence.at(-1));
-        setSharedDecision(decisionState.decisions.at(-1));
-        setSharedExternalEvent(externalEventState.events.at(-1));
-      })
+      .then(
+        ([
+          evidenceState,
+          decisionState,
+          externalEventState,
+          invalidationState,
+        ]) => {
+          const nextPosition = [
+            decisionState.position,
+            externalEventState.position,
+            invalidationState.position,
+          ].reduce(
+            (latest, current) => (current >= latest ? current : latest),
+            evidenceState.position,
+          );
+          setPosition(nextPosition);
+          onPositionChange(nextPosition);
+          setEvidence(evidenceState.evidence.at(-1));
+          setSharedDecision(decisionState.decisions.at(-1));
+          setSharedExternalEvent(externalEventState.events.at(-1));
+          setSharedInvalidation(invalidationState.evaluations.at(-1));
+        },
+      )
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           setError(messageFor(cause));
@@ -1711,18 +1826,22 @@ function WorkspaceShell({
               evidence={evidence}
               existingDecision={sharedDecision}
               existingExternalEvent={sharedExternalEvent}
+              existingInvalidation={sharedInvalidation}
               meeting={meeting}
               onDecisionChange={setSharedDecision}
               onExternalEventChange={setSharedExternalEvent}
+              onInvalidationChange={setSharedInvalidation}
               onPositionChange={advancePosition}
               position={position}
               session={session}
             />
           ) : sharedDecision?.status === "COMMITTED" ||
-            sharedDecision?.status === "MONITORING" ? (
+            sharedDecision?.status === "MONITORING" ||
+            sharedDecision?.status === "AT_RISK" ? (
             <SharedDecisionCard
               decision={sharedDecision}
               externalEvent={sharedExternalEvent}
+              invalidation={sharedInvalidation}
             />
           ) : (
             <div className="readiness-card">

@@ -9,6 +9,7 @@ import {
   HealthResponseSchema,
   HTTP_API_V1_PREFIX,
   InjectDemoRegulatoryChangeRequestSchema,
+  InvalidationEvaluationSchema,
   JoinMeetingByCodeRequestSchema,
   ListAssignedMeetingsRequestSchema,
   LoginRequestSchema,
@@ -335,6 +336,51 @@ describe("strict v1 HTTP protocol", () => {
         idempotencyKey: "demo-event-1",
         actor: { kind: "system" },
         description: request.description,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps invalidation evaluation separate from receipt and human review", () => {
+    const response = {
+      correlationId: "correlation-1",
+      evaluation: {
+        affectedActionIds: ["action-1"],
+        affectedPremiseIds: ["premise-1"],
+        confidence: 0.91,
+        decision: {
+          ...monitoringDecision,
+          status: "AT_RISK",
+          snapshot: { ...monitoringDecision.snapshot, status: "AT_RISK" },
+        },
+        evidenceReferenceIds: ["evidence-1"],
+        externalEventId: "external-event-1",
+        generatedAt: "2026-07-19T12:01:00.000Z",
+        inputReferenceIds: [
+          "external-event-1",
+          "decision-revision-2",
+          "premise-1",
+          "action-1",
+          "evidence-1",
+        ],
+        model: "gpt-5.6",
+        operation: "assumption_invalidation",
+        outputSchemaVersion: "1",
+        promptVersion: "assumption-invalidation-v1",
+        reason:
+          "The synthetic regulatory event may invalidate the confirmed gate.",
+        suggestionId: "suggestion-1",
+      },
+      meetingId: "meeting-1",
+      position: 13,
+      replayed: false,
+    };
+    expect(
+      InvalidationEvaluationSchema.safeParse(response.evaluation).success,
+    ).toBe(true);
+    expect(
+      InvalidationEvaluationSchema.safeParse({
+        ...response.evaluation,
+        reviewConfirmed: true,
       }).success,
     ).toBe(false);
   });

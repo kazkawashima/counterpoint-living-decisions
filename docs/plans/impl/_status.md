@@ -5,8 +5,8 @@ Updated: 2026-07-19
 ## Current phase
 
 **Foundation, permissioned disclosure, private/shared AI assistance, Decision
-commitment, production-like Compose, monitoring, and external-event receipt
-are complete; invalidation evaluation and human review are next.**
+commitment, production-like Compose, monitoring, external-event receipt, and
+GPT-5.6 invalidation evaluation are complete; human review is next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -138,10 +138,23 @@ The canonical implementation-facing artifacts are:
   participants while the Decision remains `MONITORING`; invalid signatures
   append nothing. Two new screenshots and the extended reel clip document the
   state.
+- D4 builds a bounded model input only from the immutable active committed
+  revision, confirmed shared premises/Evidence/Actions, monitor condition, and
+  normalized external event. Both the OpenAI adapter and application layer
+  reject invented or incoherent references.
+- Successful evaluation atomically appends AI-authored
+  `AssumptionInvalidationSuggested` and system-authored
+  `DecisionMarkedAtRisk`; the suggestion causally follows receipt, preserves
+  model/prompt/schema/input provenance, and leaves the committed revision
+  unchanged. `REVIEW_REQUIRED`, Action hold, and task creation remain absent.
+- Live synthetic D4 smoke succeeded with `gpt-5.6-sol`, schema version 1,
+  grounded premise/Action/external-source references, 667 total tokens, and no
+  retry. Browser proof covers facilitator and participant `AT_RISK`, reload,
+  mobile, reduced motion, three screenshots, and the extended reel clip.
 
 ## In progress
 
-- Evaluate a received external event against the active committed revision.
+- Add facilitator confirm/reject review from `AT_RISK`.
 - Complete the versioned capability surface and realtime resume path.
 
 ## Not started
@@ -151,12 +164,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue D4 in
+Continue D5 in
 [`04-commitment-and-living-decision.md`](../04-commitment-and-living-decision.md):
-build a bounded GPT-5.6 invalidation evaluation from the immutable active
-revision and received external event, validate every affected reference,
-append the suggestion with model provenance, and move the Decision to
-`AT_RISK`. Keep review confirmation human-only.
+show the affected premise, Evidence, and Action to the facilitator, require an
+explicit confirm or reject reason, and keep `AT_RISK` separate from
+human-confirmed `REVIEW_REQUIRED`.
 
 ## Open gates
 

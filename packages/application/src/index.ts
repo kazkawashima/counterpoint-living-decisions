@@ -85,6 +85,18 @@ export {
   type RegulatoryChangeInput,
 } from "./external-events.js";
 export {
+  evaluateAssumptionInvalidation,
+  listAssumptionInvalidationEvaluations,
+  type AssumptionInvalidationCandidate,
+  type AssumptionInvalidationEvaluation,
+  type AssumptionInvalidationEvaluationInput,
+  type AssumptionInvalidationEvaluator,
+  type EvaluateAssumptionInvalidationInput,
+  type EvaluateAssumptionInvalidationResult,
+  type InvalidationEvaluationDependencies,
+  type InvalidationEvaluationView,
+} from "./invalidation-evaluations.js";
+export {
   createMeeting,
   joinMeetingByCode,
   listAssignedMeetings,

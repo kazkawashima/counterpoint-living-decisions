@@ -20,6 +20,7 @@ import {
   ErrorEnvelopeSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
+  ListInvalidationEvaluationsResponseSchema,
   ListSharedDecisionsResponseSchema,
   ListSharedEvidenceResponseSchema,
   ListSharedExternalEventsResponseSchema,
@@ -651,6 +652,16 @@ describe("Node HTTP flagship shell", () => {
       OPENAI_FAKE_MODE: "deterministic",
       REGULATORY_WEBHOOK_SECRET: WEBHOOK_SECRET,
     });
+    const receiptOnlyApp = createServerApp({
+      ...runtime,
+      invalidationEvaluations: {
+        clock: runtime.invalidationEvaluations.clock,
+        events: runtime.invalidationEvaluations.events,
+        hash: runtime.invalidationEvaluations.hash,
+        ids: runtime.invalidationEvaluations.ids,
+        projections: runtime.invalidationEvaluations.projections,
+      },
+    });
     const facilitator = await login(app, "product", "counterpoint-product");
     const participant = await login(app, "safety", "counterpoint-safety");
     const meetingId = "meeting-global-ai-rollout";
@@ -1106,7 +1117,7 @@ describe("Node HTTP flagship shell", () => {
     const webhookUrl =
       `/api/v1/webhooks/regulatory-changes/${meetingId}/` +
       monitoring.monitorRegistrationId;
-    const invalidWebhook = await app.request(webhookUrl, {
+    const invalidWebhook = await receiptOnlyApp.request(webhookUrl, {
       body: regulatoryRawBody,
       headers: {
         "content-type": "application/json",
@@ -1125,7 +1136,7 @@ describe("Node HTTP flagship shell", () => {
       ),
       "x-counterpoint-webhook-timestamp": webhookTimestamp,
     };
-    const webhookResponse = await app.request(webhookUrl, {
+    const webhookResponse = await receiptOnlyApp.request(webhookUrl, {
       body: regulatoryRawBody,
       headers: webhookHeaders,
       method: "POST",
@@ -1144,7 +1155,7 @@ describe("Node HTTP flagship shell", () => {
       replayed: false,
     });
 
-    const replayedWebhook = await app.request(webhookUrl, {
+    const replayedWebhook = await receiptOnlyApp.request(webhookUrl, {
       body: regulatoryRawBody,
       headers: webhookHeaders,
       method: "POST",
@@ -1168,7 +1179,7 @@ describe("Node HTTP flagship shell", () => {
       description:
         "A changed payload must not overwrite the durable original receipt.",
     });
-    const conflictingWebhook = await app.request(webhookUrl, {
+    const conflictingWebhook = await receiptOnlyApp.request(webhookUrl, {
       body: conflictingRegulatoryRawBody,
       headers: {
         "content-type": "application/json",
@@ -1259,6 +1270,48 @@ describe("Node HTTP flagship shell", () => {
         await listedExternalEventsResponse.json(),
       ).events,
     ).toHaveLength(2);
+    const invalidationResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/invalidation-evaluations`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(invalidationResponse.status).toBe(200);
+    const invalidations = ListInvalidationEvaluationsResponseSchema.parse(
+      await invalidationResponse.json(),
+    );
+    expect(invalidations.evaluations).toHaveLength(1);
+    expect(invalidations.evaluations[0]).toMatchObject({
+      affectedActionIds: [disposition.actions[0]?.actionId],
+      affectedPremiseIds: [disposition.premises[0]?.premiseId],
+      decision: {
+        status: "AT_RISK",
+        snapshot: { status: "AT_RISK" },
+      },
+      externalEventId: demoReceipt.event.eventId,
+      operation: "assumption_invalidation",
+      outputSchemaVersion: "1",
+    });
+    const livingDecisionEvents = (
+      await runtime.decisions.events.load(meetingId)
+    ).filter(({ event }) =>
+      ["AssumptionInvalidationSuggested", "DecisionMarkedAtRisk"].includes(
+        event.eventType,
+      ),
+    );
+    expect(livingDecisionEvents.map(({ event }) => event.eventType)).toEqual([
+      "AssumptionInvalidationSuggested",
+      "DecisionMarkedAtRisk",
+    ]);
+    expect(livingDecisionEvents[0]?.event.actor.kind).toBe("ai");
+    expect(livingDecisionEvents[1]?.event.actor.kind).toBe("system");
+    expect(
+      livingDecisionEvents.some(
+        ({ event }) => event.eventType === "DecisionReviewRequired",
+      ),
+    ).toBe(false);
 
     const staleReady = await app.request("/api/v1/decisions/ready", {
       body: JSON.stringify({
@@ -1279,7 +1332,9 @@ describe("Node HTTP flagship shell", () => {
     const sharedJson = JSON.stringify(
       records.filter(({ event }) => event.visibility === "shared"),
     );
-    expect(sharedJson).not.toContain("gpt-5.6");
+    expect(sharedJson).toContain("deterministic-assumption-invalidation");
+    expect(sharedJson).toContain("assumption_invalidation");
+    expect(sharedJson).not.toContain("shared-decision-v1");
     expect(
       records.filter(
         ({ event }) =>

@@ -12,8 +12,9 @@ payload, customer data, or regulation appears in the captures.
 | Participant shared receipt | Mobile, 390×844, reduced motion | Reuse the updated mobile Decision capture to show the event receipt without relying on animation. |
 
 The updated clip under `docs/media/clips/decision-commit/` now continues from
-candidate synthesis through commitment, monitor registration, and the staged
-external-event receipt. Keep the `Staged demo event` label in frame.
+candidate synthesis through commitment, monitor registration, the staged
+external-event receipt, and the separate D4 `AT_RISK` evaluation. Keep the
+`Staged demo event` label in frame before the risk pulse lands.
 
 Useful narration:
 

@@ -904,6 +904,26 @@ export const InjectDemoRegulatoryChangeRequestSchema = z.strictObject({
 });
 export const InjectDemoRegulatoryChangeResponseSchema =
   RegulatoryChangeWebhookResponseSchema;
+export const InvalidationEvaluationSchema = z.strictObject({
+  affectedActionIds: z.array(ActionIdSchema).min(1),
+  affectedPremiseIds: z.array(PremiseIdSchema).min(1),
+  confidence: z.number().min(0).max(1),
+  decision: DecisionSchema,
+  evidenceReferenceIds: z.array(OpaqueIdSchema).min(1),
+  externalEventId: ExternalEventIdSchema,
+  generatedAt: UtcIsoTimestampSchema,
+  inputReferenceIds: z.array(OpaqueIdSchema).min(1),
+  model: NonEmptyTextSchema,
+  operation: z.literal("assumption_invalidation"),
+  outputSchemaVersion: z.literal("1"),
+  promptVersion: NonEmptyTextSchema,
+  reason: NonEmptyTextSchema,
+  suggestionId: OpaqueIdSchema,
+});
+export const ListInvalidationEvaluationsResponseSchema = z.strictObject({
+  ...MeetingMutationReceiptShape,
+  evaluations: z.array(InvalidationEvaluationSchema),
+});
 export const DecisionHistoryQuerySchema = z.strictObject({
   meetingId: MeetingIdSchema,
   decisionId: DecisionIdSchema,
@@ -967,6 +987,12 @@ export type InjectDemoRegulatoryChangeRequest = z.infer<
 >;
 export type InjectDemoRegulatoryChangeResponse = z.infer<
   typeof InjectDemoRegulatoryChangeResponseSchema
+>;
+export type InvalidationEvaluation = z.infer<
+  typeof InvalidationEvaluationSchema
+>;
+export type ListInvalidationEvaluationsResponse = z.infer<
+  typeof ListInvalidationEvaluationsResponseSchema
 >;
 export type DecisionHistoryQuery = z.infer<typeof DecisionHistoryQuerySchema>;
 export type DecisionHistoryResponse = z.infer<

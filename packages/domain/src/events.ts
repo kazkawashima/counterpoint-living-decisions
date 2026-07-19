@@ -24,6 +24,7 @@ import type {
   ContentHash,
   CorrelationId,
   DecisionId,
+  DecisionRevisionId,
   DisclosureId,
   DisplayTokenId,
   EventId,
@@ -276,11 +277,17 @@ export interface DomainEventPayloads {
   readonly AssumptionInvalidationSuggested: {
     readonly suggestionId: SuggestionId;
     readonly decisionId: DecisionId;
+    readonly activeRevisionId: DecisionRevisionId;
     readonly externalEventId: ExternalEventId;
     readonly affectedPremiseIds: readonly PremiseId[];
     readonly affectedActionIds: readonly ActionId[];
     readonly evidenceReferenceIds: readonly SourceReferenceId[];
     readonly metadata: AiSuggestionMetadata;
+    readonly provenance: {
+      readonly generatedAt: Timestamp;
+      readonly operation: NonEmptyText;
+      readonly outputSchemaVersion: NonEmptyText;
+    };
   };
   readonly DecisionMarkedAtRisk: {
     readonly decision: Decision;
