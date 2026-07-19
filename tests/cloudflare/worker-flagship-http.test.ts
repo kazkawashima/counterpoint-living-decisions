@@ -4,6 +4,11 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
+import {
+  PreviewDisclosureResponseSchema,
+  ProposeDisclosureResponseSchema,
+  RegisterPrivateTextSourceFixtureResponseSchema,
+} from "@counterpoint/protocol";
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 
@@ -126,6 +131,13 @@ describe("Cloudflare Worker hosted flagship API", () => {
       });
     }
 
+    const sourceText =
+      "The rollout needs a staged pilot and an explicit owner.";
+    const exactSnippet = "staged pilot";
+    const sourceRange = {
+      end: sourceText.indexOf(exactSnippet) + exactSnippet.length,
+      start: sourceText.indexOf(exactSnippet),
+    };
     const sourceResponse = await handler.fetch!(
       workerRequest(
         new Request("https://203.0.113.7/api/v1/disclosures/sources/text", {
@@ -133,7 +145,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
             expectedPosition: 0,
             idempotencyKey: "worker-flagship-text-source",
             meetingId: FLAGSHIP_MEETING_ID,
-            text: "The rollout needs a staged pilot and an explicit owner.",
+            text: sourceText,
             title: "Rollout pilot note",
           }),
           headers: { ...authorization, "content-type": "application/json" },
@@ -144,14 +156,86 @@ describe("Cloudflare Worker hosted flagship API", () => {
       {} as ExecutionContext,
     );
     expect(sourceResponse.status).toBe(201);
-    await expect(json(sourceResponse)).resolves.toMatchObject({
+    const sourceBody = RegisterPrivateTextSourceFixtureResponseSchema.parse(
+      await json(sourceResponse),
+    );
+    expect(sourceBody).toMatchObject({
       meetingId: FLAGSHIP_MEETING_ID,
       position: 1,
       source: {
-        text: "The rollout needs a staged pilot and an explicit owner.",
+        text: sourceText,
         title: "Rollout pilot note",
       },
     });
+
+    const proposeResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/disclosures/proposals", {
+          body: JSON.stringify({
+            assistance: "manual",
+            exactSnippet,
+            expectedPosition: 1,
+            idempotencyKey: "worker-flagship-disclosure-proposal",
+            meetingId: FLAGSHIP_MEETING_ID,
+            sourceArtifactId: sourceBody.source.sourceArtifactId,
+            sourceRange,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(proposeResponse.status).toBe(201);
+    const proposeBody = ProposeDisclosureResponseSchema.parse(
+      await json(proposeResponse),
+    );
+    expect(proposeBody).toMatchObject({
+      candidate: {
+        outgoingPayload: {
+          exactSnippet,
+          sourceArtifactId: sourceBody.source.sourceArtifactId,
+          sourceRange,
+        },
+        state: "proposed",
+      },
+      origin: "human_selected",
+      position: 2,
+    });
+
+    const previewResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/disclosures/preview", {
+          body: JSON.stringify({
+            candidateId: proposeBody.candidate.candidateId,
+            exactSnippet,
+            expectedPosition: 2,
+            idempotencyKey: "worker-flagship-disclosure-preview",
+            meetingId: FLAGSHIP_MEETING_ID,
+            sourceRange,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(previewResponse.status).toBe(200);
+    const previewBody = PreviewDisclosureResponseSchema.parse(
+      await json(previewResponse),
+    );
+    expect(previewBody).toMatchObject({
+      candidateId: proposeBody.candidate.candidateId,
+      outgoingPayload: {
+        exactSnippet,
+        sourceArtifactId: sourceBody.source.sourceArtifactId,
+        sourceRange,
+      },
+      position: 3,
+    });
+    expect(previewBody.previewHash).toEqual(expect.any(String));
 
     const projectionAfterSourceResponse = await handler.fetch!(
       workerRequest(
@@ -168,9 +252,10 @@ describe("Cloudflare Worker hosted flagship API", () => {
       privateWorkspace: {
         sources: [
           expect.objectContaining({
-            text: "The rollout needs a staged pilot and an explicit owner.",
+            text: sourceText,
           }),
         ],
+        disclosureCandidates: [expect.objectContaining({ state: "previewed" })],
       },
     });
   });

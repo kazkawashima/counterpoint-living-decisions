@@ -4,6 +4,8 @@ import {
   listAssignedMeetings,
   login,
   logout,
+  previewDisclosure,
+  proposeDisclosure,
   registerPrivateTextSource,
   resolveMeetingAuthorization,
   type DisclosureDependencies,
@@ -57,9 +59,15 @@ import {
   LoginResponseSchema,
   LogoutRequestSchema,
   LogoutResponseSchema,
+  PreviewDisclosureRequestSchema,
+  PreviewDisclosureResponseSchema,
+  ProposeDisclosureRequestSchema,
+  ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RoleProjectionQuerySchema,
+  type PreviewDisclosureRequest,
+  type ProposeDisclosureRequest,
   type RegisterPrivateTextSourceFixtureRequest,
 } from "@counterpoint/protocol";
 
@@ -89,6 +97,8 @@ export type WorkerFlagshipOperation =
   | "login"
   | "logout"
   | "meetings"
+  | "preview-disclosure"
+  | "propose-disclosure"
   | "projection"
   | "register-text-source";
 
@@ -347,6 +357,78 @@ function invalidationEvaluationView(evaluation: InvalidationEvaluationView) {
   };
 }
 
+function privateDisclosureCandidates(
+  events: readonly DomainEvent[],
+  participantId: string,
+) {
+  const candidates = new Map<
+    string,
+    {
+      candidateId: string;
+      outgoingPayload: {
+        exactSnippet: string;
+        sourceArtifactId: string;
+        sourceRange: { end: number; start: number };
+      };
+      previewHash?: string;
+      state: "approved" | "previewed" | "proposed" | "rejected";
+    }
+  >();
+  for (const event of events) {
+    if (
+      event.visibility !== "private" ||
+      event.ownerParticipantId !== participantId
+    ) {
+      continue;
+    }
+    switch (event.eventType) {
+      case "DisclosureProposed":
+        candidates.set(String(event.payload.disclosureId), {
+          candidateId: String(event.payload.disclosureId),
+          outgoingPayload: event.payload.outgoingPayload,
+          state: "proposed",
+        });
+        break;
+      case "DisclosurePreviewed": {
+        const candidateId = String(event.payload.disclosureId);
+        const prior = candidates.get(candidateId);
+        if (prior !== undefined) {
+          candidates.set(candidateId, {
+            ...prior,
+            outgoingPayload: event.payload.outgoingPayload,
+            previewHash: event.payload.previewHash,
+            state: "previewed",
+          });
+        }
+        break;
+      }
+      case "DisclosureApproved": {
+        const candidateId = String(event.payload.disclosureId);
+        const prior = candidates.get(candidateId);
+        if (prior !== undefined) {
+          candidates.set(candidateId, {
+            ...prior,
+            previewHash: event.payload.previewHash,
+            state: "approved",
+          });
+        }
+        break;
+      }
+      case "DisclosureRejected": {
+        const candidateId = String(event.payload.disclosureId);
+        const prior = candidates.get(candidateId);
+        if (prior !== undefined) {
+          candidates.set(candidateId, { ...prior, state: "rejected" });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return [...candidates.values()];
+}
+
 async function assignedMeeting(
   dependencies: WorkerFlagshipHttpDependencies,
   meetingId: string,
@@ -452,7 +534,10 @@ async function roleProjection(
     },
     privateWorkspace: {
       artifacts: [],
-      disclosureCandidates: [],
+      disclosureCandidates: privateDisclosureCandidates(
+        events,
+        authorization.participantId,
+      ),
       inferenceSuggestions: [],
       sources: privateSources,
       utterances: (privateWorkspace?.utterances ?? []).map(utteranceView),
@@ -549,6 +634,8 @@ export async function handleWorkerFlagshipHttp(input: {
     request,
   } = input;
   let meetingId = requestedMeetingId;
+  let previewDisclosureRequest: PreviewDisclosureRequest | undefined;
+  let proposeDisclosureRequest: ProposeDisclosureRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
 
@@ -631,6 +718,26 @@ export async function handleWorkerFlagshipHttp(input: {
     registerTextSourceRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
+  if (operation === "propose-disclosure") {
+    const parsed = ProposeDisclosureRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    proposeDisclosureRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "preview-disclosure") {
+    const parsed = PreviewDisclosureRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    previewDisclosureRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
 
   if (meetingId === undefined) {
     return apiErrorResponse("VALIDATION_FAILED", correlationId);
@@ -687,6 +794,93 @@ export async function handleWorkerFlagshipHttp(input: {
         source: result.source,
       }),
       201,
+      correlationId,
+    );
+  }
+
+  if (operation === "propose-disclosure") {
+    if (proposeDisclosureRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await proposeDisclosure(
+      dependencies.disclosures,
+      resolved.authorization,
+      {
+        ...proposeDisclosureRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      ProposeDisclosureResponseSchema.parse({
+        candidate: result.candidate,
+        correlationId: result.correlationId,
+        meetingId,
+        origin: "human_selected",
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      201,
+      correlationId,
+    );
+  }
+
+  if (operation === "preview-disclosure") {
+    if (previewDisclosureRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await previewDisclosure(
+      dependencies.disclosures,
+      resolved.authorization,
+      {
+        ...previewDisclosureRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      PreviewDisclosureResponseSchema.parse({
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        meetingId,
+        outgoingPayload: result.outgoingPayload,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        previewHash: result.previewHash,
+      }),
+      200,
       correlationId,
     );
   }
