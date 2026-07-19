@@ -639,6 +639,13 @@ The canonical implementation-facing artifacts are:
   integration coverage; it remains disabled by default.
   Full hosted security-matrix rerun, approved provider enablement, and
   structured judge AI remain later slices.
+- The real Worker-to-Durable-Object binding now has a provider-free integration
+  proof in addition to the synthetic-controller path. The request reaches the
+  registered `JUDGE_REALTIME_CALLS` namespace, observes the DO's
+  `not_configured` state, returns a redacted 503 before provider work,
+  terminates ownership, releases the reservation, and persists no SDP or
+  provider ID. The successful real-DO lifecycle still requires the approved
+  provider boundary.
 - The current regular baseline is 634 Vitest tests and the contract project
   passes 116 tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
@@ -653,7 +660,7 @@ The canonical implementation-facing artifacts are:
   sandbox denied their required `0.0.0.0` listen. The hosted flagship Worker
   target now passes four integration cases, and the Worker-specific browser
   E2E passes the SPA/login/workspace/AI-preview journey against Wrangler.
-  The full Cloudflare pool now passes 10 files and 90 tests after giving its
+  The full Cloudflare pool now passes 10 files and 91 tests after giving its
   migration hooks and integration cases explicit cold-start timeouts. No
   visible UI changed, so no new screenshot was required. Reel
   shooting and reel-material organization are deferred from the active goal;

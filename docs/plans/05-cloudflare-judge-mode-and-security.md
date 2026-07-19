@@ -251,6 +251,12 @@ C4 foundation notes:
   forwarding, duplicate-start reservation suppression, termination settlement,
   and the next-call
   `USAGE_LIMIT_REACHED` response are covered without contacting OpenAI.
+- A separate integration case now sends the real Worker route through the
+  actual `JUDGE_REALTIME_CALLS` Durable Object namespace. With the DO Secret
+  absent it reaches the registered object, fails before provider work, marks
+  ownership terminated, releases the full-cap reservation, and leaves only
+  content-free hashed start-claim metadata. A successful real-DO provider
+  lifecycle remains an explicit approved-provider gate.
 
 ### C5 — Security hardening
 

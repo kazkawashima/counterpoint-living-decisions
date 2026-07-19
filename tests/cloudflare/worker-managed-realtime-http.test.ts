@@ -17,7 +17,11 @@ import {
   JUDGE_REALTIME_RESERVED_USAGE,
   createJudgeRealtimeUsageLimiter,
 } from "../../apps/worker/src/judge-realtime-call-controller.js";
-import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
+import {
+  createWorkerHandler,
+  judgeRealtimeCallControllerFor,
+  type Env,
+} from "../../apps/worker/src/index.js";
 
 const MEETING_ID = "meeting/worker-managed-http-c4";
 const CROSS_MEETING_ID = "meeting/worker-managed-http-c4-cross";
@@ -309,6 +313,92 @@ async function createOwnedCall(managedCallId: string): Promise<{
 }
 
 describe("Cloudflare Worker managed Realtime HTTP", () => {
+  it("reaches the real Durable Object and releases its reservation when the DO secret is absent", async () => {
+    await seedFixture();
+    const environment: Env = {
+      ...workerEnv(fakeControllerNamespace()),
+      JUDGE_REALTIME_CALLS: env.JUDGE_REALTIME_CALLS,
+    };
+    const response = await createWorkerHandler().fetch!(
+      request(
+        `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        {
+          channel: "private",
+          idempotencyKey: "managed-worker-real-do-fail-closed",
+          meetingId: MEETING_ID,
+          sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+        },
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(jsonBody(response)).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
+    const reservation = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT reservation_id, status
+          FROM judge_usage_reservations
+          WHERE account_id = ? AND meeting_id = ?
+          ORDER BY reserved_at_epoch DESC
+          LIMIT 1
+        `,
+      )
+      .bind(JUDGE_USER_ID, MEETING_ID)
+      .first<{ readonly reservation_id: string; readonly status: string }>();
+    expect(reservation?.status).toBe("released");
+    if (reservation === null) {
+      throw new Error("Expected a released real-DO reservation");
+    }
+    const ownership = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT status
+          FROM judge_managed_realtime_calls
+          WHERE reservation_id = ?
+        `,
+      )
+      .bind(reservation.reservation_id)
+      .first<{ readonly status: string }>();
+    expect(ownership?.status).toBe("terminated");
+    const controllerStatus = await judgeRealtimeCallControllerFor(
+      env,
+      reservation.reservation_id,
+    ).fetch("https://judge-realtime.internal/status");
+    await expect(controllerStatus.json()).resolves.toEqual({
+      kind: "not_configured",
+    });
+    const claim = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT *
+          FROM judge_managed_realtime_start_claims
+          WHERE meeting_id = ? AND user_id = ?
+        `,
+      )
+      .bind(MEETING_ID, JUDGE_USER_ID)
+      .first<Record<string, unknown>>();
+    expect(claim).not.toBeNull();
+    expect(claim).not.toHaveProperty("sdp_offer");
+    expect(claim).not.toHaveProperty("provider_call_id");
+    expect(JSON.stringify(claim)).not.toContain("m=audio");
+
+    await env.DB.batch([
+      env.DB.prepare(
+        "DELETE FROM judge_managed_realtime_start_claims WHERE meeting_id = ? AND user_id = ?",
+      ).bind(MEETING_ID, JUDGE_USER_ID),
+      env.DB.prepare(
+        "DELETE FROM judge_managed_realtime_calls WHERE meeting_id = ? AND user_id = ?",
+      ).bind(MEETING_ID, JUDGE_USER_ID),
+      env.DB.prepare(
+        "DELETE FROM judge_usage_reservations WHERE meeting_id = ? AND account_id = ?",
+      ).bind(MEETING_ID, JUDGE_USER_ID),
+    ]);
+  });
+
   it("authorizes, isolates, terminates, and settles a managed call without provider I/O", async () => {
     await seedFixture();
     const handler = createWorkerHandler();
