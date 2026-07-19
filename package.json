@@ -27,6 +27,7 @@
     "cloudflare:deploy:production": "bash scripts/cloudflare-deploy.sh --apply production",
     "cloudflare:dry-run": "npm run bundle --workspace @counterpoint/web && CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --config wrangler.jsonc --outdir .wrangler/dry-run",
     "cloudflare:resources:plan": "bash scripts/cloudflare-preview-resources.sh --plan",
+    "cloudflare:smoke:flagship": "node scripts/cloudflare-flagship-smoke.mjs",
     "cloudflare:smoke:local": "npm run cloudflare:d1:migrate:local && npm run bundle --workspace @counterpoint/web && node scripts/cloudflare-local-smoke.mjs",
     "cloudflare:types": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler types apps/worker/src/worker-configuration.d.ts --config wrangler.jsonc --env-interface WorkerBindings --include-runtime false",
     "cloudflare:types:check": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler types apps/worker/src/worker-configuration.d.ts --config wrangler.jsonc --env-interface WorkerBindings --include-runtime false --check",

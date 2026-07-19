@@ -542,12 +542,13 @@ The canonical implementation-facing artifacts are:
   migration, strict deployment, bounded health/readiness/SPA/authentication
   smoke, and credential-free commit/configuration hash recording.
 - The current remote smoke verifies health, migration readiness, the SPA, and
-  the unauthenticated authentication boundary. Full authenticated flagship
-  smoke, an approved remote migration/deployment, and a real deployment record
-  remain open. The rollback and judge-secret shutdown runbook forbids schema
-  down migration and secret-value inspection. No remote resource, secret,
-  migration, deployment, or repository visibility changed during this
-  preparation.
+  the unauthenticated authentication boundary; the authenticated flagship
+  smoke is now available as `npm run cloudflare:smoke:flagship -- <origin>` and
+  is wired into approved deployment. An approved remote migration/deployment
+  and a real deployment record remain open. The rollback and judge-secret
+  shutdown runbook forbids schema down migration and secret-value inspection.
+  No remote resource, secret, migration, deployment, or repository visibility
+  changed during this preparation.
 - The minimum hosted flagship read path is now wired: migration 0008 seeds
   synthetic demo identities and the Work & Productivity flagship meeting;
   Cloudflare scrypt authentication, persisted Bearer sessions, assigned
@@ -590,6 +591,13 @@ The canonical implementation-facing artifacts are:
   authority. The external-host Cloudflare flagship test covers the full
   `MONITORING` → `AT_RISK` → `REVIEW_REQUIRED` → reset journey and verifies
   reset collections are empty afterward.
+- A reusable authenticated Cloudflare flagship smoke now exercises the real HTTP
+  lifecycle from login/reset through private text, disclosure
+  preview/approval, manual candidate/disposition, DRAFT, READY, COMMITTED,
+  MONITORING, demo invalidation/review, and reset replay. Local Wrangler smoke
+  runs it with deterministic invalidation enabled; the approved deployment
+  driver runs the same product lifecycle with invalidation opt-in only, keeping
+  remote provider access disabled by default.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call

@@ -301,8 +301,12 @@ C6 preparation notes:
   migration and strict Worker deployment. It does not register or receive
   `OPENAI_API_KEY_JUDGE`; that remains a separate C3/C4 production gate.
 - A bounded remote smoke now verifies health, migration readiness, the SPA, and
-  the unauthenticated authentication boundary. A complete authenticated
-  flagship smoke still must be added and run before this row can close.
+  the unauthenticated authentication boundary. The authenticated flagship
+  smoke now covers login, reset, private text, disclosure preview/approval,
+  manual candidate/disposition, DRAFT, READY, COMMITTED, MONITORING, and reset
+  replay; it is wired into local Wrangler smoke and the approved deploy driver.
+  The deterministic invalidation/review branch remains opt-in because remote
+  deployment configs keep provider access disabled until that gate is approved.
 - Credential-free deployment records contain the commit, target, Worker name,
   origin host, and hashes of the generated config and private deployment
   status. No real deployment record exists until an approved deployment runs.

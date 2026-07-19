@@ -108,6 +108,7 @@ run_private "strict Worker deploy" npx wrangler deploy \
   --strict \
   --tag "$commit_sha"
 node scripts/cloudflare-remote-smoke.mjs "$CLOUDFLARE_DEPLOY_URL"
+node scripts/cloudflare-flagship-smoke.mjs "$CLOUDFLARE_DEPLOY_URL"
 echo "Recording private deployment status."
 if ! npx wrangler deployments status \
   --config "$config_path" \

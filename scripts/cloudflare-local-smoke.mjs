@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { resolve } from "node:path";
 
+import { runCloudflareFlagshipSmoke } from "./cloudflare-flagship-smoke.mjs";
+
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const port = Number.parseInt(process.env.CLOUDFLARE_SMOKE_PORT ?? "8791", 10);
 if (!Number.isSafeInteger(port) || port < 1024 || port > 65_535) {
@@ -228,8 +230,13 @@ try {
     "Static React assets were not served through the external-host-style URL",
   );
 
+  await runCloudflareFlagshipSmoke({
+    origin: externalHostBaseUrl,
+    requireInvalidation: true,
+  });
+
   console.log(
-    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, login, meetings, projection, private text, and read collections.`,
+    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, authenticated flagship lifecycle, invalidation review, and reset replay.`,
   );
 } finally {
   if (worker.exitCode === null) {

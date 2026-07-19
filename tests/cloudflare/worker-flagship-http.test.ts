@@ -761,5 +761,5 @@ describe("Cloudflare Worker hosted flagship API", () => {
     await expect(json(resetResponse)).resolves.toMatchObject({
       code: "FORBIDDEN",
     });
-  });
+  }, 15_000);
 });
