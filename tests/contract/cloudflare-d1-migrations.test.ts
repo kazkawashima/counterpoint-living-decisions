@@ -18,6 +18,16 @@ interface TableInfoRow {
   readonly name: string;
 }
 
+interface ManagedAiLifecycleRow {
+  readonly claim_key_hash: string;
+  readonly lease_expires_at_epoch: number | null;
+  readonly provider_started_at_epoch: number | null;
+  readonly reservation_id: string | null;
+  readonly reuse_after_epoch: number | null;
+  readonly settled_at_epoch: number | null;
+  readonly status: string;
+}
+
 const migrationsDirectory = fileURLToPath(
   new URL("../../apps/worker/migrations/", import.meta.url),
 );
@@ -33,6 +43,7 @@ const expectedMigrationNames = [
   "0008_hosted_flagship_seed.sql",
   "0009_judge_managed_realtime_start_claims.sql",
   "0010_judge_managed_ai_operation_claims.sql",
+  "0011_judge_managed_ai_operation_lifecycle.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -152,6 +163,23 @@ const expectedTablesAfterMigration = [
     "sessions",
     "users",
   ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_ai_operation_claims",
+    "judge_managed_ai_operation_lifecycle",
+    "judge_managed_realtime_calls",
+    "judge_managed_realtime_start_claims",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
 ] as const;
 
 const expectedTableColumns = {
@@ -199,6 +227,15 @@ const expectedTableColumns = {
     "pricing_version",
     "created_at_epoch",
     "expires_at_epoch",
+  ],
+  judge_managed_ai_operation_lifecycle: [
+    "claim_key_hash",
+    "status",
+    "reservation_id",
+    "lease_expires_at_epoch",
+    "provider_started_at_epoch",
+    "settled_at_epoch",
+    "reuse_after_epoch",
   ],
   judge_managed_realtime_calls: [
     "managed_call_id",
@@ -439,6 +476,180 @@ describe("Cloudflare D1 migrations", () => {
     }
   });
 
+  it("backfills legacy managed-AI claims once without rewriting lifecycle", async () => {
+    const migrations = await readMigrations();
+    const lifecycleMigration = migrations.find(
+      ({ name }) => name === "0011_judge_managed_ai_operation_lifecycle.sql",
+    );
+    const database = createD1CompatibleDatabase();
+    const claimKeyHash =
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    try {
+      if (lifecycleMigration === undefined) {
+        throw new Error("Missing lifecycle migration 0011");
+      }
+      for (const migration of migrations) {
+        if (migration.name === lifecycleMigration.name) {
+          break;
+        }
+        database.exec(migration.sql);
+      }
+      database.exec(`
+        INSERT INTO judge_managed_ai_operation_claims (
+          claim_key_hash,
+          request_fingerprint,
+          operation,
+          model,
+          pricing_version,
+          created_at_epoch,
+          expires_at_epoch
+        ) VALUES (
+          '${claimKeyHash}',
+          'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          'private_disclosure',
+          'gpt-5.6-sol',
+          'openai-2026-07-20',
+          100000,
+          100300
+        );
+      `);
+
+      database.exec(lifecycleMigration.sql);
+      expect(
+        database
+          .prepare(
+            `
+              SELECT *
+              FROM judge_managed_ai_operation_lifecycle
+              WHERE claim_key_hash = ?
+            `,
+          )
+          .get(claimKeyHash) as unknown as ManagedAiLifecycleRow,
+      ).toEqual({
+        claim_key_hash: claimKeyHash,
+        lease_expires_at_epoch: null,
+        provider_started_at_epoch: null,
+        reservation_id: null,
+        reuse_after_epoch: null,
+        settled_at_epoch: null,
+        status: "legacy_blocked",
+      });
+
+      database
+        .prepare(
+          `
+            UPDATE judge_managed_ai_operation_lifecycle
+            SET
+              status = 'reserved',
+              reservation_id = 'reservation-preserved',
+              lease_expires_at_epoch = 100500
+            WHERE claim_key_hash = ?
+          `,
+        )
+        .run(claimKeyHash);
+      database.exec(lifecycleMigration.sql);
+
+      expect(
+        database
+          .prepare(
+            `
+              SELECT *
+              FROM judge_managed_ai_operation_lifecycle
+              WHERE claim_key_hash = ?
+            `,
+          )
+          .get(claimKeyHash) as unknown as ManagedAiLifecycleRow,
+      ).toEqual({
+        claim_key_hash: claimKeyHash,
+        lease_expires_at_epoch: 100500,
+        provider_started_at_epoch: null,
+        reservation_id: "reservation-preserved",
+        reuse_after_epoch: null,
+        settled_at_epoch: null,
+        status: "reserved",
+      });
+
+      for (const invalidMutation of [
+        "UPDATE judge_managed_ai_operation_lifecycle SET status = 'unknown' WHERE claim_key_hash = ?",
+        "UPDATE judge_managed_ai_operation_lifecycle SET status = 'reserved', reservation_id = NULL, lease_expires_at_epoch = NULL WHERE claim_key_hash = ?",
+        "UPDATE judge_managed_ai_operation_lifecycle SET status = 'provider_started', provider_started_at_epoch = NULL WHERE claim_key_hash = ?",
+        "UPDATE judge_managed_ai_operation_lifecycle SET status = 'settled', settled_at_epoch = NULL, reuse_after_epoch = NULL WHERE claim_key_hash = ?",
+        "UPDATE judge_managed_ai_operation_lifecycle SET status = 'settled', settled_at_epoch = 100600, reuse_after_epoch = 100600 WHERE claim_key_hash = ?",
+      ]) {
+        expect(() =>
+          database.prepare(invalidMutation).run(claimKeyHash),
+        ).toThrow();
+      }
+
+      database.exec(`
+        INSERT INTO judge_managed_ai_operation_claims (
+          claim_key_hash,
+          request_fingerprint,
+          operation,
+          model,
+          pricing_version,
+          created_at_epoch,
+          expires_at_epoch
+        ) VALUES (
+          'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+          'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+          'decision_synthesis',
+          'gpt-5.6-sol',
+          'openai-2026-07-20',
+          100000,
+          100300
+        );
+      `);
+      expect(() =>
+        database
+          .prepare(
+            `
+              UPDATE judge_managed_ai_operation_lifecycle
+              SET claim_key_hash =
+                'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+              WHERE claim_key_hash = ?
+            `,
+          )
+          .run(claimKeyHash),
+      ).toThrow("counterpoint_managed_ai_lifecycle_claim_key_immutable");
+      expect(() =>
+        database.exec(`
+          INSERT INTO judge_managed_ai_operation_lifecycle (
+            claim_key_hash,
+            status,
+            reservation_id,
+            lease_expires_at_epoch
+          ) VALUES (
+            'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+            'reserved',
+            'reservation-preserved',
+            100500
+          );
+        `),
+      ).toThrow();
+
+      database
+        .prepare(
+          "DELETE FROM judge_managed_ai_operation_claims WHERE claim_key_hash = ?",
+        )
+        .run(claimKeyHash);
+      expect(
+        database
+          .prepare(
+            `
+              SELECT COUNT(*) AS count
+              FROM judge_managed_ai_operation_lifecycle
+              WHERE claim_key_hash = ?
+            `,
+          )
+          .get(claimKeyHash),
+      ).toEqual({ count: 0 });
+    } finally {
+      database.close();
+    }
+  });
+
   it("aligns D1 tables and columns explicitly with the Node schema", async () => {
     const migrations = await readMigrations();
     const d1Database = createD1CompatibleDatabase();
@@ -447,6 +658,7 @@ describe("Cloudflare D1 migrations", () => {
     const sharedTableNames = expectedTableNames.filter(
       (name) =>
         name !== "judge_managed_ai_operation_claims" &&
+        name !== "judge_managed_ai_operation_lifecycle" &&
         name !== "judge_managed_realtime_calls" &&
         name !== "judge_managed_realtime_start_claims" &&
         name !== "judge_usage_reservations",
@@ -483,6 +695,7 @@ describe("Cloudflare D1 migrations", () => {
       expect(explicitIndexNames(database)).toEqual([
         "audit_history_meeting_position",
         "judge_managed_ai_operation_claims_expiry",
+        "judge_managed_ai_operation_lifecycle_stale",
         "judge_managed_realtime_calls_active_expiry",
         "judge_managed_realtime_calls_owner",
         "judge_managed_realtime_start_claims_expiry",
@@ -499,6 +712,7 @@ describe("Cloudflare D1 migrations", () => {
         "event_appends_complete_range",
         "events_contiguous_position",
         "judge_managed_ai_operation_claims_key_immutable",
+        "judge_managed_ai_operation_lifecycle_key_immutable",
         "judge_managed_realtime_calls_owner_immutable",
         "judge_managed_realtime_calls_reservation_guard",
         "judge_managed_realtime_calls_terminal",
