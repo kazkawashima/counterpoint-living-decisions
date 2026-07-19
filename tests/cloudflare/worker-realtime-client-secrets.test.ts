@@ -1,18 +1,14 @@
 /// <reference types="@cloudflare/vitest-pool-workers/types" />
 
 import { env } from "cloudflare:workers";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   D1MeetingRepository,
   D1SessionRepository,
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
-import type {
-  ManagedRealtimeSecretIssuer,
-  ParticipantAssignment,
-  RealtimeSecret,
-} from "@counterpoint/ports";
+import type { ParticipantAssignment } from "@counterpoint/ports";
 
 import {
   createWorkerHandler,
@@ -143,48 +139,24 @@ function request(bearerToken: string): WorkerRequest {
 }
 
 describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
-  it("isolates the standard key, denies ordinary users, and reissues after handler recreation", async () => {
+  it("keeps direct judge client-secret issuance disabled so usage control cannot be bypassed", async () => {
     await seedJudgeFixture();
-    const managedInputs: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0][] =
-      [];
-    const managedIssuerFactory = vi.fn((apiKey: string) => {
-      expect(apiKey).toBe(STANDARD_KEY);
-      return {
-        issue(
-          input: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0],
-        ): Promise<RealtimeSecret> {
-          managedInputs.push(input);
-          return Promise.resolve({
-            channel: input.channel,
-            expiresAt: new Date(Date.now() + 60_000).toISOString(),
-            model: "gpt-realtime-worker-contract",
-            value: `ek_worker_${String(managedInputs.length)}`,
-          });
-        },
-      };
-    });
     const configuredEnv = workerEnv({
       JUDGE_USER_ID,
       OPENAI_API_KEY_JUDGE: STANDARD_KEY,
     });
 
-    const firstHandler = createWorkerHandler({
-      managedIssuerFactory,
-    });
+    const firstHandler = createWorkerHandler();
     const first = await firstHandler.fetch!(
       request(JUDGE_BEARER),
       configuredEnv,
       {} as ExecutionContext,
     );
-    expect(first.status).toBe(201);
+    expect(first.status).toBe(503);
     await expect(first.clone().json()).resolves.toMatchObject({
-      clientSecret: "ek_worker_1",
-      keySource: "judgeManaged",
-      meetingId: MEETING_ID,
+      code: "REALTIME_UNAVAILABLE",
     });
     expect(await first.text()).not.toContain(STANDARD_KEY);
-    expect(managedInputs).toHaveLength(1);
-    expect("apiKey" in managedInputs[0]!).toBe(false);
 
     const ordinary = await firstHandler.fetch!(
       request(ORDINARY_BEARER),
@@ -195,18 +167,16 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
     await expect(ordinary.json()).resolves.toMatchObject({
       code: "API_KEY_REQUIRED",
     });
-    expect(managedInputs).toHaveLength(1);
-    expect(managedIssuerFactory).toHaveBeenCalledTimes(1);
 
-    const afterEviction = await createWorkerHandler({
-      managedIssuerFactory,
-    }).fetch!(request(JUDGE_BEARER), configuredEnv, {} as ExecutionContext);
-    expect(afterEviction.status).toBe(201);
+    const afterEviction = await createWorkerHandler().fetch!(
+      request(JUDGE_BEARER),
+      configuredEnv,
+      {} as ExecutionContext,
+    );
+    expect(afterEviction.status).toBe(503);
     await expect(afterEviction.json()).resolves.toMatchObject({
-      clientSecret: "ek_worker_2",
-      keySource: "judgeManaged",
+      code: "REALTIME_UNAVAILABLE",
     });
-    expect(managedInputs).toHaveLength(2);
 
     const coordinatorHealth = await (
       await meetingCoordinatorFor(configuredEnv, MEETING_ID).fetch(
@@ -228,15 +198,11 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
     expect(JSON.stringify(await env.ARTIFACTS.list())).not.toContain(
       STANDARD_KEY,
     );
-    expect(managedIssuerFactory).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the allowlisted judge fail-closed when the Worker Secret is absent", async () => {
     await seedJudgeFixture();
-    const managedIssuerFactory = vi.fn();
-    const response = await createWorkerHandler({
-      managedIssuerFactory,
-    }).fetch!(
+    const response = await createWorkerHandler().fetch!(
       request(JUDGE_BEARER),
       workerEnv({ JUDGE_USER_ID }),
       {} as ExecutionContext,
@@ -246,6 +212,5 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "REALTIME_UNAVAILABLE",
     });
-    expect(managedIssuerFactory).not.toHaveBeenCalled();
   });
 });

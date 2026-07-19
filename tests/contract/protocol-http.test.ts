@@ -12,6 +12,8 @@ import {
   ConfigureMeetingByokRequestSchema,
   ConfigureMeetingByokResponseSchema,
   ConfirmInvalidationReviewResponseSchema,
+  CreateManagedRealtimeCallRequestSchema,
+  CreateManagedRealtimeCallResponseSchema,
   CreateMeetingRequestSchema,
   DecisionJsonExportQuerySchema,
   DecisionJsonExportResponseSchema,
@@ -75,6 +77,8 @@ import {
   type ClearMeetingByokResponse,
   type ConfigureMeetingByokRequest,
   type ConfigureMeetingByokResponse,
+  type CreateManagedRealtimeCallRequest,
+  type CreateManagedRealtimeCallResponse,
   type DecisionJsonExportResponse,
   type FacilitatorDemoResetRequest,
   type FacilitatorDemoResetResponse,
@@ -1246,6 +1250,68 @@ describe("strict v1 HTTP protocol", () => {
         channel: "shared",
       }).success,
     ).toBe(true);
+  });
+
+  it("keeps managed realtime call IDs and provider credentials server-side", () => {
+    const request = {
+      channel: "shared",
+      correlationId: "correlation-1",
+      meetingId: "meeting-1",
+      sdpOffer: "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n",
+    } as const;
+    const parsedRequest = CreateManagedRealtimeCallRequestSchema.parse(request);
+    expectTypeOf(
+      parsedRequest,
+    ).toEqualTypeOf<CreateManagedRealtimeCallRequest>();
+    expect(
+      CreateManagedRealtimeCallRequestSchema.safeParse({
+        ...request,
+        callId: "rtc_private-provider-id",
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateManagedRealtimeCallRequestSchema.safeParse({
+        ...request,
+        sdpOffer: "",
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateManagedRealtimeCallRequestSchema.safeParse({
+        ...request,
+        sdpOffer: "x".repeat(64 * 1024 + 1),
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      channel: "shared",
+      correlationId: "correlation-1",
+      meetingId: "meeting-1",
+      model: "gpt-realtime-2.1",
+      sdpAnswer: "v=0\r\no=- 2 2 IN IP4 0.0.0.0\r\n",
+    } as const;
+    const parsedResponse =
+      CreateManagedRealtimeCallResponseSchema.parse(response);
+    expectTypeOf(
+      parsedResponse,
+    ).toEqualTypeOf<CreateManagedRealtimeCallResponse>();
+    expect(
+      CreateManagedRealtimeCallResponseSchema.safeParse({
+        ...response,
+        callId: "rtc_private-provider-id",
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateManagedRealtimeCallResponseSchema.safeParse({
+        ...response,
+        clientSecret: "ek_provider-secret",
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateManagedRealtimeCallResponseSchema.safeParse({
+        ...response,
+        apiKey: "sk-standard-key-must-never-appear",
+      }).success,
+    ).toBe(false);
   });
 
   it("acquires and releases the shared floor with server-derived ownership", () => {

@@ -52,6 +52,31 @@ export interface ManagedRealtimeSecretIssuer {
   }): Promise<RealtimeSecret>;
 }
 
+export interface ManagedRealtimeCall {
+  readonly callId: string;
+  readonly channel: RealtimeChannel;
+  readonly model: string;
+  readonly sdpAnswer: string;
+}
+
+/**
+ * Server-owned Realtime WebRTC initialization boundary.
+ *
+ * The standard provider key and provider call identifier stay behind this
+ * interface. Product identifiers are deliberately absent so an adapter cannot
+ * forward meeting, participant, or application-session identifiers upstream.
+ */
+export interface ManagedRealtimeCallConnector {
+  connect(
+    input: {
+      readonly channel: RealtimeChannel;
+      readonly safetyIdentifier: string;
+      readonly sdpOffer: string;
+    },
+    onAccepted?: (callId: string) => Promise<void> | void,
+  ): Promise<ManagedRealtimeCall>;
+}
+
 export interface MeetingApiKeyLease {
   readonly apiKey: string;
   readonly heartbeatAt: string;

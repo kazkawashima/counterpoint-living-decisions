@@ -2,6 +2,8 @@ export type {
   AiGateway,
   AiRequest,
   AiResult,
+  ManagedRealtimeCall,
+  ManagedRealtimeCallConnector,
   ManagedRealtimeSecretIssuer,
   MeetingApiKeyLease,
   MeetingApiKeyLeaseConfigureResult,

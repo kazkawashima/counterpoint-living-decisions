@@ -3,16 +3,12 @@ import {
   D1SessionRepository,
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
-import {
-  OpenAiManagedRealtimeClientSecretIssuer,
-  OpenAiRealtimeClientSecretIssuer,
-} from "@counterpoint/adapters-openai";
+import { OpenAiRealtimeClientSecretIssuer } from "@counterpoint/adapters-openai";
 import {
   apiErrorResponse,
   handleIssueRealtimeClientSecretHttp,
 } from "@counterpoint/http-api";
 import type {
-  ManagedRealtimeSecretIssuer,
   MeetingApiKeyLease,
   MeetingApiKeyLeaseConfigureResult,
   MeetingApiKeyLeaseMutationResult,
@@ -39,6 +35,7 @@ const EXPECTED_D1_MIGRATIONS = [
   "0003_decisions_audit_and_artifacts.sql",
   "0004_bearer_sessions.sql",
   "0005_d1_append_guards.sql",
+  "0006_judge_usage_reservations.sql",
 ] as const;
 
 interface JudgeWorkerBindings {
@@ -47,12 +44,6 @@ interface JudgeWorkerBindings {
 }
 
 export type Env = Readonly<WorkerBindings & JudgeWorkerBindings>;
-
-export interface WorkerHandlerOptions {
-  readonly managedIssuerFactory?: (
-    apiKey: string,
-  ) => ManagedRealtimeSecretIssuer;
-}
 
 interface DependencyProbe {
   readonly available: boolean;
@@ -96,20 +87,6 @@ function nonEmptyTrimmed(value: string | undefined): value is string {
 
 function judgeUserId(env: Env): string | undefined {
   return nonEmptyTrimmed(env.JUDGE_USER_ID) ? env.JUDGE_USER_ID : undefined;
-}
-
-function managedIssuer(
-  env: Env,
-  factory: NonNullable<WorkerHandlerOptions["managedIssuerFactory"]>,
-): ManagedRealtimeSecretIssuer | undefined {
-  if (!nonEmptyTrimmed(env.OPENAI_API_KEY_JUDGE)) {
-    return undefined;
-  }
-  try {
-    return factory(env.OPENAI_API_KEY_JUDGE);
-  } catch {
-    return undefined;
-  }
 }
 
 async function probeDatabase(database: D1Database): Promise<DependencyProbe> {
@@ -217,14 +194,7 @@ function apiParityPendingResponse(): Response {
   );
 }
 
-export function createWorkerHandler(
-  options: WorkerHandlerOptions = {},
-): ExportedHandler<Env> {
-  const managedIssuerFactory =
-    options.managedIssuerFactory ??
-    ((apiKey: string) =>
-      new OpenAiManagedRealtimeClientSecretIssuer({ apiKey }));
-
+export function createWorkerHandler(): ExportedHandler<Env> {
   return {
     async fetch(request, env) {
       const url = new URL(request.url);
@@ -261,8 +231,6 @@ export function createWorkerHandler(
                     judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
                   },
             clock: { now: () => new Date().toISOString() },
-            judgeManagedIssuerFactory: () =>
-              managedIssuer(env, managedIssuerFactory),
             meetings: new D1MeetingRepository(env.DB),
             realtimeSecrets: {
               clock: { now: () => new Date().toISOString() },

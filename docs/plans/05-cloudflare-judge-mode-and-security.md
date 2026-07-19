@@ -57,32 +57,33 @@ C2 runtime notes:
 - [ ] Register `OPENAI_API_KEY_JUDGE` via secret workflow without echoing value.
 - [x] Allow only the judge user capability.
 - [x] Keep standard key out of browser, DO state, D1, R2, logs, and events.
-- [x] Reissue short-lived Realtime secrets after DO eviction without exposing
-      the standard key.
+- [x] Keep direct judge client-secret issuance fail-closed until the C4
+      server-owned call path enforces its reservation.
 - [x] Keep ordinary BYOK behavior unchanged.
 
 The local C3 implementation uses an internal, server-derived
 `judge:managed-ai` capability that is granted only by an exact user-ID
 allowlist and is filtered from public role projections. Clients cannot request
-judge mode or select a key source. Node and Worker delegate Realtime
-client-secret issuance to the same Web-standard HTTP handler, while the Worker
-constructs the managed OpenAI adapter directly from its request-local Secret
-binding. The adapter never accepts the standard key as application input.
+judge mode or select a key source. Node retains the ordinary facilitator-BYOK
+client-secret path. The Worker authenticates and resolves the allowlisted judge
+but deliberately returns `REALTIME_UNAVAILABLE` from the direct client-secret
+route, even when its Secret binding exists.
 
 Cloudflare-native proof covers exact D1 authentication and meeting scope,
-ordinary-user denial, missing-Secret fail-closed behavior, and fresh
-short-lived-secret issuance after recreating the Worker handler. Assertions
-scan the response, D1 rows, R2 listing, and meeting Durable Object health
-surface for the synthetic standard key. The Worker still has no hosted BYOK
+ordinary-user denial, configured-or-missing-Secret fail-closed behavior, and
+the same denial after recreating the Worker handler. Assertions scan the
+response, D1 rows, R2 listing, and meeting Durable Object health surface for
+the synthetic standard key. The Worker still has no hosted BYOK
 configure/heartbeat/clear route; ordinary Node BYOK behavior and its shared
 HTTP contract remain unchanged, and the hosted transient-DO BYOK adapter stays
 in A6 parity work.
 
-Realtime client-secret creation explicitly requests a 30-second TTL instead of
-the provider's longer default. Provider client secrets may create multiple
-sessions until expiry, and attached session configuration can be overridden by
-the client, so the ephemeral token and its channel label are bootstrap data,
-not an application authorization boundary. Authentication, meeting scope,
+The ordinary BYOK client-secret adapter explicitly requests a 30-second TTL
+instead of the provider's longer default. Provider client secrets may create
+multiple sessions until expiry, and attached session configuration can be
+overridden by the client, so the ephemeral token and its channel label are
+bootstrap data, not an application authorization boundary. Judge mode
+therefore uses no direct token path; authentication, meeting scope,
 private/shared publication rules, and C4 usage limits remain server-owned.
 
 No remote Secret was registered in this local implementation boundary.
@@ -93,15 +94,45 @@ defaults.
 
 ### C4 — Usage limits
 
-- [ ] Implement durable account/IP/meeting/concurrency/time/token/generation/
-      currency limits.
+- [x] Implement the durable D1 reservation ledger for
+      account/IP/meeting/concurrency/time/token/generation/currency limits.
+- [x] Enforce a fixed USD 25 rolling-24-hour ceiling in the D1 adapter and
+      schema trigger.
+- [ ] Wire every judge billable path through a reservation before provider
+      work.
 - [ ] Enforce the USD 25 rolling-24-hour currency boundary before billable work.
-- [ ] Treat the USD 50 provider alert as secondary warning only.
+- [x] Treat the USD 50 provider alert as secondary warning only.
 - [ ] Derive secondary production limits from measured flagship usage.
 - [ ] Check limits before billable work.
 - [ ] Fail closed with `USAGE_LIMIT_REACHED`.
-- [ ] Keep manual degraded mode available.
+- [x] Keep manual degraded mode available.
 - [ ] Add operator visibility without private content.
+
+C4 foundation notes:
+
+- Migration 0006 stores integer micro-USD reservations and content-free
+  account, keyed-HMAC IP, meeting, operation, model, pricing-version, token,
+  generation, Realtime-second, lifecycle, and expiry metadata. Raw IP addresses
+  and reversible IP encodings are rejected.
+- Reservation is one conditional D1 insert. Reserved or unknown work counts at
+  its full estimate without aging out; finalized actual usage remains charged
+  for 24 hours from settlement. Finalization cannot exceed any reserved
+  dimension and may complete out of request order; release is valid only before
+  finalization. Database triggers enforce both the fixed ceiling and append-time
+  ordering, preventing out-of-order direct writes from creating an unchecked
+  historical window. The ledger survives adapter and Worker recreation.
+- The server-owned unified WebRTC connector captures the standard key, sends
+  only SDP, channel isolation instructions, model, and a pseudonymous safety
+  identifier to OpenAI, validates a bounded SDP response and exact call
+  location, and keeps the provider call ID out of the browser contract. An
+  acceptance hook lets the future controller persist the call ID before SDP
+  body validation; the key-bearing destination is fixed to the official HTTPS
+  endpoint and cannot be overridden.
+- The connector is not yet routed. The remaining security gate is a durable
+  call controller that owns the provider call ID, enforces bounded termination,
+  and closes or conservatively finalizes the reservation. Until that gate is
+  implemented, direct judge Realtime issuance stays fail-closed and no remote
+  Secret registration occurs.
 
 ### C5 — Security hardening
 

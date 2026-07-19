@@ -488,6 +488,10 @@ export type GetRoleProjectionResponse = RoleProjectionResponse;
 const ByokApiKeySchema = z.string().min(20).max(4096);
 const RealtimeClientSecretSchema = z.string().min(1).max(4096);
 const RealtimeModelSchema = z.string().trim().min(1).max(256);
+const RealtimeSdpSchema = z
+  .string()
+  .min(1)
+  .max(64 * 1024);
 
 export const RealtimeChannelSchema = z.enum(["private", "shared"]);
 export const RealtimeKeySourceSchema = z.enum([
@@ -538,6 +542,19 @@ export const IssueRealtimeClientSecretResponseSchema = z.strictObject({
   model: RealtimeModelSchema,
   ...RequiredCorrelationShape,
 });
+export const CreateManagedRealtimeCallRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  channel: RealtimeChannelSchema,
+  sdpOffer: RealtimeSdpSchema,
+  ...OptionalCorrelationShape,
+});
+export const CreateManagedRealtimeCallResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  channel: RealtimeChannelSchema,
+  model: RealtimeModelSchema,
+  sdpAnswer: RealtimeSdpSchema,
+  ...RequiredCorrelationShape,
+});
 
 export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
 export type RealtimeKeySource = z.infer<typeof RealtimeKeySourceSchema>;
@@ -564,6 +581,12 @@ export type IssueRealtimeClientSecretRequest = z.infer<
 >;
 export type IssueRealtimeClientSecretResponse = z.infer<
   typeof IssueRealtimeClientSecretResponseSchema
+>;
+export type CreateManagedRealtimeCallRequest = z.infer<
+  typeof CreateManagedRealtimeCallRequestSchema
+>;
+export type CreateManagedRealtimeCallResponse = z.infer<
+  typeof CreateManagedRealtimeCallResponseSchema
 >;
 
 export const AcquireSharedFloorRequestSchema = z.strictObject({

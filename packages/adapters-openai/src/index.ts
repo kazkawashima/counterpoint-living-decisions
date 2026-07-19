@@ -65,3 +65,10 @@ export {
   type OpenAiManagedRealtimeClientSecretIssuerOptions,
   type OpenAiRealtimeClientSecretIssuerOptions,
 } from "./realtime-client-secrets.js";
+export {
+  MAX_OPENAI_REALTIME_SDP_BYTES,
+  OPENAI_REALTIME_CALLS_URL,
+  OpenAiManagedRealtimeCallConnector,
+  OpenAiRealtimeCallError,
+  type OpenAiManagedRealtimeCallConnectorOptions,
+} from "./realtime-calls.js";

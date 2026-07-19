@@ -28,6 +28,7 @@ const expectedMigrationNames = [
   "0003_decisions_audit_and_artifacts.sql",
   "0004_bearer_sessions.sql",
   "0005_d1_append_guards.sql",
+  "0006_judge_usage_reservations.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -75,6 +76,19 @@ const expectedTablesAfterMigration = [
     "sessions",
     "users",
   ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
 ] as const;
 
 const expectedTableColumns = {
@@ -114,6 +128,31 @@ const expectedTableColumns = {
     "appended_at",
   ],
   events: ["meeting_id", "position", "payload_json", "appended_at"],
+  judge_usage_reservations: [
+    "reservation_id",
+    "request_fingerprint",
+    "account_id",
+    "ip_hash",
+    "meeting_id",
+    "operation",
+    "model",
+    "pricing_version",
+    "status",
+    "reserved_cost_micro_usd",
+    "actual_cost_micro_usd",
+    "reserved_input_tokens",
+    "actual_input_tokens",
+    "reserved_output_tokens",
+    "actual_output_tokens",
+    "reserved_generation_count",
+    "actual_generation_count",
+    "reserved_realtime_seconds",
+    "actual_realtime_seconds",
+    "reserved_at_epoch",
+    "active_until_epoch",
+    "finalized_at_epoch",
+    "released_at_epoch",
+  ],
   meetings: [
     "meeting_id",
     "code",
@@ -308,6 +347,9 @@ describe("Cloudflare D1 migrations", () => {
     const d1Database = createD1CompatibleDatabase();
     const nodeDatabase = new NodeSqliteDatabase(":memory:");
     const expectedTableNames = Object.keys(expectedTableColumns).sort();
+    const sharedTableNames = expectedTableNames.filter(
+      (name) => name !== "judge_usage_reservations",
+    );
 
     try {
       applyMigrationPlanOnce(d1Database, migrations);
@@ -318,12 +360,12 @@ describe("Cloudflare D1 migrations", () => {
         new Set(["schema_migrations"]),
       );
       const nodeColumns = tableColumnMap(nodeDatabase.database, nodeTableNames);
+      const sharedD1Columns = tableColumnMap(d1Database, sharedTableNames);
 
       expect(userTableNames(d1Database)).toEqual(expectedTableNames);
-      expect(nodeTableNames).toEqual(expectedTableNames);
+      expect(nodeTableNames).toEqual(sharedTableNames);
       expect(d1Columns).toEqual(expectedTableColumns);
-      expect(nodeColumns).toEqual(expectedTableColumns);
-      expect(d1Columns).toEqual(nodeColumns);
+      expect(sharedD1Columns).toEqual(nodeColumns);
     } finally {
       d1Database.close();
       nodeDatabase.close();
@@ -339,12 +381,22 @@ describe("Cloudflare D1 migrations", () => {
 
       expect(explicitIndexNames(database)).toEqual([
         "audit_history_meeting_position",
+        "judge_usage_reservations_account_window",
+        "judge_usage_reservations_active",
+        "judge_usage_reservations_ip_window",
+        "judge_usage_reservations_meeting_window",
+        "judge_usage_reservations_request",
+        "judge_usage_reservations_rolling",
         "participant_assignments_user",
         "sessions_user_activity",
       ]);
       expect(triggerNames(database)).toEqual([
         "event_appends_complete_range",
         "events_contiguous_position",
+        "judge_usage_reservations_global_cost_insert",
+        "judge_usage_reservations_global_cost_update",
+        "judge_usage_reservations_monotonic_insert",
+        "judge_usage_reservations_monotonic_update",
       ]);
 
       database.exec(`
@@ -371,6 +423,121 @@ describe("Cloudflare D1 migrations", () => {
           VALUES ('user-invalid', 'hash-invalid', 2);
         `),
       ).toThrow();
+      database.exec(`
+        INSERT INTO judge_usage_reservations (
+          reservation_id,
+          request_fingerprint,
+          account_id,
+          ip_hash,
+          meeting_id,
+          operation,
+          model,
+          pricing_version,
+          status,
+          reserved_cost_micro_usd,
+          reserved_input_tokens,
+          reserved_output_tokens,
+          reserved_generation_count,
+          reserved_realtime_seconds,
+          reserved_at_epoch,
+          active_until_epoch
+        ) VALUES (
+          'usage-exact-cap',
+          'request-exact-cap',
+          'account-a',
+          'hmac-sha256:0000000000000000000000000000000000000000000000000000000000000000',
+          'meeting-a',
+          'responses',
+          'model-a',
+          '2026-07-19',
+          'reserved',
+          25000000,
+          0,
+          0,
+          0,
+          0,
+          100000,
+          100300
+        );
+      `);
+      expect(() =>
+        database.exec(`
+          INSERT INTO judge_usage_reservations (
+            reservation_id,
+            request_fingerprint,
+            account_id,
+            ip_hash,
+            meeting_id,
+            operation,
+            model,
+            pricing_version,
+            status,
+            reserved_cost_micro_usd,
+            reserved_input_tokens,
+            reserved_output_tokens,
+            reserved_generation_count,
+            reserved_realtime_seconds,
+            reserved_at_epoch,
+            active_until_epoch
+          ) VALUES (
+            'usage-over-cap',
+            'request-over-cap',
+            'account-b',
+            'hmac-sha256:0000000000000000000000000000000000000000000000000000000000000001',
+            'meeting-b',
+            'responses',
+            'model-a',
+            '2026-07-19',
+            'reserved',
+            1,
+            0,
+            0,
+            0,
+            0,
+            100001,
+            100301
+          );
+        `),
+      ).toThrow("counterpoint_judge_usage_global_cost_limit");
+      expect(() =>
+        database.exec(`
+          INSERT INTO judge_usage_reservations (
+            reservation_id,
+            request_fingerprint,
+            account_id,
+            ip_hash,
+            meeting_id,
+            operation,
+            model,
+            pricing_version,
+            status,
+            reserved_cost_micro_usd,
+            reserved_input_tokens,
+            reserved_output_tokens,
+            reserved_generation_count,
+            reserved_realtime_seconds,
+            reserved_at_epoch,
+            active_until_epoch
+          ) VALUES (
+            'usage-out-of-order',
+            'request-out-of-order',
+            'account-c',
+            'hmac-sha256:0000000000000000000000000000000000000000000000000000000000000002',
+            'meeting-c',
+            'responses',
+            'model-a',
+            '2026-07-19',
+            'reserved',
+            0,
+            0,
+            0,
+            0,
+            0,
+            99999,
+            100299
+          );
+        `),
+      ).toThrow("counterpoint_judge_usage_timestamp_regression");
       expect(() =>
         database.exec(`
           INSERT INTO participant_assignments (

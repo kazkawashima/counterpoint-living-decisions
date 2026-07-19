@@ -10,6 +10,12 @@ export {
   D1MeetingRepository,
   D1SessionRepository,
 } from "./d1-auth.js";
+export {
+  D1UsageLimiter,
+  JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
+  type D1UsageLimiterLimits,
+  type D1UsageLimiterOptions,
+} from "./d1-usage-limiter.js";
 export { R2ArtifactStore } from "./r2-artifacts.js";
 export { WebCryptoSessionTokenIssuer } from "./session-tokens.js";
 

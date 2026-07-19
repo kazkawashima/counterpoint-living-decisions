@@ -372,23 +372,40 @@ The canonical implementation-facing artifacts are:
 
 ## In progress
 
-- Plan 05 C3 local code is complete except for the explicitly gated remote
-  Secret registration. The Worker now authenticates bearer sessions and
-  meeting assignments from D1, derives an internal exact-user judge capability,
-  and issues short-lived Realtime secrets through the same HTTP semantics as
-  Node. The standard key is captured only by a request-local OpenAI adapter and
-  never becomes application input, public capability data, meeting state, or a
-  persistence payload.
-- C3 security proof covers ordinary-user denial, missing-Secret fail-closed
-  behavior, standard-key non-disclosure across response/D1/R2/DO surfaces, and
-  reissuance after Worker-handler recreation. Existing ordinary Node BYOK
-  issuance remains green. Hosted BYOK configure/heartbeat/clear through
-  transient Durable Object memory remains the separate A6 parity residual.
-- Independent security review reduced the provider client-secret TTL from its
-  longer default to an explicit 30 seconds, moved Secret-backed adapter
-  construction after authentication and exact allowlist authorization, and
-  aligned encoded meeting-ID handling between Node and Worker.
-- The current verification baseline is 416 regular Vitest tests and 17
+- Plan 05 C4 now has migration 0006 and a D1-backed durable usage reservation
+  ledger. One conditional insert enforces account, hashed-IP, meeting,
+  concurrency, Realtime-second, token, generation, and integer micro-USD
+  dimensions across a rolling 24-hour window. A database trigger independently
+  fixes the global product ceiling at USD 25.
+- Reserved or outcome-unknown work remains charged at its full estimate
+  without aging out; finalized actuals remain charged for 24 hours from
+  settlement.
+  finalize is idempotent and cannot exceed any reserved field; release is
+  idempotent only before finalization, and overlapping requests can settle out
+  of order. Tests cover every dimension, exactly USD 25 plus one micro-USD,
+  exact 24-hour expiry, unknown-outcome retention, concurrent requests, adapter
+  recreation, lifecycle invariants, direct-write trigger defense, and keyed
+  HMAC-only IP storage. A monotonic timestamp trigger also rejects out-of-order
+  privileged inserts that would otherwise evade a historical rolling-window
+  check.
+- A server-owned unified WebRTC connector now captures the standard key, sends
+  a bounded multipart SDP/session request with a pseudonymous safety
+  identifier, validates response content type/size and the exact provider call
+  location, fixes the key-bearing destination to the official HTTPS endpoint,
+  and keeps both the key and call ID out of the browser protocol. Its
+  acceptance hook exposes the call ID to a trusted future controller before
+  SDP body validation, allowing accepted but malformed responses to remain
+  terminable.
+- Direct Worker judge client-secret issuance is now intentionally fail-closed,
+  configured Secret or not. This removes the multi-use ephemeral-token bypass
+  while retaining ordinary Node BYOK behavior and all durable/manual flows.
+  Remote Secret registration remains gated.
+- C4 is not complete: the connector is not routed until a durable server-side
+  controller can enforce bounded call termination and close or conservatively
+  finalize the reservation. Structured judge AI routes, measured flagship
+  limits, `USAGE_LIMIT_REACHED` HTTP integration, and content-free operator
+  visibility also remain.
+- The current verification baseline is 455 regular Vitest tests and 36
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 
@@ -398,14 +415,14 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue with Plan 05 in
-[`05-cloudflare-judge-mode-and-security.md`](../05-cloudflare-judge-mode-and-security.md)
-at C4: implement the durable, pre-billable judge usage limiter with the USD 25
-rolling-24-hour product boundary and explicit `USAGE_LIMIT_REACHED` denial.
-Keep C3 remote Secret registration and all deployment mutation behind an
-explicit deployment boundary. In parallel with later hosted API parity, add
-the transient Durable Object adapter for ordinary BYOK configure, heartbeat,
-clear, and loss recovery without changing the shared application semantics.
+Continue Plan 05 C4 by adding a durable server-side Realtime call controller
+that owns the provider call ID, has a bounded termination path, and settles the
+existing reservation conservatively. Then wire the authenticated allowlisted
+judge route through the limiter and controller, returning
+`USAGE_LIMIT_REACHED` before any provider request. Apply the same reservation
+boundary to structured judge AI only after hosted API parity exists. Keep
+remote Secret registration and deployment mutation behind an explicit
+deployment boundary.
 
 ## Open gates
 
