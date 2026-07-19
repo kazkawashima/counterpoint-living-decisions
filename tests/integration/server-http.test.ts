@@ -10,9 +10,12 @@ import {
   type LocalServerRuntime,
 } from "../../apps/server/src/index.js";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
+import type { RealtimeSecretIssuer } from "@counterpoint/ports";
 import {
   ApproveDisclosureResponseSchema,
+  ClearMeetingByokResponseSchema,
   CommitDecisionResponseSchema,
+  ConfigureMeetingByokResponseSchema,
   CreateMeetingResponseSchema,
   DecisionAuditResponseSchema,
   DecisionHistoryResponseSchema,
@@ -20,7 +23,9 @@ import {
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   FacilitatorDemoResetResponseSchema,
+  HeartbeatMeetingByokResponseSchema,
   IssueDisplayTokenResponseSchema,
+  IssueRealtimeClientSecretResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -221,6 +226,204 @@ describe("Node HTTP flagship shell", () => {
     expect(ErrorEnvelopeSchema.parse(await afterLogout.json())).toMatchObject({
       code: "AUTHENTICATION_REQUIRED",
     });
+  });
+
+  it("keeps meeting BYOK transient while issuing participant-bound Realtime secrets", async () => {
+    const { runtime } = await fixture();
+    const issuerInputs: Parameters<RealtimeSecretIssuer["issue"]>[0][] = [];
+    const app = createServerApp({
+      ...runtime,
+      realtimeSecrets: {
+        ...runtime.realtimeSecrets,
+        issuer: {
+          issue(input) {
+            issuerInputs.push(input);
+            return Promise.resolve({
+              channel: input.channel,
+              expiresAt: "2026-07-19T12:01:00.000Z",
+              model: "gpt-realtime-2.1",
+              value: "ek_ephemeral_browser_only",
+            });
+          },
+        },
+      },
+    });
+    const meetingId = "meeting-global-ai-rollout";
+    const standardApiKey = "sk-synthetic-standard-key-never-returned";
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const participant = await login(app, "legal", "counterpoint-legal");
+    const facilitatorHeaders = {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const participantHeaders = {
+      authorization: `Bearer ${participant.bearerToken}`,
+      "content-type": "application/json",
+    };
+
+    const forbidden = await app.request(`/api/v1/meetings/${meetingId}/byok`, {
+      body: JSON.stringify({ apiKey: standardApiKey, meetingId }),
+      headers: participantHeaders,
+      method: "PUT",
+    });
+    expect(forbidden.status).toBe(403);
+
+    const configuredResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/byok`,
+      {
+        body: JSON.stringify({ apiKey: standardApiKey, meetingId }),
+        headers: facilitatorHeaders,
+        method: "PUT",
+      },
+    );
+    expect(configuredResponse.status).toBe(201);
+    const configured = ConfigureMeetingByokResponseSchema.parse(
+      await configuredResponse.json(),
+    );
+    expect(configured).toMatchObject({
+      configured: true,
+      keySource: "byok",
+      meetingId,
+    });
+    expect(JSON.stringify(configured)).not.toContain(standardApiKey);
+    expect(
+      JSON.stringify(await runtime.decisions.events.load(meetingId)),
+    ).not.toContain(standardApiKey);
+
+    const secretResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "private", meetingId }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(secretResponse.status).toBe(201);
+    const secret = IssueRealtimeClientSecretResponseSchema.parse(
+      await secretResponse.json(),
+    );
+    expect(secret).toMatchObject({
+      channel: "private",
+      clientSecret: "ek_ephemeral_browser_only",
+      meetingId,
+      model: "gpt-realtime-2.1",
+    });
+    expect(JSON.stringify(secret)).not.toContain(standardApiKey);
+    const issuedInput = issuerInputs[0];
+    expect(issuedInput).toBeDefined();
+    expect({
+      ...issuedInput,
+      safetyIdentifier: "<redacted>",
+      sessionId: "<redacted>",
+    }).toEqual({
+      apiKey: standardApiKey,
+      channel: "private",
+      meetingId,
+      ownerParticipantId: "participant-legal",
+      safetyIdentifier: "<redacted>",
+      sessionId: "<redacted>",
+    });
+    expect(issuedInput?.sessionId).toMatch(/^session_/u);
+    expect(issuedInput?.safetyIdentifier).not.toBe("legal");
+
+    const heartbeatResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/byok/heartbeat`,
+      {
+        body: JSON.stringify({ meetingId }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(heartbeatResponse.status).toBe(200);
+    expect(
+      HeartbeatMeetingByokResponseSchema.parse(await heartbeatResponse.json()),
+    ).toMatchObject({ active: true, meetingId });
+
+    const logoutResponse = await app.request("/api/v1/logout", {
+      body: JSON.stringify({}),
+      headers: facilitatorHeaders,
+      method: "POST",
+    });
+    expect(logoutResponse.status).toBe(200);
+
+    const afterLogout = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "shared", meetingId }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(afterLogout.status).toBe(400);
+    expect(ErrorEnvelopeSchema.parse(await afterLogout.json())).toMatchObject({
+      code: "API_KEY_REQUIRED",
+    });
+    expect(issuerInputs).toHaveLength(1);
+  });
+
+  it("clears BYOK explicitly and maps Realtime provider failure without leaking keys", async () => {
+    const { runtime } = await fixture();
+    const app = createServerApp({
+      ...runtime,
+      realtimeSecrets: {
+        ...runtime.realtimeSecrets,
+        issuer: {
+          issue() {
+            return Promise.reject(new Error("synthetic provider outage"));
+          },
+        },
+      },
+    });
+    const meetingId = "meeting-global-ai-rollout";
+    const standardApiKey = "sk-synthetic-provider-failure-secret";
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const headers = {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+      "content-type": "application/json",
+    };
+    await app.request(`/api/v1/meetings/${meetingId}/byok`, {
+      body: JSON.stringify({ apiKey: standardApiKey, meetingId }),
+      headers,
+      method: "PUT",
+    });
+
+    const unavailable = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "shared", meetingId }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(unavailable.status).toBe(503);
+    const unavailableBody = JSON.stringify(await unavailable.json());
+    expect(unavailableBody).toContain("REALTIME_UNAVAILABLE");
+    expect(unavailableBody).not.toContain(standardApiKey);
+    expect(unavailableBody).not.toContain("synthetic provider outage");
+
+    const clearedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/byok`,
+      {
+        body: JSON.stringify({ meetingId }),
+        headers,
+        method: "DELETE",
+      },
+    );
+    expect(clearedResponse.status).toBe(200);
+    expect(
+      ClearMeetingByokResponseSchema.parse(await clearedResponse.json()),
+    ).toMatchObject({ cleared: true, meetingId });
+
+    const missing = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "shared", meetingId }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(missing.status).toBe(400);
+    expect(JSON.stringify(await missing.json())).not.toContain(standardApiKey);
   });
 
   it("issues a digest-only shared display token, rotates it, and revokes access", async () => {

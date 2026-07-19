@@ -55,3 +55,10 @@ export {
   type OpenAiAssumptionInvalidationEvaluatorOptions,
   type OpenAiAssumptionInvalidationModelOptions,
 } from "./invalidation-evaluation.js";
+export {
+  DEFAULT_OPENAI_REALTIME_MODEL,
+  OPENAI_REALTIME_CLIENT_SECRETS_URL,
+  OpenAiRealtimeClientSecretError,
+  OpenAiRealtimeClientSecretIssuer,
+  type OpenAiRealtimeClientSecretIssuerOptions,
+} from "./realtime-client-secrets.js";

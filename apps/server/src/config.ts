@@ -16,6 +16,7 @@ export interface ServerConfiguration {
   readonly openAiFakeExactSnippet: string | undefined;
   readonly openAiMode: "deterministic" | "disabled" | "live";
   readonly openAiModel: string;
+  readonly openAiRealtimeModel: string;
   readonly port: number;
   readonly storagePath: string;
   readonly regulatoryWebhookMaxAgeSeconds: number;
@@ -153,6 +154,8 @@ export function readServerConfiguration(
     openAiFakeExactSnippet: environment.OPENAI_FAKE_EXACT_SNIPPET,
     openAiMode,
     openAiModel: environment.OPENAI_MODEL ?? "gpt-5.6",
+    openAiRealtimeModel:
+      environment.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2.1",
     port: parsePort(environment.PORT),
     regulatoryWebhookMaxAgeSeconds: parseNonNegativeInteger(
       environment.REGULATORY_WEBHOOK_MAX_AGE_SECONDS,

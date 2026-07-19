@@ -32,6 +32,7 @@
     "smoke:openai": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-private-disclosure-smoke.mjs",
     "smoke:openai:invalidation": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-assumption-invalidation-smoke.mjs",
     "smoke:openai:decision": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-shared-decision-smoke.mjs",
+    "smoke:openai:realtime-secret": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-realtime-secret-smoke.mjs",
     "test": "vitest run",
     "test:architecture": "node scripts/check-architecture.mjs",
     "test:coverage": "vitest run --coverage",

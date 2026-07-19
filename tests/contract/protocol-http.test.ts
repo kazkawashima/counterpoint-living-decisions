@@ -2,7 +2,11 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   ApproveDisclosureRequestSchema,
+  ClearMeetingByokRequestSchema,
+  ClearMeetingByokResponseSchema,
   CommitDecisionRequestSchema,
+  ConfigureMeetingByokRequestSchema,
+  ConfigureMeetingByokResponseSchema,
   ConfirmInvalidationReviewResponseSchema,
   CreateMeetingRequestSchema,
   DecisionJsonExportQuerySchema,
@@ -13,11 +17,15 @@ import {
   FacilitatorInvalidationReviewRequestSchema,
   HealthRequestSchema,
   HealthResponseSchema,
+  HeartbeatMeetingByokRequestSchema,
+  HeartbeatMeetingByokResponseSchema,
   HTTP_API_V1_PREFIX,
   InjectDemoRegulatoryChangeRequestSchema,
   InvalidationEvaluationSchema,
   IssueDisplayTokenRequestSchema,
   IssueDisplayTokenResponseSchema,
+  IssueRealtimeClientSecretRequestSchema,
+  IssueRealtimeClientSecretResponseSchema,
   JoinMeetingByCodeRequestSchema,
   ListAssignedMeetingsRequestSchema,
   LoginRequestSchema,
@@ -48,13 +56,21 @@ import {
   SharedDisplayProjectionResponseSchema,
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
+  type ClearMeetingByokRequest,
+  type ClearMeetingByokResponse,
+  type ConfigureMeetingByokRequest,
+  type ConfigureMeetingByokResponse,
   type DecisionJsonExportResponse,
   type FacilitatorDemoResetRequest,
   type FacilitatorDemoResetResponse,
   type FacilitatorInvalidationReviewRequest,
   type FacilitatorInvalidationReviewResponse,
+  type HeartbeatMeetingByokRequest,
+  type HeartbeatMeetingByokResponse,
   type IssueDisplayTokenRequest,
   type IssueDisplayTokenResponse,
+  type IssueRealtimeClientSecretRequest,
+  type IssueRealtimeClientSecretResponse,
   type LoginRequest,
   type ResolveDecisionReviewRequest,
   type ResolveDecisionReviewResponse,
@@ -1019,6 +1035,179 @@ describe("strict v1 HTTP protocol", () => {
       ListAssignedMeetingsRequestSchema.safeParse({ userId: "user-other" })
         .success,
     ).toBe(false);
+  });
+
+  it("configures, heartbeats, and clears meeting-scoped BYOK without echoing the key", () => {
+    const configureRequest = {
+      meetingId: "meeting-1",
+      apiKey: "sk-synthetic-at-least-twenty-characters",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedConfigureRequest =
+      ConfigureMeetingByokRequestSchema.parse(configureRequest);
+    expectTypeOf(
+      parsedConfigureRequest,
+    ).toEqualTypeOf<ConfigureMeetingByokRequest>();
+    expect(
+      ConfigureMeetingByokRequestSchema.safeParse({
+        ...configureRequest,
+        participantId: "participant-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      ConfigureMeetingByokRequestSchema.safeParse({
+        ...configureRequest,
+        apiKey: "fewer-than-twenty",
+      }).success,
+    ).toBe(false);
+    expect(
+      ConfigureMeetingByokRequestSchema.safeParse({
+        ...configureRequest,
+        apiKey: "x".repeat(4097),
+      }).success,
+    ).toBe(false);
+
+    const configureResponse = {
+      meetingId: "meeting-1",
+      configured: true,
+      keySource: "byok",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedConfigureResponse =
+      ConfigureMeetingByokResponseSchema.parse(configureResponse);
+    expectTypeOf(
+      parsedConfigureResponse,
+    ).toEqualTypeOf<ConfigureMeetingByokResponse>();
+    expect(
+      ConfigureMeetingByokResponseSchema.safeParse({
+        ...configureResponse,
+        apiKey: configureRequest.apiKey,
+      }).success,
+    ).toBe(false);
+
+    const heartbeatRequest = {
+      meetingId: "meeting-1",
+      correlationId: "correlation-2",
+    } as const;
+    const parsedHeartbeatRequest =
+      HeartbeatMeetingByokRequestSchema.parse(heartbeatRequest);
+    expectTypeOf(
+      parsedHeartbeatRequest,
+    ).toEqualTypeOf<HeartbeatMeetingByokRequest>();
+    expect(
+      HeartbeatMeetingByokRequestSchema.safeParse({
+        ...heartbeatRequest,
+        apiKey: configureRequest.apiKey,
+      }).success,
+    ).toBe(false);
+
+    const heartbeatResponse = {
+      meetingId: "meeting-1",
+      active: true,
+      correlationId: "correlation-2",
+    } as const;
+    const parsedHeartbeatResponse =
+      HeartbeatMeetingByokResponseSchema.parse(heartbeatResponse);
+    expectTypeOf(
+      parsedHeartbeatResponse,
+    ).toEqualTypeOf<HeartbeatMeetingByokResponse>();
+    expect(
+      HeartbeatMeetingByokResponseSchema.safeParse({
+        ...heartbeatResponse,
+        expiresAt: "2026-07-19T12:05:00.000Z",
+      }).success,
+    ).toBe(false);
+
+    const clearRequest = {
+      meetingId: "meeting-1",
+      correlationId: "correlation-3",
+    } as const;
+    const parsedClearRequest =
+      ClearMeetingByokRequestSchema.parse(clearRequest);
+    expectTypeOf(parsedClearRequest).toEqualTypeOf<ClearMeetingByokRequest>();
+    expect(
+      ClearMeetingByokRequestSchema.safeParse({
+        ...clearRequest,
+        keySource: "byok",
+      }).success,
+    ).toBe(false);
+
+    const clearResponse = {
+      meetingId: "meeting-1",
+      cleared: true,
+      correlationId: "correlation-3",
+    } as const;
+    const parsedClearResponse =
+      ClearMeetingByokResponseSchema.parse(clearResponse);
+    expectTypeOf(parsedClearResponse).toEqualTypeOf<ClearMeetingByokResponse>();
+    expect(
+      ClearMeetingByokResponseSchema.safeParse({
+        ...clearResponse,
+        apiKey: configureRequest.apiKey,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("issues only channel-scoped short-lived realtime client secrets", () => {
+    const request = {
+      meetingId: "meeting-1",
+      channel: "private",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedRequest = IssueRealtimeClientSecretRequestSchema.parse(request);
+    expectTypeOf(
+      parsedRequest,
+    ).toEqualTypeOf<IssueRealtimeClientSecretRequest>();
+    expect(
+      IssueRealtimeClientSecretRequestSchema.safeParse({
+        ...request,
+        channel: "participant-private",
+      }).success,
+    ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretRequestSchema.safeParse({
+        ...request,
+        participantId: "participant-1",
+      }).success,
+    ).toBe(false);
+
+    const response = {
+      meetingId: "meeting-1",
+      channel: "private",
+      clientSecret: "ek_synthetic-short-lived-client-secret",
+      expiresAt: "2026-07-19T12:01:00.000Z",
+      model: "gpt-realtime-2.1",
+      correlationId: "correlation-1",
+    } as const;
+    const parsedResponse =
+      IssueRealtimeClientSecretResponseSchema.parse(response);
+    expectTypeOf(
+      parsedResponse,
+    ).toEqualTypeOf<IssueRealtimeClientSecretResponse>();
+    expect(
+      IssueRealtimeClientSecretResponseSchema.safeParse({
+        ...response,
+        apiKey: "sk-standard-key-must-never-appear",
+      }).success,
+    ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretResponseSchema.safeParse({
+        ...response,
+        expiresAt: "2026-07-19 12:01:00",
+      }).success,
+    ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretResponseSchema.safeParse({
+        ...response,
+        privateWorkspace: {},
+      }).success,
+    ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretResponseSchema.safeParse({
+        ...response,
+        channel: "shared",
+      }).success,
+    ).toBe(true);
   });
 
   it("issues and revokes display tokens with strict meeting-scoped DTOs", () => {

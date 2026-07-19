@@ -2,6 +2,11 @@ export type {
   AiGateway,
   AiRequest,
   AiResult,
+  MeetingApiKeyLease,
+  MeetingApiKeyLeaseConfigureResult,
+  MeetingApiKeyLeaseMutationResult,
+  MeetingApiKeyLeaseStore,
+  RealtimeChannel,
   RealtimeSecret,
   RealtimeSecretIssuer,
 } from "./ai.js";

@@ -22,17 +22,76 @@ export interface AiGateway<TInput = unknown, TCandidate = unknown> {
   generateCandidate(request: AiRequest<TInput>): Promise<AiResult<TCandidate>>;
 }
 
+export type RealtimeChannel = "private" | "shared";
+
 export interface RealtimeSecret {
-  readonly channel: "private" | "shared";
+  readonly channel: RealtimeChannel;
   readonly expiresAt: string;
+  readonly model: string;
   readonly value: string;
 }
 
 export interface RealtimeSecretIssuer {
   issue(input: {
-    readonly channel: "private" | "shared";
+    readonly apiKey: string;
+    readonly channel: RealtimeChannel;
     readonly meetingId: string;
-    readonly ownerParticipantId?: string;
+    readonly ownerParticipantId?: string | undefined;
+    readonly safetyIdentifier: string;
     readonly sessionId: string;
   }): Promise<RealtimeSecret>;
+}
+
+export interface MeetingApiKeyLease {
+  readonly apiKey: string;
+  readonly heartbeatAt: string;
+  readonly meetingId: string;
+  readonly ownerParticipantId: string;
+  readonly ownerSessionId: string;
+}
+
+export type MeetingApiKeyLeaseConfigureResult =
+  | {
+      readonly kind: "configured";
+    }
+  | {
+      readonly kind: "owner_mismatch";
+    };
+
+export type MeetingApiKeyLeaseMutationResult =
+  | {
+      readonly kind: "applied";
+    }
+  | {
+      readonly kind: "missing" | "owner_mismatch";
+    };
+
+/**
+ * Transient-memory boundary for standard BYOK credentials.
+ *
+ * Implementations must not persist, log, publish, or serialize leases. An
+ * active lease may only be replaced, renewed, or cleared by its owning
+ * facilitator session.
+ */
+export interface MeetingApiKeyLeaseStore {
+  clear(input: {
+    readonly meetingId: string;
+    readonly ownerParticipantId: string;
+    readonly ownerSessionId: string;
+  }): Promise<MeetingApiKeyLeaseMutationResult>;
+
+  clearBySession(sessionId: string): Promise<void>;
+
+  configure(
+    lease: MeetingApiKeyLease,
+  ): Promise<MeetingApiKeyLeaseConfigureResult>;
+
+  findByMeeting(meetingId: string): Promise<MeetingApiKeyLease | undefined>;
+
+  heartbeat(input: {
+    readonly heartbeatAt: string;
+    readonly meetingId: string;
+    readonly ownerParticipantId: string;
+    readonly ownerSessionId: string;
+  }): Promise<MeetingApiKeyLeaseMutationResult>;
 }

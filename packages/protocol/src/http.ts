@@ -442,6 +442,81 @@ export type RoleProjectionResponse = z.infer<
 export type GetRoleProjectionRequest = RoleProjectionQuery;
 export type GetRoleProjectionResponse = RoleProjectionResponse;
 
+const ByokApiKeySchema = z.string().min(20).max(4096);
+const RealtimeClientSecretSchema = z.string().min(1).max(4096);
+const RealtimeModelSchema = z.string().trim().min(1).max(256);
+
+export const RealtimeChannelSchema = z.enum(["private", "shared"]);
+
+export const ConfigureMeetingByokRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  apiKey: ByokApiKeySchema,
+  ...OptionalCorrelationShape,
+});
+export const ConfigureMeetingByokResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  configured: z.literal(true),
+  keySource: z.literal("byok"),
+  ...RequiredCorrelationShape,
+});
+export const HeartbeatMeetingByokRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const HeartbeatMeetingByokResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  active: z.literal(true),
+  ...RequiredCorrelationShape,
+});
+export const ClearMeetingByokRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const ClearMeetingByokResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  cleared: z.literal(true),
+  ...RequiredCorrelationShape,
+});
+export const IssueRealtimeClientSecretRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  channel: RealtimeChannelSchema,
+  ...OptionalCorrelationShape,
+});
+export const IssueRealtimeClientSecretResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  channel: RealtimeChannelSchema,
+  clientSecret: RealtimeClientSecretSchema,
+  expiresAt: UtcIsoTimestampSchema,
+  model: RealtimeModelSchema,
+  ...RequiredCorrelationShape,
+});
+
+export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
+export type ConfigureMeetingByokRequest = z.infer<
+  typeof ConfigureMeetingByokRequestSchema
+>;
+export type ConfigureMeetingByokResponse = z.infer<
+  typeof ConfigureMeetingByokResponseSchema
+>;
+export type HeartbeatMeetingByokRequest = z.infer<
+  typeof HeartbeatMeetingByokRequestSchema
+>;
+export type HeartbeatMeetingByokResponse = z.infer<
+  typeof HeartbeatMeetingByokResponseSchema
+>;
+export type ClearMeetingByokRequest = z.infer<
+  typeof ClearMeetingByokRequestSchema
+>;
+export type ClearMeetingByokResponse = z.infer<
+  typeof ClearMeetingByokResponseSchema
+>;
+export type IssueRealtimeClientSecretRequest = z.infer<
+  typeof IssueRealtimeClientSecretRequestSchema
+>;
+export type IssueRealtimeClientSecretResponse = z.infer<
+  typeof IssueRealtimeClientSecretResponseSchema
+>;
+
 const DisplayTokenSchema = z.string().min(1).max(4096);
 
 export const IssueDisplayTokenRequestSchema = z.strictObject({

@@ -7,8 +7,9 @@ Updated: 2026-07-19
 **The complete local guided flagship is implemented from private evidence
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
-The revocable read-only shared display is also complete; A6 and hosted judge
-mode are next.**
+The revocable read-only shared display and A6 transient BYOK/client-secret
+backend are also complete; direct browser WebRTC and hosted judge mode are
+next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -225,11 +226,27 @@ The canonical implementation-facing artifacts are:
   revoked states with four screenshots and a dedicated Evidence-to-revocation
   clip. Server integration proves facilitator-only issue/revoke, digest-only
   persistence, rotation, and private-text exclusion.
+- A6 now has strict BYOK configure, heartbeat, clear, and channel-scoped
+  Realtime client-secret HTTP contracts. Standard keys are accepted only from
+  facilitator-authorized meeting requests and are never echoed by responses,
+  errors, events, projections, or logs.
+- Node keeps BYOK in a meeting-scoped process-memory lease owned by the
+  facilitator session. Heartbeat renews the lease; explicit clear and logout
+  remove it immediately, while an unreferenced timer physically removes an
+  abandoned key at the five-minute boundary even if no later request arrives.
+- Assigned participants can mint separate private or shared short-lived
+  secrets. Private issuance binds to the caller participant; the OpenAI request
+  body excludes meeting, participant, session, and private-content metadata and
+  uses only channel isolation instructions plus a pseudonymous safety
+  identifier.
+- The current official `gpt-realtime-2.1` client-secret path was rechecked and
+  exercised successfully with the local standard key. The live smoke reports
+  only channel, model, expiry, and status; it does not print either credential.
 
 ## In progress
 
-- Continue the A6 Realtime client-secret path without exposing the standard
-  provider key.
+- Connect the completed A6 client-secret boundary to direct browser WebRTC with
+  idle close, capped reconnect, explicit status UI, and text-safe degradation.
 
 ## Not started
 
@@ -239,9 +256,10 @@ The canonical implementation-facing artifacts are:
 
 Continue A6 in
 [`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md):
-add the transient BYOK/judge key-source boundary and channel-scoped client
-secret issuance, then connect it to the completed application realtime hub
-without changing the completed text flagship semantics.
+add facilitator tab-scoped BYOK controls and direct browser WebRTC lifecycle,
+then capture status, reconnect, mobile, reduced-motion, and degraded evidence.
+Keep the allowlisted judge-managed source and USD 25 product spend gate in Plan
+05.
 
 ## Open gates
 

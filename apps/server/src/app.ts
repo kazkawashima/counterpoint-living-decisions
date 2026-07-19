@@ -11,11 +11,16 @@ import {
   authenticateSession,
   authenticateSessionById,
   commitDecision,
+  clearMeetingByok,
+  clearMeetingByokLeasesBySession,
+  configureMeetingByok,
   createMeeting,
   dispositionDecisionCandidate,
   evaluateAssumptionInvalidation,
   injectDemoRegulatoryChange,
+  heartbeatMeetingByok,
   issueDisplayToken,
+  issueRealtimeClientSecret,
   joinMeetingByCode,
   listAssignedMeetings,
   listAssumptionInvalidationEvaluations,
@@ -66,8 +71,12 @@ import type {
 import {
   ApproveDisclosureRequestSchema,
   ApproveDisclosureResponseSchema,
+  ClearMeetingByokRequestSchema,
+  ClearMeetingByokResponseSchema,
   CommitDecisionRequestSchema,
   CommitDecisionResponseSchema,
+  ConfigureMeetingByokRequestSchema,
+  ConfigureMeetingByokResponseSchema,
   CreateMeetingRequestSchema,
   CreateMeetingResponseSchema,
   createErrorEnvelope,
@@ -83,10 +92,14 @@ import {
   FacilitatorDemoResetRequestSchema,
   FacilitatorDemoResetResponseSchema,
   HealthResponseSchema,
+  HeartbeatMeetingByokRequestSchema,
+  HeartbeatMeetingByokResponseSchema,
   InjectDemoRegulatoryChangeRequestSchema,
   InjectDemoRegulatoryChangeResponseSchema,
   IssueDisplayTokenRequestSchema,
   IssueDisplayTokenResponseSchema,
+  IssueRealtimeClientSecretRequestSchema,
+  IssueRealtimeClientSecretResponseSchema,
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
@@ -885,6 +898,10 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       return errorResponse(context, authenticated.code);
     }
     await logout(runtime, authenticated.bearerToken);
+    await clearMeetingByokLeasesBySession(
+      runtime.realtimeSecrets,
+      authenticated.session.sessionId,
+    );
     runtime.realtime.closeSession(authenticated.session.sessionId);
     return context.json(
       LogoutResponseSchema.parse({
@@ -1114,6 +1131,166 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       201,
     );
   });
+
+  app.put("/api/v1/meetings/:meetingId/byok", async (context) => {
+    const request = await parseJson(context, ConfigureMeetingByokRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await configureMeetingByok(
+      runtime.realtimeSecrets,
+      resolved.authorization,
+      request.value,
+    );
+    if (result.kind === "failed") {
+      return errorResponse(context, result.code);
+    }
+    return context.json(
+      ConfigureMeetingByokResponseSchema.parse({
+        configured: true,
+        correlationId: context.get("correlationId"),
+        keySource: "byok",
+        meetingId: result.meetingId,
+      }),
+      201,
+    );
+  });
+
+  app.post("/api/v1/meetings/:meetingId/byok/heartbeat", async (context) => {
+    const request = await parseJson(context, HeartbeatMeetingByokRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await heartbeatMeetingByok(
+      runtime.realtimeSecrets,
+      resolved.authorization,
+      request.value,
+    );
+    if (result.kind === "failed") {
+      return errorResponse(context, result.code);
+    }
+    return context.json(
+      HeartbeatMeetingByokResponseSchema.parse({
+        active: true,
+        correlationId: context.get("correlationId"),
+        meetingId: result.meetingId,
+      }),
+    );
+  });
+
+  app.delete("/api/v1/meetings/:meetingId/byok", async (context) => {
+    const request = await parseJson(context, ClearMeetingByokRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const result = await clearMeetingByok(
+      runtime.realtimeSecrets,
+      resolved.authorization,
+      request.value,
+    );
+    if (result.kind === "failed") {
+      return errorResponse(context, result.code);
+    }
+    return context.json(
+      ClearMeetingByokResponseSchema.parse({
+        cleared: true,
+        correlationId: context.get("correlationId"),
+        meetingId: result.meetingId,
+      }),
+    );
+  });
+
+  app.post(
+    "/api/v1/meetings/:meetingId/realtime/client-secrets",
+    async (context) => {
+      const request = await parseJson(
+        context,
+        IssueRealtimeClientSecretRequestSchema,
+      );
+      if (
+        request.kind === "rejected" ||
+        request.value.meetingId !== context.req.param("meetingId")
+      ) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        request.value.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const result = await issueRealtimeClientSecret(
+        runtime.realtimeSecrets,
+        resolved.authorization,
+        request.value,
+      );
+      if (result.kind === "failed") {
+        return errorResponse(context, result.code);
+      }
+      return context.json(
+        IssueRealtimeClientSecretResponseSchema.parse({
+          channel: result.channel,
+          clientSecret: result.clientSecret,
+          correlationId: context.get("correlationId"),
+          expiresAt: result.expiresAt,
+          meetingId: result.meetingId,
+          model: result.model,
+        }),
+        201,
+      );
+    },
+  );
 
   app.post("/api/v1/meetings/:meetingId/display-tokens", async (context) => {
     const request = await parseJson(context, IssueDisplayTokenRequestSchema);

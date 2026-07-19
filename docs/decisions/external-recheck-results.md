@@ -34,11 +34,19 @@ Sources:
 
 ## ER-04 — Realtime browser topology
 
+- Rechecked against the official OpenAI Realtime WebRTC and API reference on
+  2026-07-19 before implementing A6.
 - The current Realtime model documented for this path is
   `gpt-realtime-2.1`.
 - The server creates a short-lived client secret through
   `/v1/realtime/client_secrets`; the browser uses that ephemeral value to
   establish a WebRTC call through `/v1/realtime/calls`.
+- The current API reference describes the client secret as expiring one minute
+  after issuance. Counterpoint treats the provider's `expires_at` as
+  authoritative instead of hard-coding that duration.
+- The server includes a stable pseudonymous `OpenAI-Safety-Identifier` when
+  minting the secret. The raw application user ID, meeting ID, participant ID,
+  session ID, and private meeting content are not sent in the issuance body.
 - The standard API key remains server-side. Shared and private channels still
   require separate app sessions and authorization checks.
 - Structured Outputs are not supported by the Realtime model, so transcripts

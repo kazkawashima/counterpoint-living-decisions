@@ -1,5 +1,9 @@
 export { LocalArtifactStore } from "./artifacts.js";
 export {
+  NodeMeetingApiKeyLeaseStore,
+  type NodeMeetingApiKeyLeaseStoreOptions,
+} from "./api-key-leases.js";
+export {
   CryptographicIdGenerator,
   isScryptPasswordHash,
   ScryptPasswordHasher,

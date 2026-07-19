@@ -168,3 +168,21 @@ export {
   type SessionAuthenticationResult,
   type SessionDependencies,
 } from "./sessions.js";
+export {
+  MEETING_API_KEY_LEASE_TTL_MS,
+  clearMeetingByok,
+  clearMeetingByokLeasesBySession,
+  configureMeetingByok,
+  heartbeatMeetingByok,
+  issueRealtimeClientSecret,
+  type ClearMeetingByokResult,
+  type ConfigureMeetingByokInput,
+  type ConfigureMeetingByokResult,
+  type HeartbeatMeetingByokResult,
+  type IssueRealtimeClientSecretInput,
+  type IssueRealtimeClientSecretResult,
+  type MeetingByokInput,
+  type RealtimeSecretDependencies,
+  type RealtimeSecretFailure,
+  type SafetyIdentifierHash,
+} from "./realtime-secrets.js";

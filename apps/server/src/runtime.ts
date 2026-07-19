@@ -5,6 +5,7 @@ import {
   CURRENT_SQLITE_MIGRATION_COUNT,
   createJsonCodec,
   LocalArtifactStore,
+  NodeMeetingApiKeyLeaseStore,
   NodeSqliteDatabase,
   NodeHmacWebhookVerifier,
   ScryptPasswordHasher,
@@ -27,6 +28,7 @@ import {
   DeterministicSharedDecisionModel,
   OpenAiPrivateDisclosureProposer,
   OpenAiAssumptionInvalidationEvaluator,
+  OpenAiRealtimeClientSecretIssuer,
   OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
 import type {
@@ -35,6 +37,7 @@ import type {
   DisclosureDependencies,
   ExternalEventDependencies,
   InvalidationEvaluationDependencies,
+  RealtimeSecretDependencies,
 } from "@counterpoint/application";
 import {
   domainEventTypes,
@@ -74,6 +77,7 @@ export interface ServerRuntime {
   readonly openAiConfigured: boolean;
   readonly passwords: PasswordVerifier;
   readonly realtime: NodeMeetingRealtimeHub;
+  readonly realtimeSecrets: RealtimeSecretDependencies;
   readonly sessions: SessionRepository;
   readonly tokens: SessionTokenIssuer;
   readonly webhookVerifier: WebhookVerifier | undefined;
@@ -253,6 +257,10 @@ export async function createLocalServerRuntime(
     await seedFlagshipMeeting(meetings, configuration);
     const clock = new SystemClock();
     const ids = new CryptographicIdGenerator();
+    const realtimeKeyLeases = new NodeMeetingApiKeyLeaseStore();
+    const realtimeSecretIssuer = new OpenAiRealtimeClientSecretIssuer({
+      model: configuration.openAiRealtimeModel,
+    });
     const artifacts = new LocalArtifactStore(configuration.storagePath);
     let artifactStorageAvailable = true;
     const probeScope = {
@@ -323,6 +331,7 @@ export async function createLocalServerRuntime(
       clock,
       close: () => {
         realtime.close();
+        realtimeKeyLeases.close();
         database.close();
       },
       decisionCandidates,
@@ -358,6 +367,12 @@ export async function createLocalServerRuntime(
       openAiConfigured: configuration.openAiConfigured,
       passwords: new ScryptPasswordHasher(),
       realtime,
+      realtimeSecrets: {
+        clock,
+        hashSafetyIdentifier: sha256,
+        issuer: realtimeSecretIssuer,
+        leases: realtimeKeyLeases,
+      },
       sessions: new SqliteSessionRepository(database),
       tokens: new Sha256SessionTokenIssuer(),
       webhookVerifier,

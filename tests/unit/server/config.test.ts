@@ -14,6 +14,7 @@ describe("server OpenAI configuration", () => {
       openAiConfigured: false,
       openAiMode: "disabled",
       openAiModel: "gpt-5.6",
+      openAiRealtimeModel: "gpt-realtime-2.1",
     });
   });
 
@@ -21,12 +22,14 @@ describe("server OpenAI configuration", () => {
     const configuration = readServerConfiguration({
       OPENAI_API_KEY: "synthetic-server-key",
       OPENAI_MODEL: "gpt-5.6",
+      OPENAI_REALTIME_MODEL: "gpt-realtime-test",
       PORT: "8787",
     });
 
     expect(configuration.openAiMode).toBe("live");
     expect(configuration.openAiConfigured).toBe(true);
     expect(configuration.openAiApiKey).toBe("synthetic-server-key");
+    expect(configuration.openAiRealtimeModel).toBe("gpt-realtime-test");
     expect(
       JSON.stringify({ ...configuration, openAiApiKey: undefined }),
     ).not.toContain("synthetic-server-key");
