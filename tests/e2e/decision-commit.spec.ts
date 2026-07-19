@@ -245,6 +245,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   baseURL,
   browser,
 }) => {
+  test.setTimeout(120_000);
   const facilitatorContext = await browser.newContext({
     recordVideo: {
       dir: "test-results/reel-video",

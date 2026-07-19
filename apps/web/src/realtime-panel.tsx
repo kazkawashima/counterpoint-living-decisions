@@ -11,20 +11,29 @@ import {
 import {
   acquireSharedFloor,
   ApiError,
+  awaitManagedRealtimeTranscript,
+  beginManagedRealtimeTurn,
   captureUtterance,
   clearMeetingByok,
   clearStoredMeetingByok,
   configureMeetingByok,
+  createManagedRealtimeCall,
+  getRealtimeAccess,
   getRoleProjection,
   heartbeatMeetingByok,
   issueRealtimeClientSecret,
   loadStoredMeetingByok,
   releaseSharedFloor,
   storeMeetingByok,
+  type CaptureUtteranceResponse,
   type GetRoleProjectionResponse,
+  type RealtimeAccessResponse,
   type StoredSession,
+  terminateManagedRealtimeCall,
 } from "./api.js";
 import {
+  connectManagedOpenAiRealtime,
+  connectOpenAiRealtime,
   createOpenAiRealtimeController,
   type OpenAiRealtimeChannel,
   type OpenAiRealtimeController,
@@ -34,11 +43,15 @@ import {
 interface RealtimePanelProps {
   readonly facilitator: boolean;
   readonly meetingId: string;
+  readonly onPositionChange: (
+    position: CaptureUtteranceResponse["position"],
+  ) => void;
   readonly participantId: string;
   readonly session: StoredSession;
 }
 
 type KeyState = "active" | "configuring" | "error" | "missing";
+type RealtimeAccessState = "checking" | RealtimeAccessResponse["mode"];
 type ProjectionState = "checking" | "offline" | "online";
 type SpeechState =
   | "acquiring"
@@ -64,6 +77,9 @@ const TRANSCRIPT_WAIT_MS = 5_000;
 function safeMessage(error: unknown): string {
   if (error instanceof ApiError && error.code === "API_KEY_REQUIRED") {
     return "API key required. Meeting state is preserved; add BYOK or continue in text.";
+  }
+  if (error instanceof ApiError && error.code === "USAGE_LIMIT_REACHED") {
+    return "Daily judge limit reached. Meeting state and text remain available.";
   }
   return error instanceof ApiError
     ? error.message
@@ -164,6 +180,7 @@ function RealtimeChannelCard({
 export function RealtimePanel({
   facilitator,
   meetingId,
+  onPositionChange,
   participantId,
   session,
 }: RealtimePanelProps) {
@@ -181,6 +198,8 @@ export function RealtimePanel({
   const [projection, setProjection] = useState<GetRoleProjectionResponse>();
   const [projectionState, setProjectionState] =
     useState<ProjectionState>("checking");
+  const [realtimeAccess, setRealtimeAccess] =
+    useState<RealtimeAccessState>("checking");
   const [speechState, setSpeechState] = useState<SpeechState>("idle");
   const [speechStatus, setSpeechStatus] = useState(
     "Choose a channel. Hold to speak, or type the same command below.",
@@ -201,9 +220,81 @@ export function RealtimePanel({
   >(undefined);
 
   if (controllers.current === undefined) {
-    const issueSecret = async (channel: OpenAiRealtimeChannel) => {
+    const connect = async (
+      selectedChannel: OpenAiRealtimeChannel,
+      idempotencyKey: string,
+    ) => {
       try {
-        return await issueRealtimeClientSecret(session, meetingId, channel);
+        const access = await getRealtimeAccess(session, meetingId);
+        setRealtimeAccess(access.mode);
+        if (access.mode === "facilitatorProvided") {
+          const issued = await issueRealtimeClientSecret(
+            session,
+            meetingId,
+            selectedChannel,
+          );
+          return await connectOpenAiRealtime({
+            clientSecret: issued.clientSecret,
+            onTranscript: (transcript) =>
+              transcriptHandlers.current[selectedChannel]?.(transcript),
+          });
+        }
+        if (access.mode === "judgeManaged") {
+          return await connectManagedOpenAiRealtime({
+            awaitTranscript: async ({ managedCallId, utteranceId }) => {
+              for (let attempt = 0; attempt < 40; attempt += 1) {
+                try {
+                  return await awaitManagedRealtimeTranscript(session, {
+                    managedCallId,
+                    meetingId,
+                    utteranceId,
+                  });
+                } catch (cause) {
+                  if (
+                    !(cause instanceof ApiError) ||
+                    cause.code !== "CONFLICT" ||
+                    attempt === 39
+                  ) {
+                    throw cause;
+                  }
+                  await new Promise<void>((resolve) => {
+                    window.setTimeout(resolve, 125);
+                  });
+                }
+              }
+              throw new Error("Managed transcript polling exhausted");
+            },
+            beginTurn: async ({ managedCallId, utteranceId }) => {
+              await beginManagedRealtimeTurn(session, {
+                managedCallId,
+                meetingId,
+                utteranceId,
+              });
+            },
+            channel: selectedChannel,
+            createCall: async ({ channel, idempotencyKey: key, sdpOffer }) => {
+              return createManagedRealtimeCall(session, {
+                channel,
+                idempotencyKey: key,
+                meetingId,
+                sdpOffer,
+              });
+            },
+            idempotencyKey,
+            onTranscript: (transcript) =>
+              transcriptHandlers.current[selectedChannel]?.(transcript),
+            terminateCall: async (managedCallId) => {
+              await terminateManagedRealtimeCall(session, {
+                managedCallId,
+                meetingId,
+              });
+            },
+          });
+        }
+        throw new ApiError(
+          "API_KEY_REQUIRED",
+          "Realtime access is unavailable for this meeting",
+        );
       } catch (cause) {
         setError(safeMessage(cause));
         throw cause;
@@ -212,15 +303,11 @@ export function RealtimePanel({
     controllers.current = {
       private: createOpenAiRealtimeController({
         channel: "private",
-        issueSecret,
-        onTranscript: (transcript) =>
-          transcriptHandlers.current.private?.(transcript),
+        connect,
       }),
       shared: createOpenAiRealtimeController({
         channel: "shared",
-        issueSecret,
-        onTranscript: (transcript) =>
-          transcriptHandlers.current.shared?.(transcript),
+        connect,
       }),
     };
   }
@@ -286,6 +373,7 @@ export function RealtimePanel({
         text: transcript,
         utteranceId: turn.utteranceId,
       });
+      onPositionChange(captured.position);
       setSpeechState("sent");
       setSpeechStatus(
         turn.channel === "private"
@@ -387,7 +475,7 @@ export function RealtimePanel({
         await releaseTurnFloor(turn);
         return;
       }
-      await controller.startPushToTalk();
+      await controller.startPushToTalk(turn.utteranceId);
       setSpeechState("listening");
       setSpeechStatus(
         channel === "private"
@@ -469,6 +557,7 @@ export function RealtimePanel({
         text: canonicalText,
         utteranceId: turn.utteranceId,
       });
+      onPositionChange(captured.position);
       let realtimeDelivered = false;
       try {
         if (selectedRealtimeState.status === "connected") {
@@ -504,6 +593,24 @@ export function RealtimePanel({
       await releaseTurnFloor(turn);
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    void getRealtimeAccess(session, meetingId)
+      .then((access) => {
+        if (!cancelled) {
+          setRealtimeAccess(access.mode);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRealtimeAccess("unavailable");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingId, session]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -558,6 +665,7 @@ export function RealtimePanel({
       .then(() => {
         if (!cancelled) {
           setKeyState("active");
+          setRealtimeAccess("facilitatorProvided");
         }
       })
       .catch((cause: unknown) => {
@@ -598,6 +706,7 @@ export function RealtimePanel({
       storeMeetingByok(meetingId, candidate);
       setApiKey("");
       setKeyState("active");
+      setRealtimeAccess("facilitatorProvided");
     } catch (cause) {
       setKeyState("error");
       setError(safeMessage(cause));
@@ -631,6 +740,7 @@ export function RealtimePanel({
       clearStoredMeetingByok(meetingId);
       setApiKey("");
       setKeyState("missing");
+      setRealtimeAccess("unavailable");
     }
   }
 
@@ -667,15 +777,20 @@ export function RealtimePanel({
             : "Hold to speak to room";
   const realtimeDegraded =
     privateState.status === "degraded" || sharedState.status === "degraded";
+  const realtimeAccessReady =
+    realtimeAccess === "facilitatorProvided" ||
+    realtimeAccess === "judgeManaged";
   const recoveryLabel =
-    keyState === "missing"
-      ? "API key required"
-      : realtimeDegraded
-        ? "Text fallback active"
-        : privateState.status === "connected" ||
-            sharedState.status === "connected"
-          ? "Realtime available"
-          : "Realtime optional";
+    realtimeAccess === "checking"
+      ? "Checking access"
+      : !realtimeAccessReady
+        ? "API key required"
+        : realtimeDegraded
+          ? "Text fallback active"
+          : privateState.status === "connected" ||
+              sharedState.status === "connected"
+            ? "Realtime available"
+            : "Realtime optional";
 
   return (
     <section aria-labelledby="live-channels-title" className="realtime-dock">
@@ -695,8 +810,26 @@ export function RealtimePanel({
         </div>
       </div>
       <div className="realtime-controls">
-        <div className="realtime-byok">
-          {facilitator ? (
+        <div
+          className={`realtime-byok ${
+            realtimeAccess === "judgeManaged" ? "judge-managed" : ""
+          }`}
+        >
+          {realtimeAccess === "judgeManaged" ? (
+            <>
+              <span className="realtime-key-state">Judge-managed access</span>
+              <p>
+                Server-owned bounded call. No provider credential enters this
+                browser.
+              </p>
+              <div className="realtime-key-actions">
+                <span className="realtime-state connected">Ready</span>
+                <span className="managed-access-mark" aria-hidden="true">
+                  ◆
+                </span>
+              </div>
+            </>
+          ) : facilitator ? (
             keyState === "active" ? (
               <>
                 <span className="realtime-key-state">
@@ -736,11 +869,16 @@ export function RealtimePanel({
           ) : (
             <>
               <span className="realtime-key-state">
-                Facilitator-managed lease
+                {realtimeAccess === "facilitatorProvided"
+                  ? "Facilitator-managed lease"
+                  : realtimeAccess === "checking"
+                    ? "Checking Realtime access"
+                    : "Realtime access unavailable"}
               </span>
               <p>
-                Participants receive only short-lived channel credentials. A
-                standard key never enters this view.
+                {realtimeAccess === "facilitatorProvided"
+                  ? "Participants receive only short-lived channel credentials. A standard key never enters this view."
+                  : "Ask the facilitator to activate a meeting lease; text remains available."}
               </p>
             </>
           )}
@@ -764,7 +902,10 @@ export function RealtimePanel({
       <aside
         aria-label="Continuity status"
         className={`continuity-strip ${
-          realtimeDegraded || keyState === "missing" ? "degraded" : "ready"
+          realtimeDegraded ||
+          (realtimeAccess !== "checking" && !realtimeAccessReady)
+            ? "degraded"
+            : "ready"
         }`}
       >
         <div className="continuity-heading">
@@ -794,7 +935,11 @@ export function RealtimePanel({
           </span>
           <span
             data-state={
-              keyState === "missing" || realtimeDegraded ? "degraded" : "online"
+              realtimeAccess === "checking"
+                ? "checking"
+                : !realtimeAccessReady || realtimeDegraded
+                  ? "degraded"
+                  : "online"
             }
           >
             <small>AI + voice</small>

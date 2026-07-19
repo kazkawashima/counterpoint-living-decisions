@@ -184,6 +184,7 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
           clientSecret,
           correlationId: `correlation-${String(issuedSecrets.length)}`,
           expiresAt: "2026-07-19T04:30:00.000Z",
+          keySource: "facilitatorProvided",
           meetingId: input.meetingId,
           model: "gpt-realtime-2.1",
         }),
@@ -328,6 +329,197 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
   );
 });
 
+test("server-owned access switches the browser to a credential-free managed call", async ({
+  baseURL,
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { height: 900, width: 1440 },
+  });
+  await installSyntheticWebRtc(context);
+  const managedCallId = "managed-call-browser-proof";
+  const meetingId = "meeting-global-ai-rollout";
+  let clientSecretRequests = 0;
+  let directProviderRequests = 0;
+  let managedHost = "";
+  let managedIdempotencyKey = "";
+  let managedTurnUtteranceId = "";
+
+  await context.route("**/api/v1/meetings/*/realtime/access", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        correlationId: "correlation-managed-access",
+        mode: "judgeManaged",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await context.route(
+    "**/api/v1/meetings/*/realtime/client-secrets",
+    async (route) => {
+      clientSecretRequests += 1;
+      await route.fulfill({ body: "", status: 500 });
+    },
+  );
+  await context.route(
+    "https://api.openai.com/v1/realtime/calls",
+    async (route) => {
+      directProviderRequests += 1;
+      await route.fulfill({ body: "", status: 500 });
+    },
+  );
+  await context.route(
+    "**/api/v1/meetings/*/realtime/calls**",
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      managedHost = url.hostname;
+      const input = request.postDataJSON() as {
+        channel?: "private" | "shared";
+        idempotencyKey?: string;
+        managedCallId?: string;
+        meetingId: string;
+        sdpOffer?: string;
+        utteranceId?: string;
+      };
+      expect(input.meetingId).toBe(meetingId);
+
+      if (url.pathname.endsWith("/turn")) {
+        expect(input.managedCallId).toBe(managedCallId);
+        managedTurnUtteranceId = input.utteranceId ?? "";
+        await route.fulfill({
+          body: JSON.stringify({
+            correlationId: "correlation-managed-turn",
+            managedCallId,
+            meetingId,
+            utteranceId: managedTurnUtteranceId,
+          }),
+          contentType: "application/json",
+          status: 200,
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/transcript")) {
+        expect(input.managedCallId).toBe(managedCallId);
+        expect(input.utteranceId).toBe(managedTurnUtteranceId);
+        await route.fulfill({
+          body: JSON.stringify({
+            correlationId: "correlation-managed-transcript",
+            managedCallId,
+            meetingId,
+            transcript: "Synthetic managed judge statement.",
+            utteranceId: managedTurnUtteranceId,
+          }),
+          contentType: "application/json",
+          status: 200,
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/terminate")) {
+        expect(input.managedCallId).toBe(managedCallId);
+        await route.fulfill({
+          body: JSON.stringify({
+            correlationId: "correlation-managed-terminate",
+            managedCallId,
+            meetingId,
+            terminated: true,
+          }),
+          contentType: "application/json",
+          status: 200,
+        });
+        return;
+      }
+
+      expect(input.channel).toBe("private");
+      expect(input.sdpOffer).toContain("A6 synthetic offer");
+      managedIdempotencyKey = input.idempotencyKey ?? "";
+      await route.fulfill({
+        body: JSON.stringify({
+          channel: "private",
+          correlationId: "correlation-managed-start",
+          managedCallId,
+          meetingId,
+          model: "gpt-realtime-2.1",
+          sdpAnswer:
+            "v=0\r\no=counterpoint 3 3 IN IP4 127.0.0.1\r\ns=Managed synthetic answer\r\nt=0 0\r\n",
+        }),
+        contentType: "application/json",
+        status: 201,
+      });
+    },
+  );
+
+  const page = await context.newPage();
+  await page.goto(baseURL ?? "/");
+  await signIn(page, "Product", "counterpoint-product");
+  const dock = page.getByRole("region", {
+    name: "Live channels, explicit boundaries",
+  });
+  await expect(page.getByText("Judge-managed access")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Server-owned bounded call. No provider credential enters this browser.",
+    ),
+  ).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+
+  const privateCard = page
+    .getByRole("article")
+    .filter({ hasText: "Private agent" });
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
+  expect(managedHost).not.toBe("localhost");
+  expect(managedIdempotencyKey).toMatch(/^[0-9a-f-]{36}$/u);
+  expect(clientSecretRequests).toBe(0);
+  expect(directProviderRequests).toBe(0);
+
+  const speech = page.getByRole("region", {
+    name: "Explicit speech controls",
+  });
+  const pushToTalk = speech.getByRole("button", {
+    name: /Hold to speak privately/u,
+  });
+  const bounds = await pushToTalk.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.move(
+    (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
+    (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2,
+  );
+  await page.mouse.down();
+  await expect(
+    speech.getByRole("button", { name: /Listening privately/u }),
+  ).toBeVisible();
+  await page.mouse.up();
+  await expect(
+    speech.getByText("Captured privately · Synthetic managed judge statement."),
+  ).toBeVisible({ timeout: 6_000 });
+  expect(managedTurnUtteranceId).toMatch(/^[0-9a-f-]{36}$/u);
+  expect(clientSecretRequests).toBe(0);
+  expect(directProviderRequests).toBe(0);
+
+  await dock.screenshot({
+    animations: "disabled",
+    path: `${screenshotDirectory}/2026-07-20-judge-managed-connected-desktop.png`,
+  });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await dock.screenshot({
+    animations: "disabled",
+    path: `${screenshotDirectory}/2026-07-20-judge-managed-connected-mobile.png`,
+  });
+  await privateCard.getByRole("button", { name: "Disconnect" }).click();
+  await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Reset staged demo" }).click();
+  await page
+    .locator(".reset-confirmation")
+    .getByRole("button", { name: "Confirm meeting reset" })
+    .click();
+  await expect(
+    page.getByText("Meeting reset complete · synthetic Context restored"),
+  ).toBeVisible();
+  await context.close();
+});
+
 test("private/shared text and push-to-talk use one immutable, floor-gated command path", async ({
   baseURL,
   browser,
@@ -449,7 +641,7 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
   );
   await productPage.mouse.down();
   await expect(
-    productSpeech.getByText("You hold the room floor"),
+    productSpeech.getByText("You hold the room floor", { exact: true }),
   ).toBeVisible();
   await expect(
     productSpeech.getByRole("button", { name: /Private · owner only/u }),
@@ -504,7 +696,7 @@ test("participant mobile view receives no standard-key control", async ({
   await page.goto(baseURL ?? "/");
   await signIn(page, "Legal", "counterpoint-legal");
 
-  await expect(page.getByText("Facilitator-managed lease")).toBeVisible();
+  await expect(page.getByText("Realtime access unavailable")).toBeVisible();
   await expect(page.getByLabel("Facilitator BYOK · tab only")).toHaveCount(0);
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await page

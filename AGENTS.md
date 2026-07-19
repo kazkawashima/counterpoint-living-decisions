@@ -29,10 +29,12 @@ behavior. Manual inspection alone is not sufficient. Include an external-IP
 style access check where relevant, including CORS behavior and fetch URL host
 resolution, not only `localhost` access.
 
-### Reel and visual evidence capture
+### Visual evidence capture
 
-The hackathon submission needs an introduction reel. Treat visual evidence as
-part of the development deliverable:
+The hackathon submission will eventually need an introduction reel, but reel
+production is not part of the active product goal until the hosted product is
+viewable and usable. Keep lightweight visual evidence as development hygiene so
+later production does not require recreating important states:
 
 - After every UI change, capture screenshots of the affected screen and the
   important states (initial, interaction, success, error, and responsive state
@@ -40,7 +42,7 @@ part of the development deliverable:
 - Save captures under `docs/media/screenshots/<feature>/` using a stable name
   such as `YYYY-MM-DD-<feature>-<state>.png`.
 - Keep a short note with each capture describing the feature, state, viewport,
-  commit or change, and any useful narration/cut point for the reel.
+  and commit or change. Narration/cut-point notes are optional.
 - Record other reel-worthy material when it appears: animation clips, loading
   transitions, decision/evidence state changes, before/after comparisons,
   interaction sequences, and notable mobile layouts. Store source material or

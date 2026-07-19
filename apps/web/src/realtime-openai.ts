@@ -93,7 +93,7 @@ export interface OpenAiRealtimeConnection {
   close(): void;
   readonly peer: RealtimePeerConnection;
   sendText(text: string): void;
-  startPushToTalk(): Promise<void>;
+  startPushToTalk(utteranceId?: string): Promise<void>;
   stopPushToTalk(): Promise<void>;
 }
 
@@ -106,22 +106,42 @@ export interface ConnectOpenAiRealtimeInput {
 }
 
 export interface ConnectManagedOpenAiRealtimeInput {
+  readonly awaitTranscript: (input: {
+    readonly managedCallId: string;
+    readonly utteranceId: string;
+  }) => Promise<{ readonly transcript: string }>;
+  readonly beginTurn: (input: {
+    readonly managedCallId: string;
+    readonly utteranceId: string;
+  }) => Promise<void>;
   readonly channel: OpenAiRealtimeChannel;
   readonly createCall: (input: {
     readonly channel: OpenAiRealtimeChannel;
+    readonly idempotencyKey: string;
     readonly sdpOffer: string;
-  }) => Promise<{ readonly sdpAnswer: string }>;
+  }) => Promise<{
+    readonly managedCallId: string;
+    readonly sdpAnswer: string;
+  }>;
+  readonly idempotencyKey: string;
   readonly mediaFactory?: RealtimeMediaFactory;
+  readonly onTranscript?: (transcript: string) => void;
   readonly peerFactory?: RealtimePeerConnectionFactory;
-  readonly terminateCall: (channel: OpenAiRealtimeChannel) => Promise<void>;
+  readonly terminateCall: (managedCallId: string) => Promise<void>;
 }
+
+export type OpenAiRealtimeConnectionFactory = (
+  channel: OpenAiRealtimeChannel,
+  idempotencyKey: string,
+) => Promise<OpenAiRealtimeConnection>;
 
 export interface OpenAiRealtimeControllerOptions {
   readonly channel: OpenAiRealtimeChannel;
   readonly clock?: RealtimeClock;
+  readonly connect?: OpenAiRealtimeConnectionFactory;
   readonly fetch?: RealtimeFetch;
   readonly idleTimeoutMs?: number;
-  readonly issueSecret: (
+  readonly issueSecret?: (
     channel: OpenAiRealtimeChannel,
   ) => Promise<EphemeralRealtimeSecret>;
   readonly mediaFactory?: RealtimeMediaFactory;
@@ -138,7 +158,7 @@ export interface OpenAiRealtimeController {
   readonly getState: () => OpenAiRealtimeState;
   readonly markActivity: () => void;
   readonly sendText: (text: string) => void;
-  readonly startPushToTalk: () => Promise<void>;
+  readonly startPushToTalk: (utteranceId?: string) => Promise<void>;
   readonly stopPushToTalk: () => Promise<void>;
   readonly subscribe: (listener: () => void) => () => void;
 }
@@ -436,6 +456,7 @@ export async function connectOpenAiRealtime(
         } catch {
           track.stop();
           await audioSender.replaceTrack(null).catch(() => undefined);
+          close();
           throw new OpenAiRealtimeConnectionError();
         }
       },
@@ -468,16 +489,18 @@ export async function connectManagedOpenAiRealtime(
   const audioSender = peer.createAudioSender();
   const mediaFactory = input.mediaFactory ?? browserMediaFactory;
   let activeTrack: RealtimeAudioTrack | undefined;
+  let activeUtteranceId: string | undefined;
   let callCreated = false;
   let closed = false;
+  let managedCallId: string | undefined;
   let terminationRequested = false;
 
   const terminate = (): void => {
-    if (!callCreated || terminationRequested) {
+    if (managedCallId === undefined || !callCreated || terminationRequested) {
       return;
     }
     terminationRequested = true;
-    void input.terminateCall(input.channel).catch(() => undefined);
+    void input.terminateCall(managedCallId).catch(() => undefined);
   };
   const close = (): void => {
     if (closed) {
@@ -486,6 +509,7 @@ export async function connectManagedOpenAiRealtime(
     closed = true;
     activeTrack?.stop();
     activeTrack = undefined;
+    activeUtteranceId = undefined;
     terminate();
     peer.close();
   };
@@ -495,8 +519,10 @@ export async function connectManagedOpenAiRealtime(
     await peer.setLocalDescription(offer);
     const answer = await input.createCall({
       channel: input.channel,
+      idempotencyKey: input.idempotencyKey,
       sdpOffer: offer.sdp,
     });
+    managedCallId = answer.managedCallId;
     callCreated = true;
     if (answer.sdpAnswer.trim().length === 0) {
       throw new OpenAiRealtimeConnectionError();
@@ -511,14 +537,40 @@ export async function connectManagedOpenAiRealtime(
       sendText: () => {
         throw new OpenAiRealtimeConnectionError();
       },
-      startPushToTalk: async () => {
+      startPushToTalk: async (utteranceId) => {
+        if (
+          activeTrack !== undefined ||
+          managedCallId === undefined ||
+          utteranceId === undefined ||
+          utteranceId.trim().length === 0
+        ) {
+          if (activeTrack !== undefined) {
+            return;
+          }
+          throw new OpenAiRealtimeConnectionError();
+        }
+        try {
+          await input.beginTurn({ managedCallId, utteranceId });
+        } catch {
+          throw new OpenAiRealtimeConnectionError();
+        }
+        if (closed) {
+          throw new OpenAiRealtimeConnectionError();
+        }
         if (activeTrack !== undefined) {
           return;
         }
-        const stream = await mediaFactory();
+        let stream: RealtimeMediaStream;
+        try {
+          stream = await mediaFactory();
+        } catch {
+          close();
+          throw new OpenAiRealtimeConnectionError();
+        }
         const track = stream.getAudioTracks()[0];
         if (track === undefined || closed) {
           track?.stop();
+          close();
           throw new OpenAiRealtimeConnectionError();
         }
         track.enabled = false;
@@ -528,22 +580,39 @@ export async function connectManagedOpenAiRealtime(
             throw new OpenAiRealtimeConnectionError();
           }
           activeTrack = track;
+          activeUtteranceId = utteranceId;
           track.enabled = true;
         } catch {
           track.stop();
           await audioSender.replaceTrack(null).catch(() => undefined);
+          close();
           throw new OpenAiRealtimeConnectionError();
         }
       },
       stopPushToTalk: async () => {
         const track = activeTrack;
-        if (track === undefined) {
+        const utteranceId = activeUtteranceId;
+        if (
+          track === undefined ||
+          utteranceId === undefined ||
+          managedCallId === undefined
+        ) {
           return;
         }
         track.enabled = false;
         activeTrack = undefined;
+        activeUtteranceId = undefined;
         await audioSender.replaceTrack(null).catch(() => undefined);
         track.stop();
+        try {
+          const completed = await input.awaitTranscript({
+            managedCallId,
+            utteranceId,
+          });
+          input.onTranscript?.(completed.transcript);
+        } catch {
+          throw new OpenAiRealtimeConnectionError();
+        }
       },
     };
   } catch {
@@ -555,19 +624,14 @@ export async function connectManagedOpenAiRealtime(
 class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
   readonly #channel: OpenAiRealtimeChannel;
   readonly #clock: RealtimeClock;
-  readonly #fetch: RealtimeFetch | undefined;
+  readonly #connect: OpenAiRealtimeConnectionFactory;
   readonly #idleTimeoutMs: number;
-  readonly #issueSecret: (
-    channel: OpenAiRealtimeChannel,
-  ) => Promise<EphemeralRealtimeSecret>;
   readonly #listeners = new Set<() => void>();
-  readonly #mediaFactory: RealtimeMediaFactory | undefined;
-  readonly #onTranscript: ((transcript: string) => void) | undefined;
-  readonly #peerFactory: RealtimePeerConnectionFactory | undefined;
   readonly #retryDelaysMs: readonly number[];
   readonly #timer: RealtimeTimer;
 
   #connection: OpenAiRealtimeConnection | undefined;
+  #connectionIdempotencyKey = "";
   #disposed = false;
   #generation = 0;
   #idleDeadline = 0;
@@ -579,12 +643,31 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
   constructor(options: OpenAiRealtimeControllerOptions) {
     this.#channel = options.channel;
     this.#clock = options.clock ?? systemClock;
-    this.#fetch = options.fetch;
     this.#idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
-    this.#issueSecret = options.issueSecret;
-    this.#mediaFactory = options.mediaFactory;
-    this.#onTranscript = options.onTranscript;
-    this.#peerFactory = options.peerFactory;
+    if (options.connect !== undefined) {
+      this.#connect = options.connect;
+    } else {
+      const issueSecret = options.issueSecret;
+      if (issueSecret === undefined) {
+        throw new TypeError("Realtime connection source is required");
+      }
+      this.#connect = async (channel) => {
+        const issued = await issueSecret(channel);
+        return connectOpenAiRealtime({
+          clientSecret: issued.clientSecret,
+          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+          ...(options.mediaFactory === undefined
+            ? {}
+            : { mediaFactory: options.mediaFactory }),
+          ...(options.onTranscript === undefined
+            ? {}
+            : { onTranscript: options.onTranscript }),
+          ...(options.peerFactory === undefined
+            ? {}
+            : { peerFactory: options.peerFactory }),
+        });
+      };
+    }
     this.#retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
     this.#timer = options.timer ?? systemTimer;
     this.#state = this.#createState("off", 0);
@@ -616,6 +699,7 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
 
     this.#generation += 1;
     const generation = this.#generation;
+    this.#connectionIdempotencyKey = crypto.randomUUID();
     this.#clearRetryTimer();
     this.#setState("connecting", 0);
     await this.#attemptConnection(generation);
@@ -647,7 +731,7 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
     this.#scheduleIdleClose();
   };
 
-  readonly startPushToTalk = async (): Promise<void> => {
+  readonly startPushToTalk = async (utteranceId?: string): Promise<void> => {
     if (
       this.#disposed ||
       this.#state.status !== "connected" ||
@@ -659,7 +743,7 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
     const connection = this.#connection;
     this.#setMicrophone("requesting");
     try {
-      await connection.startPushToTalk();
+      await connection.startPushToTalk(utteranceId);
       if (connection !== this.#connection) {
         await connection.stopPushToTalk();
         throw new OpenAiRealtimeConnectionError();
@@ -739,23 +823,10 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
 
   async #attemptConnection(generation: number): Promise<void> {
     try {
-      const issued = await this.#issueSecret(this.#channel);
-      if (!this.#isCurrent(generation)) {
-        return;
-      }
-      const connection = await connectOpenAiRealtime({
-        clientSecret: issued.clientSecret,
-        ...(this.#fetch === undefined ? {} : { fetch: this.#fetch }),
-        ...(this.#mediaFactory === undefined
-          ? {}
-          : { mediaFactory: this.#mediaFactory }),
-        ...(this.#onTranscript === undefined
-          ? {}
-          : { onTranscript: this.#onTranscript }),
-        ...(this.#peerFactory === undefined
-          ? {}
-          : { peerFactory: this.#peerFactory }),
-      });
+      const connection = await this.#connect(
+        this.#channel,
+        this.#connectionIdempotencyKey,
+      );
       if (!this.#isCurrent(generation)) {
         connection.close();
         return;
@@ -797,6 +868,7 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
     }
     this.#clearIdleTimer();
     this.#closeConnection();
+    this.#connectionIdempotencyKey = crypto.randomUUID();
     this.#scheduleReconnect(generation);
   }
 

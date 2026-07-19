@@ -226,6 +226,14 @@ C4 foundation notes:
   `CF-Connecting-IP` plus the distinct HMAC Secret is still mandatory, and the
   route remains fail-closed until hosted parity proof, measured limits, and
   bounded settlement are complete. No remote Secret registration occurs.
+- A strict meeting-scoped Realtime access descriptor now re-authenticates the
+  Bearer session and active assignment on every request. It returns only
+  `facilitatorProvided`, `judgeManaged`, or `unavailable`; judge sessions never
+  fall back to BYOK, and ordinary sessions never inherit judge mode. The web
+  client consumes this server-owned mode, keeps direct ephemeral credentials
+  on the BYOK path, and uses only same-origin managed start/turn/transcript/
+  terminate calls on the judge path. Browser retries reuse one managed-start
+  idempotency key until an established peer fails.
 - Managed-call start now requires an idempotency key. Migration 0009 stores
   only a user/session/meeting-scoped key hash, request fingerprint, opaque app
   call handle, owner identifiers, and bounded expiry before any usage

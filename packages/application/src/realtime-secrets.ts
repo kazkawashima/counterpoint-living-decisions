@@ -6,6 +6,7 @@ import type {
   RealtimeChannel,
   RealtimeSecretIssuer,
 } from "@counterpoint/ports";
+import type { RealtimeAccessMode } from "@counterpoint/protocol";
 
 import { authorize, type UserAuthorizationContext } from "./authorization.js";
 
@@ -38,6 +39,26 @@ export interface IssueRealtimeClientSecretInput {
   readonly channel: RealtimeChannel;
   readonly meetingId: string;
 }
+
+export interface ResolveRealtimeAccessDependencies {
+  readonly clock: Clock;
+  readonly judgeManagedAvailable: boolean;
+  readonly leases: MeetingApiKeyLeaseStore;
+}
+
+export interface ResolveRealtimeAccessInput {
+  readonly meetingId: string;
+}
+
+export type ResolveRealtimeAccessResult =
+  | {
+      readonly kind: "resolved";
+      readonly mode: RealtimeAccessMode;
+    }
+  | {
+      readonly code: "FORBIDDEN" | "REALTIME_UNAVAILABLE";
+      readonly kind: "failed";
+    };
 
 export interface RealtimeSecretFailure {
   readonly code:
@@ -308,6 +329,34 @@ export async function clearMeetingByokLeasesBySession(
   sessionId: string,
 ): Promise<void> {
   await dependencies.leases.clearBySession(sessionId);
+}
+
+export async function resolveRealtimeAccess(
+  dependencies: ResolveRealtimeAccessDependencies,
+  context: UserAuthorizationContext,
+  input: ResolveRealtimeAccessInput,
+): Promise<ResolveRealtimeAccessResult> {
+  if (!meetingReadAuthorized(context, input.meetingId)) {
+    return { code: "FORBIDDEN", kind: "failed" };
+  }
+  if (judgeManaged(context)) {
+    return {
+      kind: "resolved",
+      mode: dependencies.judgeManagedAvailable ? "judgeManaged" : "unavailable",
+    };
+  }
+
+  try {
+    return {
+      kind: "resolved",
+      mode:
+        (await activeLease(dependencies, input.meetingId)) === undefined
+          ? "unavailable"
+          : "facilitatorProvided",
+    };
+  } catch {
+    return { code: "REALTIME_UNAVAILABLE", kind: "failed" };
+  }
 }
 
 export async function issueRealtimeClientSecret(

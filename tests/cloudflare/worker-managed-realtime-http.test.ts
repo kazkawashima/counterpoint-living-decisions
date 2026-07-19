@@ -12,6 +12,7 @@ import {
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
 import type { ParticipantAssignment } from "@counterpoint/ports";
+import { RealtimeAccessResponseSchema } from "@counterpoint/protocol";
 
 import {
   JUDGE_REALTIME_RESERVED_USAGE,
@@ -27,6 +28,7 @@ const MEETING_ID = "meeting/worker-managed-http-c4";
 const CROSS_MEETING_ID = "meeting/worker-managed-http-c4-cross";
 const JUDGE_USER_ID = "judge-worker-managed-c4";
 const JUDGE_BEARER = "judge-worker-managed-bearer-c4";
+const ORDINARY_BEARER = "ordinary-worker-access-bearer-c4";
 const JUDGE_PARTICIPANT_ID = "participant-worker-managed-judge-c4";
 const CROSS_JUDGE_PARTICIPANT_ID = "participant-worker-managed-cross-judge-c4";
 const IP_ADDRESS = "203.0.113.44";
@@ -259,6 +261,16 @@ async function seedFixture(): Promise<void> {
     tokenHash: await tokens.digest(JUDGE_BEARER),
     userId: JUDGE_USER_ID,
   });
+  await sessions.put({
+    absoluteExpiresAt: new Date(
+      now.getTime() + 8 * 60 * 60 * 1_000,
+    ).toISOString(),
+    createdAt: now.toISOString(),
+    lastActivityAt: now.toISOString(),
+    sessionId: "session-worker-ordinary-access-c4",
+    tokenHash: await tokens.digest(ORDINARY_BEARER),
+    userId: "safety",
+  });
 }
 
 async function createOwnedCall(managedCallId: string): Promise<{
@@ -313,6 +325,124 @@ async function createOwnedCall(managedCallId: string): Promise<{
 }
 
 describe("Cloudflare Worker managed Realtime HTTP", () => {
+  it("reports managed access only when every Worker gate is active", async () => {
+    await seedFixture();
+    const handler = createWorkerHandler();
+    const environment = workerEnv(fakeControllerNamespace());
+    const path = `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/access`;
+
+    const managed = await handler.fetch!(
+      getRequest(path),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(managed.status).toBe(200);
+    const managedBody = RealtimeAccessResponseSchema.parse(
+      await managed.json(),
+    );
+    expect(managedBody.mode).toBe("judgeManaged");
+    expect(Object.keys(managedBody).sort()).toEqual(["correlationId", "mode"]);
+    expect(JSON.stringify(managedBody)).not.toMatch(
+      /api.?key|capability|lease|participant|session|user/iu,
+    );
+
+    const {
+      OPENAI_API_KEY_JUDGE: omittedJudgeKey,
+      ...environmentWithoutJudgeKey
+    } = environment;
+    const {
+      JUDGE_IP_HMAC_SECRET: omittedIpSecret,
+      ...environmentWithoutIpSecret
+    } = environment;
+    void omittedJudgeKey;
+    void omittedIpSecret;
+    const degradedEnvironments: readonly Env[] = [
+      {
+        ...environment,
+        JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+      },
+      environmentWithoutJudgeKey,
+      environmentWithoutIpSecret,
+    ];
+    for (const degradedEnvironment of degradedEnvironments) {
+      const degraded = await handler.fetch!(
+        getRequest(path),
+        degradedEnvironment,
+        {} as ExecutionContext,
+      );
+      expect(degraded.status).toBe(200);
+      expect(
+        RealtimeAccessResponseSchema.parse(await degraded.json()),
+      ).toMatchObject({ mode: "unavailable" });
+    }
+
+    const ordinary = await handler.fetch!(
+      getRequest(path, ORDINARY_BEARER),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(ordinary.status).toBe(200);
+    expect(
+      RealtimeAccessResponseSchema.parse(await ordinary.json()),
+    ).toMatchObject({ mode: "unavailable" });
+
+    const unauthenticated = await handler.fetch!(
+      getRequest(path, "unknown-access-bearer"),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(unauthenticated.status).toBe(401);
+    await expect(jsonBody(unauthenticated)).resolves.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+    });
+  });
+
+  it("rechecks active assignment for every realtime access request", async () => {
+    await seedFixture();
+    const handler = createWorkerHandler();
+    const environment = workerEnv(fakeControllerNamespace());
+    const path = `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/access`;
+    const first = await handler.fetch!(
+      getRequest(path),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(first.status).toBe(200);
+
+    await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          UPDATE participant_assignments
+          SET active = 0
+          WHERE meeting_id = ? AND user_id = ?
+        `,
+      )
+      .bind(MEETING_ID, JUDGE_USER_ID)
+      .run();
+    try {
+      const second = await handler.fetch!(
+        getRequest(path),
+        environment,
+        {} as ExecutionContext,
+      );
+      expect(second.status).toBe(403);
+      await expect(jsonBody(second)).resolves.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    } finally {
+      await env.DB.withSession("first-primary")
+        .prepare(
+          `
+            UPDATE participant_assignments
+            SET active = 1
+            WHERE meeting_id = ? AND user_id = ?
+          `,
+        )
+        .bind(MEETING_ID, JUDGE_USER_ID)
+        .run();
+    }
+  });
+
   it("reaches the real Durable Object and releases its reservation when the DO secret is absent", async () => {
     await seedFixture();
     const environment: Env = {

@@ -8,5 +8,9 @@ export {
   handleIssueRealtimeClientSecretHttp,
   type IssueRealtimeClientSecretHttpDependencies,
 } from "./realtime-client-secrets.js";
+export {
+  handleRealtimeAccessHttp,
+  type RealtimeAccessHttpDependencies,
+} from "./realtime-access.js";
 
 export const httpApiPackage = "@counterpoint/http-api";

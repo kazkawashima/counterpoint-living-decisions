@@ -2756,6 +2756,7 @@ function WorkspaceShell({
       <RealtimePanel
         facilitator={meeting.role === "facilitator"}
         meetingId={meeting.meetingId}
+        onPositionChange={advancePosition}
         participantId={meeting.participantId}
         session={session}
       />

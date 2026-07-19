@@ -49,6 +49,8 @@ import {
   ProposeDisclosureRequestSchema,
   ReadinessRequestSchema,
   ReadinessResponseSchema,
+  RealtimeAccessModeSchema,
+  RealtimeAccessResponseSchema,
   RegulatoryChangeWebhookRequestSchema,
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateUrlArtifactRequestSchema,
@@ -105,6 +107,8 @@ import {
   type JudgeUsageSummaryResponse,
   type LoginRequest,
   type ManagedCallId,
+  type RealtimeAccessMode,
+  type RealtimeAccessResponse,
   type ResolveDecisionReviewRequest,
   type ResolveDecisionReviewResponse,
   type RevokeDisplayTokenRequest,
@@ -1266,6 +1270,47 @@ describe("strict v1 HTTP protocol", () => {
         channel: "shared",
       }).success,
     ).toBe(true);
+  });
+
+  it("exposes only the server-resolved realtime access mode", () => {
+    const modes = RealtimeAccessModeSchema.options;
+    expect(modes).toEqual([
+      "facilitatorProvided",
+      "judgeManaged",
+      "unavailable",
+    ]);
+    expectTypeOf<RealtimeAccessMode>().toEqualTypeOf<(typeof modes)[number]>();
+
+    const response = {
+      correlationId: "correlation-1",
+      mode: "judgeManaged",
+    } as const;
+    const parsed = RealtimeAccessResponseSchema.parse(response);
+    expectTypeOf(parsed).toEqualTypeOf<RealtimeAccessResponse>();
+    for (const forbiddenField of [
+      "apiKey",
+      "capability",
+      "judgeManagedAvailable",
+      "keySource",
+      "lease",
+      "meetingId",
+      "participantId",
+      "sessionId",
+      "userId",
+    ]) {
+      expect(
+        RealtimeAccessResponseSchema.safeParse({
+          ...response,
+          [forbiddenField]: "synthetic-private-value",
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      RealtimeAccessResponseSchema.safeParse({
+        ...response,
+        mode: "byok",
+      }).success,
+    ).toBe(false);
   });
 
   it("exposes only an app-owned opaque handle for managed realtime calls", () => {

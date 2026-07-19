@@ -8,6 +8,7 @@ import { OpenAiRealtimeClientSecretIssuer } from "@counterpoint/adapters-openai"
 import {
   apiErrorResponse,
   handleIssueRealtimeClientSecretHttp,
+  handleRealtimeAccessHttp,
 } from "@counterpoint/http-api";
 import type {
   MeetingApiKeyLease,
@@ -385,6 +386,8 @@ export function createWorkerHandler(): ExportedHandler<Env> {
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/client-secrets$/u.exec(
           url.pathname,
         );
+      const realtimeAccessRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/realtime\/access$/u.exec(url.pathname);
       const managedRealtimeCallRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/calls(?:\/([^/]+)\/(turn|transcript|terminate))?$/u.exec(
           url.pathname,
@@ -428,6 +431,40 @@ export function createWorkerHandler(): ExportedHandler<Env> {
           meetingId,
           request,
           usage,
+        });
+      }
+      if (request.method === "GET" && realtimeAccessRoute?.[1] !== undefined) {
+        const correlationId = crypto.randomUUID();
+        const tokens = new WebCryptoSessionTokenIssuer();
+        const allowlistedJudgeUserId = judgeUserId(env);
+        let meetingId: string;
+        try {
+          meetingId = decodeURIComponent(realtimeAccessRoute[1]);
+        } catch {
+          return apiErrorResponse("VALIDATION_FAILED", correlationId);
+        }
+        const clock = { now: () => new Date().toISOString() };
+        return handleRealtimeAccessHttp({
+          correlationId,
+          dependencies: {
+            authorizationPolicy:
+              allowlistedJudgeUserId === undefined
+                ? {}
+                : {
+                    judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
+                  },
+            clock,
+            meetings: new D1MeetingRepository(env.DB),
+            realtimeAccess: {
+              clock,
+              judgeManagedAvailable: judgeManagedRealtimeRouteEnabled(env),
+              leases: unavailableLeases,
+            },
+            sessions: new D1SessionRepository(env.DB),
+            tokens,
+          },
+          meetingId,
+          request,
         });
       }
       if (request.method === "POST" && managedRealtimeCallRoute !== null) {

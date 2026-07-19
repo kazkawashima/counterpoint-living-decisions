@@ -633,7 +633,7 @@ The canonical implementation-facing artifacts are:
   fields and remains available while provider access and the managed-call
   route are disabled.
 - C4 is not complete: broader judge billable-path coverage, measured flagship
-  limits, the web managed-call switch, and structured judge AI routes remain.
+  limits, and structured judge AI routes remain.
   The managed realtime route adapter now includes explicit duplicate-start and
   changed-payload unit coverage, a four-case Worker gate suite, and Cloudflare
   integration coverage; it remains disabled by default.
@@ -653,27 +653,35 @@ The canonical implementation-facing artifacts are:
   sessions, trustworthy totals, 100% headroom above observed maxima, and
   worst-case rate-card validation before any production limit changes. No
   synthetic fixture is represented as measured production usage.
-- The current regular baseline is 636 Vitest tests and the contract project
-  passes 116 tests, with typecheck, formatting,
+- A server-owned Realtime access descriptor now closes Plan 03 A6. Node
+  ordinary sessions resolve an active transient BYOK lease; fully gated Worker
+  judge sessions resolve managed access; every other state is unavailable.
+  The response exposes only a correlation ID and mode after fresh
+  authentication and assignment resolution. The browser cannot select or
+  inherit key source, reservation, provider call, participant, or session
+  identity. It now switches between direct ephemeral WebRTC and same-origin
+  managed start/turn/transcript/terminate routes, preserves one idempotency key
+  across ambiguous starts, and rotates it only after an established peer
+  failure. Managed voice uses the immutable utterance ID and synchronizes the
+  returned meeting position so later reset/mutations do not conflict.
+- Browser proof now covers direct BYOK, credential-free judge-managed access,
+  private/shared voice, participant key-control absence, external-style host
+  resolution, and responsive mobile rendering. Two current synthetic
+  screenshots record the managed connected/transcript state; no reel
+  production was performed.
+- The current regular baseline is 643 Vitest tests and the contract project
+  passes 117 tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted
-  ESLint; repository-wide lint still reports 23 pre-existing errors in the
-  managed-realtime unit fixture and is not claimed as green here. Six new
-  Cloudflare-native D1
-  persistence/IDOR/race/termination cases passed before two additional
-  reauthorization cases were added; rerunning those two was blocked by the
-  execution environment's escalated usage limit. The focused security rerun
-  passed 279 cases; its four WebSocket cases were blocked only because the
-  sandbox denied their required `0.0.0.0` listen. The hosted flagship Worker
-  target now passes four integration cases, and the Worker-specific browser
-  E2E passes the SPA/login/workspace/AI-preview journey against Wrangler.
-  The full Cloudflare pool now passes 10 files and 91 tests after giving its
-  migration hooks and integration cases explicit cold-start timeouts. No
-  visible UI changed, so no new screenshot was required. Reel
-  shooting and reel-material organization are deferred from the active goal;
-  product visibility remains
-  the priority, while the AGENTS.md capture rule stays available for later UI
-  changes.
+  ESLint; repository-wide lint still reports 20 pre-existing errors in the
+  managed-realtime unit fixture and is not claimed as green here. The full
+  Cloudflare pool passes 10 files and 93 tests. The Worker-specific browser E2E
+  passes against Wrangler, and the changed Realtime browser file passes all
+  four cases. After fixing one strict locator and assigning the
+  evidence-heavy Decision case a 120-second capture budget, the complete
+  browser suite passes all 16 cases in one run. Reel shooting and reel-material
+  organization remain deferred from the active goal; product visibility stays
+  the priority.
 
 ## Not started
 
@@ -682,10 +690,14 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 by extending Worker proof to real Durable Object lifecycle
-behavior, then measure the flagship to replace full-cap-per-attempt settlement
-with safe derived limits. The hosted C5 security-matrix rerun and
-provider/deployment proof remain behind the approved remote boundary.
+The product is locally viewable through both Node and Wrangler, and the
+credential-free judge browser path is implemented. The next visibility gate is
+an explicitly approved preview deployment, followed by logged-out/incognito
+and authenticated judge smoke. Before enabling provider work, measure the
+flagship to replace full-cap-per-attempt settlement with safe derived limits
+and complete the remaining billable structured-AI routes. The hosted C5
+security-matrix rerun and provider/deployment proof remain behind the approved
+remote boundary.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is

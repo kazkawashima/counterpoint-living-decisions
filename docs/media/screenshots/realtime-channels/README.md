@@ -4,7 +4,17 @@ All captures use the synthetic flagship meeting. No real standard API key,
 ephemeral client secret, private customer data, or microphone audio appears in
 the screenshots or clip.
 
-## Reel sequence
+## Capture inventory
+
+Current product-visibility evidence:
+
+1. `2026-07-20-judge-managed-connected-desktop.png` — 1440×900
+   server-owned judge access, private channel connected, and a synthetic
+   transcript returned only through the app-owned API.
+2. `2026-07-20-judge-managed-connected-mobile.png` — 390×844 responsive form
+   of the same credential-free managed-call state.
+
+Earlier direct-BYOK evidence:
 
 1. `2026-07-19-realtime-byok-required-desktop.png` — 1440×900 facilitator
    state before BYOK. Narration: ordinary use is facilitator-funded and the

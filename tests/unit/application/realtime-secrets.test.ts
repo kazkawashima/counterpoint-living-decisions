@@ -7,6 +7,7 @@ import {
   configureMeetingByok,
   heartbeatMeetingByok,
   issueRealtimeClientSecret,
+  resolveRealtimeAccess,
   userAuthorizationContext,
   type RealtimeSecretDependencies,
   type UserAuthorizationContext,
@@ -27,6 +28,7 @@ const STANDARD_API_KEY = "sk-standard-secret-never-returned";
 
 class InMemoryMeetingApiKeyLeaseStore implements MeetingApiKeyLeaseStore {
   readonly #leases = new Map<string, MeetingApiKeyLease>();
+  failReads = false;
 
   clear(input: {
     readonly meetingId: string;
@@ -72,6 +74,9 @@ class InMemoryMeetingApiKeyLeaseStore implements MeetingApiKeyLeaseStore {
   }
 
   findByMeeting(meetingId: string): Promise<MeetingApiKeyLease | undefined> {
+    if (this.failReads) {
+      return Promise.reject(new Error("synthetic lease storage outage"));
+    }
     return Promise.resolve(this.#leases.get(meetingId));
   }
 
@@ -214,6 +219,98 @@ async function configure(
 }
 
 describe("meeting-scoped realtime BYOK leases", () => {
+  it("resolves ordinary access from an active lease without exposing lease data", async () => {
+    const { dependencies } = fixture();
+
+    await expect(
+      resolveRealtimeAccess(
+        {
+          clock: dependencies.clock,
+          judgeManagedAvailable: false,
+          leases: dependencies.leases,
+        },
+        participantContext(),
+        { meetingId: "meeting-a" },
+      ),
+    ).resolves.toEqual({ kind: "resolved", mode: "unavailable" });
+
+    await configure(dependencies);
+    const result = await resolveRealtimeAccess(
+      {
+        clock: dependencies.clock,
+        judgeManagedAvailable: false,
+        leases: dependencies.leases,
+      },
+      participantContext(),
+      { meetingId: "meeting-a" },
+    );
+    expect(result).toEqual({
+      kind: "resolved",
+      mode: "facilitatorProvided",
+    });
+    expect(JSON.stringify(result)).not.toContain(STANDARD_API_KEY);
+  });
+
+  it("resolves judge access only from managed availability and never falls back to BYOK", async () => {
+    const { dependencies, leases } = fixture();
+    await configure(dependencies);
+    leases.failReads = true;
+
+    await expect(
+      resolveRealtimeAccess(
+        {
+          clock: dependencies.clock,
+          judgeManagedAvailable: true,
+          leases,
+        },
+        judgeContext(),
+        { meetingId: "meeting-a" },
+      ),
+    ).resolves.toEqual({ kind: "resolved", mode: "judgeManaged" });
+    await expect(
+      resolveRealtimeAccess(
+        {
+          clock: dependencies.clock,
+          judgeManagedAvailable: false,
+          leases,
+        },
+        judgeContext(),
+        { meetingId: "meeting-a" },
+      ),
+    ).resolves.toEqual({ kind: "resolved", mode: "unavailable" });
+  });
+
+  it("fails closed for unauthorized scope and lease storage failure", async () => {
+    const { dependencies, leases } = fixture();
+    await expect(
+      resolveRealtimeAccess(
+        {
+          clock: dependencies.clock,
+          judgeManagedAvailable: false,
+          leases,
+        },
+        participantContext(),
+        { meetingId: "meeting-other" },
+      ),
+    ).resolves.toEqual({ code: "FORBIDDEN", kind: "failed" });
+
+    leases.failReads = true;
+    await expect(
+      resolveRealtimeAccess(
+        {
+          clock: dependencies.clock,
+          judgeManagedAvailable: false,
+          leases,
+        },
+        participantContext(),
+        { meetingId: "meeting-a" },
+      ),
+    ).resolves.toEqual({
+      code: "REALTIME_UNAVAILABLE",
+      kind: "failed",
+    });
+  });
+
   it("configures only in transient lease storage and never returns the standard key", async () => {
     const { dependencies, leases } = fixture();
 

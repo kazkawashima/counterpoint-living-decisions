@@ -2,11 +2,14 @@ import {
   AcquireSharedFloorRequestSchema,
   AcquireSharedFloorResponseSchema,
   ApproveDisclosureResponseSchema,
+  AwaitManagedRealtimeTranscriptResponseSchema,
+  BeginManagedRealtimeTurnResponseSchema,
   CaptureUtteranceRequestSchema,
   CaptureUtteranceResponseSchema,
   ClearMeetingByokResponseSchema,
   CommitDecisionResponseSchema,
   ConfigureMeetingByokResponseSchema,
+  CreateManagedRealtimeCallResponseSchema,
   DecisionAuditResponseSchema,
   DecisionHistoryResponseSchema,
   DecisionJsonExportResponseSchema,
@@ -33,6 +36,7 @@ import {
   RegisterPrivateUrlArtifactResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
+  RealtimeAccessResponseSchema,
   ReleaseSharedFloorRequestSchema,
   ReleaseSharedFloorResponseSchema,
   ResolveDecisionReviewResponseSchema,
@@ -42,17 +46,21 @@ import {
   StartDecisionMonitoringResponseSchema,
   SharedDisplayProjectionResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
+  TerminateManagedRealtimeCallResponseSchema,
   UploadPrivateArtifactResponseSchema,
   type AcquireSharedFloorRequest,
   type AcquireSharedFloorResponse,
   type AssignedMeeting,
   type ApproveDisclosureResponse,
+  type AwaitManagedRealtimeTranscriptResponse,
+  type BeginManagedRealtimeTurnResponse,
   type CaptureUtteranceRequest,
   type CaptureUtteranceResponse,
   type ClearMeetingByokResponse,
   type CommitDecisionRequest,
   type CommitDecisionResponse,
   type ConfigureMeetingByokResponse,
+  type CreateManagedRealtimeCallResponse,
   type DecisionAuditQuery,
   type DecisionAuditResponse,
   type DecisionHistoryQuery,
@@ -79,6 +87,7 @@ import {
   type RegisterPrivateUrlArtifactResponse,
   type RegisterPrivateTextSourceFixtureResponse,
   type RejectDisclosureResponse,
+  type RealtimeAccessResponse,
   type ReleaseSharedFloorRequest,
   type ReleaseSharedFloorResponse,
   type ReviewInvalidationRequest,
@@ -91,6 +100,7 @@ import {
   type SharedDisplayProjectionResponse,
   type SynthesizeSharedDecisionRequest,
   type SynthesizeSharedDecisionResponse,
+  type TerminateManagedRealtimeCallResponse,
   type TextRange,
   type UtteranceChannel,
   type UploadPrivateArtifactResponse,
@@ -117,6 +127,7 @@ export type {
   InjectDemoRegulatoryChangeResponse,
   IssueDisplayTokenResponse,
   IssueRealtimeClientSecretResponse,
+  RealtimeAccessResponse,
   ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
   DispositionSharedDecisionCandidateResponse,
@@ -134,6 +145,7 @@ export type {
   SharedDisplayProjectionResponse,
   SynthesizeSharedDecisionRequest,
   SynthesizeSharedDecisionResponse,
+  TerminateManagedRealtimeCallResponse,
   UploadPrivateArtifactResponse,
 };
 
@@ -659,6 +671,94 @@ export async function issueRealtimeClientSecret(
     session,
   );
   return IssueRealtimeClientSecretResponseSchema.parse(body);
+}
+
+export async function getRealtimeAccess(
+  session: StoredSession,
+  meetingId: string,
+): Promise<RealtimeAccessResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/realtime/access`,
+    {},
+    session,
+  );
+  return RealtimeAccessResponseSchema.parse(body);
+}
+
+export async function createManagedRealtimeCall(
+  session: StoredSession,
+  input: {
+    readonly channel: "private" | "shared";
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly sdpOffer: string;
+  },
+): Promise<CreateManagedRealtimeCallResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/realtime/calls`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return CreateManagedRealtimeCallResponseSchema.parse(body);
+}
+
+export async function beginManagedRealtimeTurn(
+  session: StoredSession,
+  input: {
+    readonly managedCallId: string;
+    readonly meetingId: string;
+    readonly utteranceId: string;
+  },
+): Promise<BeginManagedRealtimeTurnResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/realtime/calls/${encodeURIComponent(input.managedCallId)}/turn`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return BeginManagedRealtimeTurnResponseSchema.parse(body);
+}
+
+export async function awaitManagedRealtimeTranscript(
+  session: StoredSession,
+  input: {
+    readonly managedCallId: string;
+    readonly meetingId: string;
+    readonly utteranceId: string;
+  },
+): Promise<AwaitManagedRealtimeTranscriptResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/realtime/calls/${encodeURIComponent(input.managedCallId)}/transcript`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return AwaitManagedRealtimeTranscriptResponseSchema.parse(body);
+}
+
+export async function terminateManagedRealtimeCall(
+  session: StoredSession,
+  input: {
+    readonly managedCallId: string;
+    readonly meetingId: string;
+  },
+): Promise<TerminateManagedRealtimeCallResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/realtime/calls/${encodeURIComponent(input.managedCallId)}/terminate`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return TerminateManagedRealtimeCallResponseSchema.parse(body);
 }
 
 export async function getRoleProjection(

@@ -13,6 +13,13 @@ app, repository, README, reel, Codex evidence, and Devpost copy agree.
 - [External rechecks](../decisions/external-rechecks.md)
 - Plan 05 exit gate
 
+## Execution order
+
+Product visibility is the current prerequisite. Do not begin Q3 reel-asset
+completion or Q5 reel production until the hosted flagship is demonstrably
+viewable and usable through the judge path. UI-change screenshots remain
+lightweight verification evidence in the meantime.
+
 ## Work packages
 
 ### Q1 — Full verification

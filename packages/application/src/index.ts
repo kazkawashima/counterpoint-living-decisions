@@ -194,6 +194,7 @@ export {
   configureMeetingByok,
   heartbeatMeetingByok,
   issueRealtimeClientSecret,
+  resolveRealtimeAccess,
   type ClearMeetingByokResult,
   type ConfigureMeetingByokInput,
   type ConfigureMeetingByokResult,
@@ -203,6 +204,9 @@ export {
   type MeetingByokInput,
   type RealtimeSecretDependencies,
   type RealtimeSecretFailure,
+  type ResolveRealtimeAccessDependencies,
+  type ResolveRealtimeAccessInput,
+  type ResolveRealtimeAccessResult,
   type SafetyIdentifierHash,
 } from "./realtime-secrets.js";
 export {

@@ -897,6 +897,23 @@ button:disabled {
   gap: 0.6rem;
 }
 
+.realtime-byok.judge-managed {
+  border-color: rgba(197, 164, 255, 0.42);
+  background:
+    radial-gradient(
+      circle at 90% 12%,
+      rgba(197, 164, 255, 0.18),
+      transparent 38%
+    ),
+    linear-gradient(135deg, rgba(197, 164, 255, 0.08), transparent 62%);
+  box-shadow: inset 0 0 2.4rem rgba(197, 164, 255, 0.045);
+}
+
+.managed-access-mark {
+  color: var(--violet);
+  filter: drop-shadow(0 0 0.5rem rgba(197, 164, 255, 0.7));
+}
+
 .realtime-byok label,
 .realtime-channel-heading > span,
 .realtime-key-state {

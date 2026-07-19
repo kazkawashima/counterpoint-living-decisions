@@ -250,13 +250,25 @@ describe("OpenAI Realtime browser lifecycle", () => {
       });
     const track = new FakeAudioTrack();
     const createCall = vi.fn(() =>
-      Promise.resolve({ sdpAnswer: "synthetic-managed-answer-sdp" }),
+      Promise.resolve({
+        managedCallId: "managed-call-synthetic",
+        sdpAnswer: "synthetic-managed-answer-sdp",
+      }),
     );
+    const beginTurn = vi.fn(() => Promise.resolve());
+    const awaitTranscript = vi.fn(() =>
+      Promise.resolve({ transcript: "Synthetic managed transcript." }),
+    );
+    const transcripts: string[] = [];
     const terminateCall = vi.fn(() => Promise.resolve());
     const connection = await connectManagedOpenAiRealtime({
+      awaitTranscript,
+      beginTurn,
       channel: "private",
       createCall,
+      idempotencyKey: "managed-idempotency-synthetic",
       mediaFactory: () => Promise.resolve({ getAudioTracks: () => [track] }),
+      onTranscript: (transcript) => transcripts.push(transcript),
       peerFactory: () => peer,
       terminateCall,
     });
@@ -265,6 +277,7 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(createDataChannel).not.toHaveBeenCalled();
     expect(createCall).toHaveBeenCalledWith({
       channel: "private",
+      idempotencyKey: "managed-idempotency-synthetic",
       sdpOffer: "synthetic-offer-sdp",
     });
     expect(peer.remoteDescriptions).toEqual([
@@ -274,13 +287,25 @@ describe("OpenAI Realtime browser lifecycle", () => {
       OpenAiRealtimeConnectionError,
     );
 
-    await connection.startPushToTalk();
+    await expect(connection.startPushToTalk()).rejects.toBeInstanceOf(
+      OpenAiRealtimeConnectionError,
+    );
+    await connection.startPushToTalk("utterance-managed-1");
+    expect(beginTurn).toHaveBeenCalledWith({
+      managedCallId: "managed-call-synthetic",
+      utteranceId: "utterance-managed-1",
+    });
     await connection.stopPushToTalk();
     expect(peer.replacedTracks).toEqual([track, null]);
+    expect(awaitTranscript).toHaveBeenCalledWith({
+      managedCallId: "managed-call-synthetic",
+      utteranceId: "utterance-managed-1",
+    });
+    expect(transcripts).toEqual(["Synthetic managed transcript."]);
 
     connection.close();
     expect(peer.closed).toBe(true);
-    expect(terminateCall).toHaveBeenCalledOnce();
+    expect(terminateCall).toHaveBeenCalledWith("managed-call-synthetic");
   });
 
   it("publishes a connecting-to-connected state sequence", async () => {
@@ -478,6 +503,51 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(issueSecret).toHaveBeenCalledTimes(2);
     expect(peers).toHaveLength(2);
     expect(controller.getState().status).toBe("connected");
+    controller.close();
+  });
+
+  it("reuses a managed start key for ambiguous retries and rotates it after an established peer fails", async () => {
+    const keys: string[] = [];
+    const peers: FakePeer[] = [];
+    let attempts = 0;
+    const connect = vi.fn(
+      (
+        _channel: OpenAiRealtimeChannel,
+        idempotencyKey: string,
+      ): ReturnType<typeof connectOpenAiRealtime> => {
+        attempts += 1;
+        keys.push(idempotencyKey);
+        if (attempts === 1) {
+          return Promise.reject(new OpenAiRealtimeConnectionError());
+        }
+        const peer = new FakePeer();
+        peer.state = "connected";
+        peers.push(peer);
+        return Promise.resolve({
+          close: () => peer.close(),
+          peer,
+          sendText: () => undefined,
+          startPushToTalk: () => Promise.resolve(),
+          stopPushToTalk: () => Promise.resolve(),
+        });
+      },
+    );
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect,
+      retryDelaysMs: [250, 500, 1_000],
+    });
+
+    await controller.connect();
+    expect(controller.getState().status).toBe("reconnecting");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(controller.getState().status).toBe("connected");
+    expect(keys[0]).toBe(keys[1]);
+
+    peers[0]?.transition("failed");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(controller.getState().status).toBe("connected");
+    expect(keys[2]).not.toBe(keys[1]);
     controller.close();
   });
 

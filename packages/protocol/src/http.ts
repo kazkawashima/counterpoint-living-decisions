@@ -499,6 +499,15 @@ export const RealtimeKeySourceSchema = z.enum([
   "facilitatorProvided",
   "judgeManaged",
 ]);
+export const RealtimeAccessModeSchema = z.enum([
+  "facilitatorProvided",
+  "judgeManaged",
+  "unavailable",
+]);
+export const RealtimeAccessResponseSchema = z.strictObject({
+  ...RequiredCorrelationShape,
+  mode: RealtimeAccessModeSchema,
+});
 
 export const ConfigureMeetingByokRequestSchema = z.strictObject({
   meetingId: MeetingIdSchema,
@@ -617,6 +626,10 @@ export const JudgeUsageSummaryResponseSchema = z.strictObject({
 export type ManagedCallId = z.infer<typeof ManagedCallIdSchema>;
 export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
 export type RealtimeKeySource = z.infer<typeof RealtimeKeySourceSchema>;
+export type RealtimeAccessMode = z.infer<typeof RealtimeAccessModeSchema>;
+export type RealtimeAccessResponse = z.infer<
+  typeof RealtimeAccessResponseSchema
+>;
 export type ConfigureMeetingByokRequest = z.infer<
   typeof ConfigureMeetingByokRequestSchema
 >;

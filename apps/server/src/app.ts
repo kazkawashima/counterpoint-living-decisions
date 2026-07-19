@@ -68,7 +68,10 @@ import {
   type DomainEvent,
   type ExternalEvent as DomainExternalEvent,
 } from "@counterpoint/domain";
-import { handleIssueRealtimeClientSecretHttp } from "@counterpoint/http-api";
+import {
+  handleIssueRealtimeClientSecretHttp,
+  handleRealtimeAccessHttp,
+} from "@counterpoint/http-api";
 import type {
   EventRecord,
   IdGenerator,
@@ -1318,6 +1321,27 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       });
     },
   );
+
+  app.get("/api/v1/meetings/:meetingId/realtime/access", async (context) => {
+    return handleRealtimeAccessHttp({
+      correlationId: context.get("correlationId"),
+      dependencies: {
+        authorizationPolicy: runtime.authorizationPolicy,
+        clock: runtime.clock,
+        meetings: runtime.meetings,
+        realtimeAccess: {
+          clock: runtime.clock,
+          judgeManagedAvailable:
+            runtime.realtimeSecrets.judgeManagedIssuer !== undefined,
+          leases: runtime.realtimeSecrets.leases,
+        },
+        sessions: runtime.sessions,
+        tokens: runtime.tokens,
+      },
+      meetingId: context.req.param("meetingId"),
+      request: context.req.raw,
+    });
+  });
 
   app.post(
     "/api/v1/meetings/:meetingId/realtime/shared-floor",

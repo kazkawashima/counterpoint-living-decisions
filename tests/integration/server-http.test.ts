@@ -47,6 +47,7 @@ import {
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   ReadinessResponseSchema,
+  RealtimeAccessResponseSchema,
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   ReleaseSharedFloorResponseSchema,
@@ -1126,6 +1127,147 @@ describe("Node HTTP flagship shell", () => {
     );
     expect(reissued.status).toBe(201);
     expect(managedInputs).toHaveLength(2);
+  });
+
+  it("resolves server-owned realtime access without returning key or authority details", async () => {
+    const { runtime } = await fixture();
+    const meetingId = "meeting-global-ai-rollout";
+    const facilitator = await login(
+      createServerApp(runtime),
+      "product",
+      "counterpoint-product",
+    );
+    const participant = await login(
+      createServerApp(runtime),
+      "legal",
+      "counterpoint-legal",
+    );
+    const accessPath = `/api/v1/meetings/${meetingId}/realtime/access`;
+    const participantHeaders = {
+      authorization: `Bearer ${participant.bearerToken}`,
+    };
+
+    const unavailable = await createServerApp(runtime).request(accessPath, {
+      headers: participantHeaders,
+    });
+    expect(unavailable.status).toBe(200);
+    expect(
+      RealtimeAccessResponseSchema.parse(await unavailable.json()),
+    ).toMatchObject({ mode: "unavailable" });
+
+    const standardApiKey = "sk-synthetic-access-resolution-never-returned";
+    const configured = await createServerApp(runtime).request(
+      `/api/v1/meetings/${meetingId}/byok`,
+      {
+        body: JSON.stringify({ apiKey: standardApiKey, meetingId }),
+        headers: {
+          authorization: `Bearer ${facilitator.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "PUT",
+      },
+    );
+    expect(configured.status).toBe(201);
+
+    const facilitatorProvided = await createServerApp(runtime).request(
+      accessPath,
+      { headers: participantHeaders },
+    );
+    expect(facilitatorProvided.status).toBe(200);
+    const facilitatorBody = RealtimeAccessResponseSchema.parse(
+      await facilitatorProvided.json(),
+    );
+    expect(facilitatorBody).toMatchObject({ mode: "facilitatorProvided" });
+    expect(Object.keys(facilitatorBody).sort()).toEqual([
+      "correlationId",
+      "mode",
+    ]);
+    expect(JSON.stringify(facilitatorBody)).not.toContain(standardApiKey);
+
+    const judgeRuntime = {
+      ...runtime,
+      authorizationPolicy: {
+        judgeManagedAiUserIds: new Set(["product"]),
+      },
+    } satisfies LocalServerRuntime;
+    const judgeUnavailable = await createServerApp(judgeRuntime).request(
+      accessPath,
+      {
+        headers: {
+          authorization: `Bearer ${facilitator.bearerToken}`,
+        },
+      },
+    );
+    expect(judgeUnavailable.status).toBe(200);
+    expect(
+      RealtimeAccessResponseSchema.parse(await judgeUnavailable.json()),
+    ).toMatchObject({ mode: "unavailable" });
+
+    const managedRuntime = {
+      ...judgeRuntime,
+      realtimeSecrets: {
+        ...runtime.realtimeSecrets,
+        judgeManagedIssuer: {
+          issue() {
+            throw new Error("access resolution must not issue a secret");
+          },
+        },
+      },
+    } satisfies LocalServerRuntime;
+    const judgeManaged = await createServerApp(managedRuntime).request(
+      accessPath,
+      {
+        headers: {
+          authorization: `Bearer ${facilitator.bearerToken}`,
+        },
+      },
+    );
+    expect(judgeManaged.status).toBe(200);
+    expect(
+      RealtimeAccessResponseSchema.parse(await judgeManaged.json()),
+    ).toMatchObject({ mode: "judgeManaged" });
+
+    const unauthenticated = await createServerApp(runtime).request(accessPath);
+    expect(unauthenticated.status).toBe(401);
+    await expect(unauthenticated.json()).resolves.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+    });
+  });
+
+  it("fails realtime access closed when assignment storage is unavailable", async () => {
+    const { runtime } = await fixture();
+    const participant = await login(
+      createServerApp(runtime),
+      "legal",
+      "counterpoint-legal",
+    );
+    const failingMeetings = {
+      createWithAssignments: runtime.meetings.createWithAssignments.bind(
+        runtime.meetings,
+      ),
+      findAssignment: () =>
+        Promise.reject(new Error("synthetic assignment storage outage")),
+      findByCode: runtime.meetings.findByCode.bind(runtime.meetings),
+      findById: runtime.meetings.findById.bind(runtime.meetings),
+      listAssigned: runtime.meetings.listAssigned.bind(runtime.meetings),
+      listAssignments: runtime.meetings.listAssignments.bind(runtime.meetings),
+    };
+    const app = createServerApp({
+      ...runtime,
+      meetings: failingMeetings,
+    });
+    const response = await app.request(
+      "/api/v1/meetings/meeting-global-ai-rollout/realtime/access",
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
   });
 
   it("clears BYOK explicitly and maps Realtime provider failure without leaking keys", async () => {
