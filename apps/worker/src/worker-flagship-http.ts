@@ -1,4 +1,5 @@
 import {
+  approveDisclosure,
   authenticateSession,
   listAssumptionInvalidationEvaluations,
   listAssignedMeetings,
@@ -7,6 +8,7 @@ import {
   previewDisclosure,
   proposeDisclosure,
   registerPrivateTextSource,
+  rejectDisclosure,
   resolveMeetingAuthorization,
   type DisclosureDependencies,
   type InvalidationEvaluationView,
@@ -49,6 +51,8 @@ import type {
   SessionTokenIssuer,
 } from "@counterpoint/ports";
 import {
+  ApproveDisclosureRequestSchema,
+  ApproveDisclosureResponseSchema,
   GetRoleProjectionResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
   ListAssignedMeetingsResponseSchema,
@@ -63,11 +67,15 @@ import {
   PreviewDisclosureResponseSchema,
   ProposeDisclosureRequestSchema,
   ProposeDisclosureResponseSchema,
+  RejectDisclosureRequestSchema,
+  RejectDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RoleProjectionQuerySchema,
+  type ApproveDisclosureRequest,
   type PreviewDisclosureRequest,
   type ProposeDisclosureRequest,
+  type RejectDisclosureRequest,
   type RegisterPrivateTextSourceFixtureRequest,
 } from "@counterpoint/protocol";
 
@@ -90,6 +98,7 @@ export interface WorkerFlagshipD1Bindings {
 }
 
 export type WorkerFlagshipOperation =
+  | "approve-disclosure"
   | "decisions"
   | "evidence"
   | "external-events"
@@ -100,7 +109,8 @@ export type WorkerFlagshipOperation =
   | "preview-disclosure"
   | "propose-disclosure"
   | "projection"
-  | "register-text-source";
+  | "register-text-source"
+  | "reject-disclosure";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
 
@@ -634,8 +644,10 @@ export async function handleWorkerFlagshipHttp(input: {
     request,
   } = input;
   let meetingId = requestedMeetingId;
+  let approveDisclosureRequest: ApproveDisclosureRequest | undefined;
   let previewDisclosureRequest: PreviewDisclosureRequest | undefined;
   let proposeDisclosureRequest: ProposeDisclosureRequest | undefined;
+  let rejectDisclosureRequest: RejectDisclosureRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
 
@@ -736,6 +748,26 @@ export async function handleWorkerFlagshipHttp(input: {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
     previewDisclosureRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "approve-disclosure") {
+    const parsed = ApproveDisclosureRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    approveDisclosureRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "reject-disclosure") {
+    const parsed = RejectDisclosureRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    rejectDisclosureRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
 
@@ -879,6 +911,98 @@ export async function handleWorkerFlagshipHttp(input: {
           result.position,
         ),
         previewHash: result.previewHash,
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "approve-disclosure") {
+    if (approveDisclosureRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await approveDisclosure(
+      dependencies.disclosures,
+      resolved.authorization,
+      {
+        ...approveDisclosureRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      ApproveDisclosureResponseSchema.parse({
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        evidence: result.evidence,
+        meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        previewHash: result.previewHash,
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "reject-disclosure") {
+    if (rejectDisclosureRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await rejectDisclosure(
+      dependencies.disclosures,
+      resolved.authorization,
+      {
+        candidateId: rejectDisclosureRequest.candidateId,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+        idempotencyKey: rejectDisclosureRequest.idempotencyKey,
+        meetingId: rejectDisclosureRequest.meetingId,
+        ...(rejectDisclosureRequest.reason === undefined
+          ? {}
+          : { reason: rejectDisclosureRequest.reason }),
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      RejectDisclosureResponseSchema.parse({
+        candidateId: result.candidateId,
+        correlationId: result.correlationId,
+        meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        state: result.state,
       }),
       200,
       correlationId,

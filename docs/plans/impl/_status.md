@@ -557,12 +557,13 @@ The canonical implementation-facing artifacts are:
   contracts through the same authenticated meeting boundary. The four
   collection routes are covered by the external-host-style Cloudflare
   flagship test and remain read-only.
-- The first hosted mutation slice is now wired for private text sources and
-  manual disclosure proposal/preview: the Worker validates the authenticated
-  meeting boundary, writes the source to R2, appends D1 events, refreshes the
-  projection, and returns protocol receipts without exposing storage
-  credentials. The Cloudflare flagship test covers the 201 source receipt,
-  candidate/preview transitions, and visibility after projection reload.
+- The first hosted mutation slice is now wired for private text sources,
+  manual disclosure proposal/preview, approval, and rejection: the Worker
+  validates the authenticated meeting boundary, writes the source to R2,
+  appends D1 events, refreshes the projection, and returns protocol receipts
+  without exposing storage credentials. The Cloudflare flagship test covers
+  the source receipt, candidate transitions, shared evidence after approval,
+  and visibility after projection reload.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call

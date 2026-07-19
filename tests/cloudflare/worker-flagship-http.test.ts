@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
 import {
+  ApproveDisclosureResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
@@ -237,6 +238,38 @@ describe("Cloudflare Worker hosted flagship API", () => {
     });
     expect(previewBody.previewHash).toEqual(expect.any(String));
 
+    const approveResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/disclosures/approve", {
+          body: JSON.stringify({
+            candidateId: proposeBody.candidate.candidateId,
+            expectedPosition: 3,
+            idempotencyKey: "worker-flagship-disclosure-approval",
+            meetingId: FLAGSHIP_MEETING_ID,
+            previewHash: previewBody.previewHash,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(approveResponse.status).toBe(200);
+    const approveBody = ApproveDisclosureResponseSchema.parse(
+      await json(approveResponse),
+    );
+    expect(approveBody).toMatchObject({
+      candidateId: proposeBody.candidate.candidateId,
+      evidence: {
+        exactSnippet,
+        sourceArtifactId: sourceBody.source.sourceArtifactId,
+        sourceRange,
+      },
+      position: 5,
+      previewHash: previewBody.previewHash,
+    });
+
     const projectionAfterSourceResponse = await handler.fetch!(
       workerRequest(
         new Request(
@@ -255,7 +288,15 @@ describe("Cloudflare Worker hosted flagship API", () => {
             text: sourceText,
           }),
         ],
-        disclosureCandidates: [expect.objectContaining({ state: "previewed" })],
+        disclosureCandidates: [expect.objectContaining({ state: "approved" })],
+      },
+      shared: {
+        evidence: [
+          expect.objectContaining({
+            evidenceId: approveBody.evidence.evidenceId,
+            exactSnippet,
+          }),
+        ],
       },
     });
   });

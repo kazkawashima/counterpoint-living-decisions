@@ -285,16 +285,22 @@ export function createWorkerHandler(): ExportedHandler<Env> {
                 : request.method === "POST" &&
                     url.pathname === "/api/v1/disclosures/preview"
                   ? "preview-disclosure"
-                  : request.method === "GET" &&
-                      url.pathname === "/api/v1/meetings"
-                    ? "meetings"
-                    : request.method === "GET" &&
-                        flagshipProjectionRoute !== null
-                      ? "projection"
+                  : request.method === "POST" &&
+                      url.pathname === "/api/v1/disclosures/approve"
+                    ? "approve-disclosure"
+                    : request.method === "POST" &&
+                        url.pathname === "/api/v1/disclosures/reject"
+                      ? "reject-disclosure"
                       : request.method === "GET" &&
-                          flagshipCollectionOperation !== undefined
-                        ? flagshipCollectionOperation
-                        : undefined;
+                          url.pathname === "/api/v1/meetings"
+                        ? "meetings"
+                        : request.method === "GET" &&
+                            flagshipProjectionRoute !== null
+                          ? "projection"
+                          : request.method === "GET" &&
+                              flagshipCollectionOperation !== undefined
+                            ? flagshipCollectionOperation
+                            : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;
