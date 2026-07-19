@@ -4,7 +4,7 @@ set -euo pipefail
 export CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false
 export WRANGLER_LOG_PATH=".wrangler/wrangler.log"
 export WRANGLER_SEND_METRICS=false
-unset OPENAI_API_KEY OPENAI_API_KEY_JUDGE REGULATORY_WEBHOOK_SECRET
+unset OPENAI_API_KEY OPENAI_API_KEY_JUDGE JUDGE_IP_HMAC_SECRET REGULATORY_WEBHOOK_SECRET
 
 usage() {
   echo "Usage: $0 --plan <preview|production> | --apply <preview|production>"

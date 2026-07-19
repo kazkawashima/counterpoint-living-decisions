@@ -4,5 +4,6 @@
 RUNTIME_MODE=preview
 OPENAI_MODE=disabled
 
-# Never place OPENAI_API_KEY_JUDGE here. Judge mode uses `wrangler secret put`
-# at the separately approved deployment boundary.
+# Never place OPENAI_API_KEY_JUDGE or JUDGE_IP_HMAC_SECRET here. Judge mode
+# uses separate `wrangler secret put` operations at the explicitly approved
+# deployment boundary.

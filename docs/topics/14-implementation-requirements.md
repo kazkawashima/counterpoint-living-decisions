@@ -109,11 +109,18 @@ Reactアプリ内に次の独立した表示面を持つ。
 - 一般公開利用はBYOKを必須とする。
 - Devpost審査アカウントは、審査員に費用・APIキー準備を要求しないserver-funded judge modeを使用する。
 - judge modeの標準APIキーはCloudflare Worker Secret `OPENAI_API_KEY_JUDGE`として登録し、`wrangler.toml`、D1、R2、ログ、リポジトリへ保存しない。
+- judge modeのIP制限には別のWorker Secret `JUDGE_IP_HMAC_SECRET`による
+  HMAC-SHA-256を使う。OpenAIキーを流用せず、検証済み
+  `CF-Connecting-IP`の正規IPだけを入力し、生IPは保存・記録しない。
 - ローカルではgit管理外の`.env`または`.dev.vars`から標準APIキーを読み込める。
 - ファシリテーターが入力したキーは、対象会議だけに適用する。
 - 参加者へ標準APIキーを開示しない。
 - judge modeは審査専用ユーザーだけに許可し、一般ユーザーへserver-funded keyを使用させない。
 - judge modeにはアカウント、IP、会議、Realtime接続時間、token、日次総額のhard limitを設ける。
+- managed Realtime callはサーバー生成のopaque handleだけをブラウザへ返す。
+  reservation、provider call ID、participant、session、key sourceは
+  サーバー側で結び、各start/turn/transcript/terminate要求ごとに認証、
+  会議割り当て、judge権限、handle所有者を再確認する。
 - 審査用credentialは公開README、動画、リポジトリ、Devpostの公開説明欄へ記載しない。
 - Devpostの`Testing Instructions`へ記載する場合も、提出プレビューとログアウト状態で一般公開されないことを実確認する。
 - Devpost上の非公開性を確認できない場合、credentialは審査用に共有したprivate repositoryの案内または運営指定の非公開経路から渡し、漏洩前提の利用上限を維持する。

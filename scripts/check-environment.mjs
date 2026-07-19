@@ -3,7 +3,11 @@ import { fileURLToPath } from "node:url";
 
 const rootUrl = new URL("../", import.meta.url);
 const exampleUrl = new URL(".env.example", rootUrl);
-const secretNames = new Set(["OPENAI_API_KEY", "OPENAI_API_KEY_JUDGE"]);
+const secretNames = new Set([
+  "OPENAI_API_KEY",
+  "OPENAI_API_KEY_JUDGE",
+  "JUDGE_IP_HMAC_SECRET",
+]);
 
 function parseEnvironment(text) {
   return new Map(

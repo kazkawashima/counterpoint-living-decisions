@@ -44,6 +44,7 @@ describe("manually approved Cloudflare deployment workflow", () => {
     expect(driver).toContain('run_private "strict Worker deploy"');
     expect(driver).toContain('private_log=".wrangler/deploy/');
     expect(driver).toContain("unset OPENAI_API_KEY OPENAI_API_KEY_JUDGE");
+    expect(driver).toContain("JUDGE_IP_HMAC_SECRET");
     expect(driver).not.toContain("wrangler secret put");
   });
 });

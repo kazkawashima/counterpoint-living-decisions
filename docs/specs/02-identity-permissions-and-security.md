@@ -94,12 +94,20 @@ Security rules:
 
 - Available only to an allowlisted judge account.
 - Standard key exists only as Cloudflare Secret `OPENAI_API_KEY_JUDGE`.
+- IP-limit pseudonyms use a separate Cloudflare Secret
+  `JUDGE_IP_HMAC_SECRET`; the OpenAI key is never reused as an HMAC key. Only
+  an exact canonical `CF-Connecting-IP` value is accepted, and raw IP values
+  never enter D1, R2, Durable Object state, logs, or errors.
 - The Worker may use it only behind server-owned, pre-billable OpenAI call
   paths. Judge mode does not return a provider client secret to the browser.
 - The dedicated call-controller Durable Object may read the Worker Secret
   transiently to create and terminate provider calls. The key is never written
   to Durable Object storage or sent to a browser.
 - Ordinary users cannot select or inherit judge mode.
+- Managed calls expose only a server-generated opaque handle. Its reservation,
+  authenticated session/user, current meeting assignment, participant, and
+  channel are owned server-side; every call operation re-authenticates and
+  re-resolves those scopes before the controller is addressed.
 - Hard limits bound account, IP, meeting count, concurrent sessions, Realtime
   seconds, generations, tokens, and daily spend.
 - The application-side currency boundary is USD 25 per rolling 24-hour period.

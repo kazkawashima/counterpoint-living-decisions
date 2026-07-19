@@ -29,6 +29,7 @@ const expectedMigrationNames = [
   "0004_bearer_sessions.sql",
   "0005_d1_append_guards.sql",
   "0006_judge_usage_reservations.sql",
+  "0007_judge_managed_realtime_calls.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -89,6 +90,20 @@ const expectedTablesAfterMigration = [
     "sessions",
     "users",
   ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_realtime_calls",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
 ] as const;
 
 const expectedTableColumns = {
@@ -128,6 +143,20 @@ const expectedTableColumns = {
     "appended_at",
   ],
   events: ["meeting_id", "position", "payload_json", "appended_at"],
+  judge_managed_realtime_calls: [
+    "managed_call_id",
+    "reservation_id",
+    "account_id",
+    "meeting_id",
+    "user_id",
+    "session_id",
+    "participant_id",
+    "channel",
+    "status",
+    "created_at_epoch",
+    "expires_at_epoch",
+    "terminated_at_epoch",
+  ],
   judge_usage_reservations: [
     "reservation_id",
     "request_fingerprint",
@@ -348,7 +377,9 @@ describe("Cloudflare D1 migrations", () => {
     const nodeDatabase = new NodeSqliteDatabase(":memory:");
     const expectedTableNames = Object.keys(expectedTableColumns).sort();
     const sharedTableNames = expectedTableNames.filter(
-      (name) => name !== "judge_usage_reservations",
+      (name) =>
+        name !== "judge_managed_realtime_calls" &&
+        name !== "judge_usage_reservations",
     );
 
     try {
@@ -381,6 +412,8 @@ describe("Cloudflare D1 migrations", () => {
 
       expect(explicitIndexNames(database)).toEqual([
         "audit_history_meeting_position",
+        "judge_managed_realtime_calls_active_expiry",
+        "judge_managed_realtime_calls_owner",
         "judge_usage_reservations_account_window",
         "judge_usage_reservations_active",
         "judge_usage_reservations_ip_window",
@@ -393,6 +426,9 @@ describe("Cloudflare D1 migrations", () => {
       expect(triggerNames(database)).toEqual([
         "event_appends_complete_range",
         "events_contiguous_position",
+        "judge_managed_realtime_calls_owner_immutable",
+        "judge_managed_realtime_calls_reservation_guard",
+        "judge_managed_realtime_calls_terminal",
         "judge_usage_reservations_global_cost_insert",
         "judge_usage_reservations_global_cost_update",
         "judge_usage_reservations_monotonic_insert",
@@ -444,7 +480,7 @@ describe("Cloudflare D1 migrations", () => {
         ) VALUES (
           'usage-exact-cap',
           'request-exact-cap',
-          'account-a',
+          'user-a',
           'hmac-sha256:0000000000000000000000000000000000000000000000000000000000000000',
           'meeting-a',
           'responses',
@@ -460,6 +496,102 @@ describe("Cloudflare D1 migrations", () => {
           100300
         );
       `);
+      database.exec(`
+        INSERT INTO participant_assignments (
+          meeting_id,
+          participant_id,
+          user_id,
+          role
+        ) VALUES ('meeting-a', 'participant-a', 'user-a', 'facilitator');
+        INSERT INTO sessions (
+          session_id,
+          token_hash,
+          user_id,
+          created_at,
+          last_activity_at,
+          absolute_expires_at
+        ) VALUES (
+          'session-a',
+          'token-hash-a',
+          'user-a',
+          '2026-07-19T00:00:00.000Z',
+          '2026-07-19T00:00:00.000Z',
+          '2026-07-20T00:00:00.000Z'
+        );
+        INSERT INTO judge_managed_realtime_calls (
+          managed_call_id,
+          reservation_id,
+          account_id,
+          meeting_id,
+          user_id,
+          session_id,
+          participant_id,
+          channel,
+          status,
+          created_at_epoch,
+          expires_at_epoch
+        ) VALUES (
+          'managed-call-a',
+          'usage-exact-cap',
+          'user-a',
+          'meeting-a',
+          'user-a',
+          'session-a',
+          'participant-a',
+          'private',
+          'active',
+          100000,
+          100060
+        );
+      `);
+      expect(() =>
+        database.exec(`
+          INSERT INTO judge_managed_realtime_calls (
+            managed_call_id,
+            reservation_id,
+            account_id,
+            meeting_id,
+            user_id,
+            session_id,
+            participant_id,
+            channel,
+            status,
+            created_at_epoch,
+            expires_at_epoch
+          ) VALUES (
+            'managed-call-b',
+            'usage-exact-cap',
+            'account-a',
+            'meeting-a',
+            'user-a',
+            'session-a',
+            'participant-a',
+            'shared',
+            'active',
+            100000,
+            100060
+          );
+        `),
+      ).toThrow();
+      expect(() =>
+        database.exec(`
+          UPDATE judge_managed_realtime_calls
+          SET participant_id = 'participant-mutated'
+          WHERE managed_call_id = 'managed-call-a';
+        `),
+      ).toThrow("counterpoint_managed_call_owner_immutable");
+      database.exec(`
+        UPDATE judge_managed_realtime_calls
+        SET status = 'terminated', terminated_at_epoch = 100030
+        WHERE managed_call_id = 'managed-call-a';
+      `);
+      expect(() =>
+        database.exec(`
+          UPDATE judge_managed_realtime_calls
+          SET status = 'active', terminated_at_epoch = NULL
+          WHERE managed_call_id = 'managed-call-a';
+        `),
+      ).toThrow("counterpoint_managed_call_invalid_transition");
       expect(() =>
         database.exec(`
           INSERT INTO judge_usage_reservations (
@@ -654,7 +786,7 @@ describe("Cloudflare D1 migrations", () => {
             last_activity_at,
             absolute_expires_at
           ) VALUES (
-            'session-a',
+            'session-invalid',
             '',
             'user-a',
             '2026-07-19T00:00:00.000Z',

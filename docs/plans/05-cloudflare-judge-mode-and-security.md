@@ -98,6 +98,10 @@ defaults.
       account/IP/meeting/concurrency/time/token/generation/currency limits.
 - [x] Enforce a fixed USD 25 rolling-24-hour ceiling in the D1 adapter and
       schema trigger.
+- [x] Derive judge IP pseudonyms from canonical `CF-Connecting-IP` with a
+      separate production HMAC Secret and no raw-IP persistence.
+- [x] Persist one server-owned opaque call handle per reservation and require
+      exact session/user/participant/meeting ownership on lookup/termination.
 - [ ] Wire every judge billable path through a reservation before provider
       work.
 - [ ] Enforce the USD 25 rolling-24-hour currency boundary before billable work.
@@ -121,6 +125,20 @@ C4 foundation notes:
   finalization. Database triggers enforce both the fixed ceiling and append-time
   ordering, preventing out-of-order direct writes from creating an unchecked
   historical window. The ledger survives adapter and Worker recreation.
+- The production IP helper accepts only canonical IPv4 or RFC 5952-style IPv6,
+  uses Web Crypto HMAC-SHA-256 with a distinct `JUDGE_IP_HMAC_SECRET`, and
+  emits only a lowercase keyed digest. The Worker gate requires at least 32
+  secret bytes and an exact `CF-Connecting-IP`; missing, list, port, hostname,
+  zone-ID, and noncanonical inputs fail closed. The raw address exists only in
+  request-local reservation input.
+- Migration 0007 maps one server-generated opaque handle to exactly one active
+  reservation plus its authenticated user/session, current meeting assignment,
+  participant, channel, and bounded lifetime. Unique constraints and
+  conditional insert prevent two handles claiming one reservation. Lookup and
+  idempotent termination require every owner dimension. A shared resolver
+  re-authenticates the Bearer session, re-resolves active meeting assignment
+  and judge capability, then resolves ownership without accepting participant,
+  reservation, provider-call, or key-source identity from the browser.
 - The server-owned unified WebRTC connector captures the standard key, sends
   only SDP, channel isolation instructions, model, and a pseudonymous safety
   identifier to OpenAI, validates a bounded SDP response and exact call
@@ -190,11 +208,13 @@ C4 foundation notes:
   browser SDP response, and server-initiated close cannot duplicate settlement.
   Trustworthy measured telemetry is visible internally but is not yet used to
   lower the charged reservation.
-- The controller is not publicly routed yet. The remaining safe-route gates
-  are authenticated hosted API parity, keyed IP-HMAC reservation input,
-  and server-side ownership of the opaque call handle on every request.
-  Until those gates close, judge client-secret issuance and the public managed
-  route remain fail-closed. No remote Secret registration occurs.
+- The controller is not publicly routed yet. Keyed IP input and opaque
+  ownership foundations exist, but the remaining safe-route gates are
+  authenticated hosted API parity, wiring those checks into every public
+  operation before the Durable Object is addressed, measured production
+  limits, and bounded settlement. Until those gates close, judge client-secret
+  issuance and the public managed route remain fail-closed. No remote Secret
+  registration occurs.
 
 ### C5 — Security hardening
 

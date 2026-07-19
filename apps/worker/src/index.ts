@@ -38,9 +38,11 @@ const EXPECTED_D1_MIGRATIONS = [
   "0004_bearer_sessions.sql",
   "0005_d1_append_guards.sql",
   "0006_judge_usage_reservations.sql",
+  "0007_judge_managed_realtime_calls.sql",
 ] as const;
 
 interface JudgeWorkerBindings {
+  readonly JUDGE_IP_HMAC_SECRET?: string;
   readonly JUDGE_USER_ID?: string;
   readonly OPENAI_API_KEY_JUDGE?: string;
 }

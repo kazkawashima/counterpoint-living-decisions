@@ -47,6 +47,7 @@ describe("repository secret scan", () => {
         entry("config/client.key", ""),
         entry(".env.example", "OPENAI_API_KEY=\n"),
         entry(".dev.vars.example", "OPENAI_API_KEY_JUDGE=\n"),
+        entry(".dev.vars.example", "JUDGE_IP_HMAC_SECRET=\n"),
       ]),
     ).toEqual([
       { path: ".env", rule: "tracked secret-bearing filename" },

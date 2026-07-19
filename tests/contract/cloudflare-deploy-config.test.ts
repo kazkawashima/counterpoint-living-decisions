@@ -96,6 +96,7 @@ describe("Cloudflare remote deploy configuration", () => {
         },
       });
       expect(JSON.stringify(rendered)).not.toContain("OPENAI_API_KEY_JUDGE");
+      expect(JSON.stringify(rendered)).not.toContain("JUDGE_IP_HMAC_SECRET");
     },
   );
 

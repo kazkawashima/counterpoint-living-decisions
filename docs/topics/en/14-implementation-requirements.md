@@ -121,11 +121,19 @@ users for a single-person multi-participant demo.
   to pay or prepare an API key.
 - Store the judge-mode key as Cloudflare Worker Secret
   `OPENAI_API_KEY_JUDGE`; never place it in `wrangler.toml`, D1, R2, logs, or the repository.
+- Use a separate Worker Secret, `JUDGE_IP_HMAC_SECRET`, for HMAC-SHA-256 judge
+  IP limits. Never reuse the OpenAI key, accept only a canonical IP from the
+  verified `CF-Connecting-IP` header, and never persist or log the raw IP.
 - Local development may read a standard key from a Git-ignored `.env` or `.dev.vars`.
 - A facilitator-provided key applies only to the target meeting.
 - Never disclose the standard key to participants.
 - Allow judge mode only for the judge account, never for ordinary users.
 - Enforce hard limits for account, IP, meetings, Realtime duration, tokens, and daily spend.
+- Return only a server-generated opaque handle for a managed Realtime call.
+  Bind reservation, provider call, participant, session, and key-source
+  identity server-side, then re-authenticate and re-resolve meeting assignment,
+  judge capability, and handle ownership on every start, turn, transcript, and
+  terminate request.
 - Do not put judge credentials in the public README, video, repository, or public Devpost description.
 
 ### 6.2 Retention and disposal

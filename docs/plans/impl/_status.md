@@ -464,10 +464,25 @@ The canonical implementation-facing artifacts are:
   requests, and alarms cannot duplicate hangup or settlement.
 - Trustworthy measured usage does not yet reduce settlement; the full
   reservation remains the safe charge for every outcome.
-- The controller is intentionally not publicly routed. Remaining gates are a
-  authenticated hosted API parity, server-side ownership checks for the opaque
-  app call handle, production keyed IP-HMAC reservation input, and settlement
-  behavior that does not consume the entire daily allowance for every attempt.
+- Production keyed IP input now uses Web Crypto HMAC-SHA-256 with a distinct
+  `JUDGE_IP_HMAC_SECRET`. The Worker requires at least 32 secret bytes and a
+  canonical `CF-Connecting-IP`, binds the resulting keyed digest to that exact
+  request IP, and never persists or emits the raw address. Config, environment,
+  deploy, and secret-scan contracts prevent this key from becoming an ordinary
+  variable or reusing the OpenAI key.
+- Forward-only D1 migration 0007 now persists one opaque managed-call handle
+  per active usage reservation with exact user, session, meeting, participant,
+  channel, and expiry ownership. Conditional insert and uniqueness close the
+  double-claim race; lookup and idempotent termination require every owner
+  dimension. The reusable Worker resolver re-authenticates and re-resolves the
+  active meeting assignment and allowlisted judge capability before resolving
+  the handle, including revocation, assignment removal, cross-meeting, IDOR,
+  and storage-failure fail-closed paths.
+- The controller remains intentionally not publicly routed. Remaining gates
+  are authenticated hosted API parity, integrating the completed IP/ownership
+  foundations into every public operation before Durable Object dispatch,
+  measured flagship limits, and settlement behavior that does not consume the
+  entire daily allowance for every attempt.
 - Direct Worker judge client-secret issuance is now intentionally fail-closed,
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
@@ -521,16 +536,21 @@ The canonical implementation-facing artifacts are:
   shutdown runbook forbids schema down migration and secret-value inspection.
   No remote resource, secret, migration, deployment, or repository visibility
   changed during this preparation.
-- C4 is not complete: safe authenticated public route wiring, opaque-call
-  ownership persistence, production IP-HMAC, measured flagship limits, the web
-  managed-call switch, structured judge AI routes after hosted API parity,
+- C4 is not complete: safe authenticated public route wiring with the completed
+  IP/ownership foundations, measured flagship limits, the web managed-call
+  switch, structured judge AI routes after hosted API parity,
   `USAGE_LIMIT_REACHED` HTTP integration, and broader content-free operator
   visibility remain.
-- The current verification baseline is 542 regular Vitest tests, 283 focused
-  security-matrix tests, and 70 Cloudflare-native tests, plus typecheck, lint,
-  formatting, architecture, secret scan, and Cloudflare configuration checks.
-  The live media-only provider smoke also passed. No visible UI changed, so no
-  browser capture was required.
+- The current regular baseline is 616 Vitest tests, with typecheck, lint,
+  formatting, architecture, secret scan, generated Worker types, environment,
+  and Cloudflare configuration checks passing. Six new Cloudflare-native D1
+  persistence/IDOR/race/termination cases passed before two additional
+  reauthorization cases were added; rerunning those two was blocked by the
+  execution environment's escalated usage limit. The focused security rerun
+  passed 279 cases; its four WebSocket cases were blocked only because the
+  sandbox denied their required `0.0.0.0` listen. The prior full baselines
+  remain 283 focused security and 70 Cloudflare-native tests. No visible UI
+  changed, so no browser capture was required.
 
 ## Not started
 
@@ -539,16 +559,16 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 with production keyed IP-HMAC reservation input and
-server-owned opaque-call ownership. Authenticate and re-resolve meeting/judge
-authorization on every start, turn, transcript, and terminate request; never
-accept reservation, provider call, participant, or key-source identity from the
-browser. Complete the minimum hosted API parity needed by the flagship before
-enabling the public route or switching the judge UI. The UI switch requires
-browser E2E coverage and saved reel screenshots. Apply the same reservation
-boundary to structured judge AI only after hosted API parity exists. Keep
-remote Secret registration and deployment mutation behind an explicit
-deployment boundary.
+Continue Plan 05 C4 by wiring the completed keyed-IP and opaque-ownership
+foundations into every start, turn, transcript, and terminate route before
+Durable Object dispatch. Complete the minimum hosted API parity needed by the
+flagship, measure the flagship to replace full-cap-per-attempt settlement with
+safe derived limits, and only then enable the public route or switch the judge
+UI. Never accept reservation, provider call, participant, session, or
+key-source identity from the browser. The UI switch requires browser E2E
+coverage and saved reel screenshots. Apply the same reservation boundary to
+structured judge AI only after hosted API parity exists. Keep remote Secret
+registration and deployment mutation behind an explicit deployment boundary.
 
 ## Open gates
 

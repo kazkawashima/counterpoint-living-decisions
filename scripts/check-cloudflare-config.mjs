@@ -97,6 +97,11 @@ export function validateCloudflareConfiguration(config, packageJson) {
     violations,
   );
   expectCondition(
+    config.vars?.JUDGE_IP_HMAC_SECRET === undefined,
+    "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var.",
+    violations,
+  );
+  expectCondition(
     packageJson.scripts?.["dev:worker"]?.includes("--ip 0.0.0.0") === true,
     "dev:worker must bind Wrangler to 0.0.0.0.",
     violations,

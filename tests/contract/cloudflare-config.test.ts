@@ -51,7 +51,10 @@ describe("Cloudflare configuration contract", () => {
             remote: false,
           },
         ],
-        vars: { OPENAI_API_KEY_JUDGE: "must-not-be-here" },
+        vars: {
+          JUDGE_IP_HMAC_SECRET: "must-not-be-here-either",
+          OPENAI_API_KEY_JUDGE: "must-not-be-here",
+        },
       },
       {
         scripts: Object.fromEntries(
@@ -72,6 +75,9 @@ describe("Cloudflare configuration contract", () => {
 
     expect(violations).toContain(
       "OPENAI_API_KEY_JUDGE must never be an ordinary Worker var.",
+    );
+    expect(violations).toContain(
+      "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var.",
     );
   });
 });

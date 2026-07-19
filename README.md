@@ -36,7 +36,8 @@ cp .env.example .env
 Local development servers must bind to `0.0.0.0` so they remain reachable over
 Tailscale. Do not place production credentials in `.env`, `.dev.vars`, the
 repository, or logs. The judge-funded key belongs in the Cloudflare Worker
-Secret `OPENAI_API_KEY_JUDGE` only.
+Secret `OPENAI_API_KEY_JUDGE` only. Judge IP pseudonymization uses a distinct
+Worker Secret, `JUDGE_IP_HMAC_SECRET`; the two secrets must never be reused.
 
 Install and start the API and web app in separate terminals:
 

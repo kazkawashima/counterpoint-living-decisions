@@ -14,9 +14,10 @@ operator procedure for an explicitly approved deployment or incident window.
 | `ARTIFACTS` | R2 `counterpoint-artifacts-preview`           | artifact binaries; authorization remains in the application |
 | `MEETINGS`  | `MeetingCoordinator` Durable Object namespace | one instance selected with `idFromName(meetingId)`          |
 
-`OPENAI_API_KEY_JUDGE` is intentionally absent from the deployment workflow.
-Register it directly as a Cloudflare Worker Secret only at its separately
-approved gate. Never store or pass it through GitHub Actions, GitHub
+`OPENAI_API_KEY_JUDGE` and the independent `JUDGE_IP_HMAC_SECRET` are
+intentionally absent from the deployment workflow. Register each directly as a
+separate Cloudflare Worker Secret only at its separately approved gate. Never
+reuse one for the other or store/pass either through GitHub Actions, GitHub
 Environment secrets or vars, ordinary Worker vars, `.env`, `.dev.vars`, D1,
 R2, Durable Object state, source, logs, or captured media.
 
@@ -85,7 +86,7 @@ For both environments:
 6. use distinct credentials and resource metadata for preview and production;
 7. set production's `CLOUDFLARE_PRODUCTION_CONFIRMATION` Environment var to
    exactly `counterpoint-production`, and leave it unset for preview;
-8. do not add `OPENAI_API_KEY_JUDGE` to GitHub.
+8. do not add `OPENAI_API_KEY_JUDGE` or `JUDGE_IP_HMAC_SECRET` to GitHub.
 
 The workflow derives `CLOUDFLARE_DEPLOYMENT_APPROVED` from the approved
 `target`; it is not a stored credential or a manually reusable approval flag.
@@ -209,6 +210,7 @@ value:
 
 ```sh
 npx wrangler secret delete OPENAI_API_KEY_JUDGE --config "$config_path"
+npx wrangler secret delete JUDGE_IP_HMAC_SECRET --config "$config_path"
 ```
 
 Run these commands only with the intended target's approved credentials and
@@ -220,8 +222,8 @@ For an emergency shutdown, use this order:
 1. stop new public and judge-mode traffic using the reviewed fail-closed route
    or last known fail-closed deployment;
 2. revoke the judge credential at the upstream provider;
-3. delete `OPENAI_API_KEY_JUDGE` from the affected Worker and verify only its
-   name is absent;
+3. delete `OPENAI_API_KEY_JUDGE` and `JUDGE_IP_HMAC_SECRET` from the affected
+   Worker and verify only their names are absent;
 4. revoke the affected Cloudflare deployment token and remove or rotate its
    GitHub Environment secrets;
 5. verify traffic and funded provider calls have stopped, preserve D1/R2/DO
