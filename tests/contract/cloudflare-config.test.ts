@@ -36,6 +36,15 @@ describe("Cloudflare configuration contract", () => {
             },
           ],
         },
+        env: {
+          preview: {
+            vars: {
+              JUDGE_IP_HMAC_SECRET: "must-not-be-nested",
+              JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+              OPENAI_API_KEY_JUDGE: "must-not-be-nested",
+            },
+          },
+        },
         main: "apps/worker/src/index.ts",
         migrations: [
           { new_sqlite_classes: ["MeetingCoordinator"], tag: "v1" },
@@ -74,7 +83,7 @@ describe("Cloudflare configuration contract", () => {
     );
 
     expect(violations).toContain(
-      "JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled.",
+      "JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled (top-level).",
     );
   });
 
@@ -103,6 +112,15 @@ describe("Cloudflare configuration contract", () => {
               name: "JUDGE_REALTIME_CALLS",
             },
           ],
+        },
+        env: {
+          preview: {
+            vars: {
+              JUDGE_IP_HMAC_SECRET: "must-not-be-nested",
+              JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+              OPENAI_API_KEY_JUDGE: "must-not-be-nested",
+            },
+          },
         },
         main: "apps/worker/src/index.ts",
         migrations: [
@@ -142,10 +160,19 @@ describe("Cloudflare configuration contract", () => {
     );
 
     expect(violations).toContain(
-      "OPENAI_API_KEY_JUDGE must never be an ordinary Worker var.",
+      "OPENAI_API_KEY_JUDGE must never be an ordinary Worker var (top-level).",
     );
     expect(violations).toContain(
-      "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var.",
+      "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var (top-level).",
+    );
+    expect(violations).toContain(
+      "OPENAI_API_KEY_JUDGE must never be an ordinary Worker var (env.preview).",
+    );
+    expect(violations).toContain(
+      "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var (env.preview).",
+    );
+    expect(violations).toContain(
+      "JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled (env.preview).",
     );
   });
 });

@@ -1354,7 +1354,7 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
     expect(rows).not.toContain("test-only-never-sent");
   });
 
-  it("suppresses a concurrent duplicate and conflicts a changed source", async () => {
+  it("suppresses a concurrent duplicate and conflicts changed source identity or content", async () => {
     let releaseProvider!: () => void;
     const providerBlocked = new Promise<void>((resolve) => {
       releaseProvider = resolve;
@@ -1423,6 +1423,21 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       releaseProvider();
     }
     expect((await first).status).toBe(201);
+    expect(proposer.propose).toHaveBeenCalledTimes(1);
+
+    await environment.ARTIFACTS.put(
+      `meetings/${FLAGSHIP_MEETING_ID}/private/participant-product/${firstSource.sourceArtifactId}`,
+      new TextEncoder().encode("Changed bytes under the same artifact ID."),
+    );
+    const changedContent = await handler.fetch!(
+      request(),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(changedContent.status).toBe(409);
+    await expect(json(changedContent)).resolves.toMatchObject({
+      code: "IDEMPOTENCY_CONFLICT",
+    });
     expect(proposer.propose).toHaveBeenCalledTimes(1);
 
     const secondSource = await registerSource({

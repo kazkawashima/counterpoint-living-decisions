@@ -91,21 +91,30 @@ export function validateCloudflareConfiguration(config, packageJson) {
     "The second Durable Object migration must introduce JudgeRealtimeCallController with SQLite storage.",
     violations,
   );
-  expectCondition(
-    config.vars?.OPENAI_API_KEY_JUDGE === undefined,
-    "OPENAI_API_KEY_JUDGE must never be an ordinary Worker var.",
-    violations,
-  );
-  expectCondition(
-    config.vars?.JUDGE_IP_HMAC_SECRET === undefined,
-    "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var.",
-    violations,
-  );
-  expectCondition(
-    config.vars?.JUDGE_STRUCTURED_AI_ROUTE_ENABLED === "disabled",
-    "JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled.",
-    violations,
-  );
+  const variableScopes = [
+    ["top-level", config.vars],
+    ...Object.entries(config.env ?? {}).map(([name, environment]) => [
+      `env.${name}`,
+      environment.vars,
+    ]),
+  ];
+  for (const [scope, vars] of variableScopes) {
+    expectCondition(
+      vars?.OPENAI_API_KEY_JUDGE === undefined,
+      `OPENAI_API_KEY_JUDGE must never be an ordinary Worker var (${scope}).`,
+      violations,
+    );
+    expectCondition(
+      vars?.JUDGE_IP_HMAC_SECRET === undefined,
+      `JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var (${scope}).`,
+      violations,
+    );
+    expectCondition(
+      vars?.JUDGE_STRUCTURED_AI_ROUTE_ENABLED === "disabled",
+      `JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled (${scope}).`,
+      violations,
+    );
+  }
   expectCondition(
     packageJson.scripts?.["dev:worker"]?.includes("--ip 0.0.0.0") === true,
     "dev:worker must bind Wrangler to 0.0.0.0.",

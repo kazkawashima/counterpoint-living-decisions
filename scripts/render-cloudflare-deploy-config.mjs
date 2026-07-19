@@ -50,6 +50,23 @@ function resourceName(value, fallback, label) {
   return selected;
 }
 
+function safeWorkerVars(vars, runtimeMode) {
+  const {
+    JUDGE_IP_HMAC_SECRET: _judgeIpHmacSecret,
+    OPENAI_API_KEY_JUDGE: _openAiApiKeyJudge,
+    ...safeVars
+  } = vars ?? {};
+  void _judgeIpHmacSecret;
+  void _openAiApiKeyJudge;
+  return {
+    ...safeVars,
+    JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+    OPENAI_MODE: "disabled",
+    ...(runtimeMode === undefined ? {} : { RUNTIME_MODE: runtimeMode }),
+  };
+}
+
 export function renderCloudflareDeployConfiguration(input) {
   const target = deploymentTarget(input.target);
   const defaults = TARGETS[target];
@@ -80,20 +97,10 @@ export function renderCloudflareDeployConfiguration(input) {
   r2.bucket_name = r2BucketName;
   r2.preview_bucket_name = r2BucketName;
   r2.remote = true;
-  const {
-    JUDGE_IP_HMAC_SECRET: _judgeIpHmacSecret,
-    OPENAI_API_KEY_JUDGE: _openAiApiKeyJudge,
-    ...safeVars
-  } = base.vars ?? {};
-  void _judgeIpHmacSecret;
-  void _openAiApiKeyJudge;
-  base.vars = {
-    ...safeVars,
-    JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
-    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
-    OPENAI_MODE: "disabled",
-    RUNTIME_MODE: target,
-  };
+  base.vars = safeWorkerVars(base.vars, target);
+  for (const environment of Object.values(base.env ?? {})) {
+    environment.vars = safeWorkerVars(environment.vars);
+  }
   return base;
 }
 

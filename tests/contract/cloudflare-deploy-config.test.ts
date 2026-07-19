@@ -13,6 +13,18 @@ interface RenderedConfig {
     readonly database_name: string;
     readonly remote: boolean;
   }[];
+  readonly env: Readonly<
+    Record<
+      string,
+      {
+        readonly vars: {
+          readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
+          readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
+          readonly OPENAI_MODE: string;
+        };
+      }
+    >
+  >;
   readonly name: string;
   readonly r2_buckets: readonly {
     readonly binding: string;
@@ -37,6 +49,17 @@ const baseConfig = {
       remote: false,
     },
   ],
+  env: {
+    legacy: {
+      vars: {
+        JUDGE_IP_HMAC_SECRET: "nested-must-never-render-as-a-var",
+        JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "enabled",
+        JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+        OPENAI_API_KEY_JUDGE: "nested-must-never-render-as-a-var",
+        OPENAI_MODE: "live",
+      },
+    },
+  },
   name: "counterpoint-living-decisions",
   r2_buckets: [
     {
@@ -87,6 +110,15 @@ describe("Cloudflare remote deploy configuration", () => {
             remote: true,
           },
         ],
+        env: {
+          legacy: {
+            vars: {
+              JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+              JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+              OPENAI_MODE: "disabled",
+            },
+          },
+        },
         name: input.workerName,
         r2_buckets: [
           {

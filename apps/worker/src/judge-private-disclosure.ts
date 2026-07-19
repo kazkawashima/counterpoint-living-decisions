@@ -112,8 +112,11 @@ export async function runJudgePrivateDisclosure<T>(input: {
   };
   let preparation: Promise<void> | undefined;
 
-  const prepare = (): Promise<void> => {
-    preparation ??= prepareManagedCall(input).then((prepared) => {
+  const prepare = (sourceContentHash: string): Promise<void> => {
+    preparation ??= prepareManagedCall({
+      ...input,
+      sourceContentHash,
+    }).then((prepared) => {
       lifecycle.state = prepared;
     });
     return preparation;
@@ -228,7 +231,7 @@ async function releaseClaimAfterUnreservedFailure(
 
 function guardedArtifactStore(
   artifacts: ArtifactStore,
-  prepare: () => Promise<void>,
+  prepare: (sourceContentHash: string) => Promise<void>,
 ): ArtifactStore {
   return {
     delete: (scope) => artifacts.delete(scope),
@@ -245,7 +248,7 @@ function guardedArtifactStore(
       } catch {
         throw new JudgePrivateDisclosureError("VALIDATION_FAILED");
       }
-      await prepare();
+      await prepare(await sha256Bytes(bytes));
       return bytes;
     },
     put: (write) => artifacts.put(write),
@@ -258,6 +261,7 @@ async function prepareManagedCall(input: {
   readonly clock: Clock;
   readonly ipAddress: string;
   readonly request: JudgePrivateDisclosureRequest;
+  readonly sourceContentHash: string;
   readonly usage: UsageLimiter;
 }): Promise<PreparationState> {
   const createdAtEpoch = epochSeconds(input.clock.now());
@@ -279,6 +283,7 @@ async function prepareManagedCall(input: {
       input.request.meetingId,
       input.request.idempotencyKey,
       input.request.sourceArtifactId,
+      input.sourceContentHash,
     ]),
   };
   let claimed: ManagedAiOperationClaimResult;
@@ -344,9 +349,13 @@ function epochSeconds(value: string): number {
 
 async function sha256(fields: readonly (number | string)[]): Promise<string> {
   const serialized = JSON.stringify(fields);
+  return sha256Bytes(new TextEncoder().encode(serialized));
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(serialized),
+    Uint8Array.from(bytes).buffer,
   );
   return `sha256:${[...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
