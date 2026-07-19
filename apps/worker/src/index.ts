@@ -300,16 +300,24 @@ export function createWorkerHandler(): ExportedHandler<Env> {
                           : request.method === "POST" &&
                               url.pathname === "/api/v1/decisions/commit"
                             ? "commit-decision"
-                            : request.method === "GET" &&
-                                url.pathname === "/api/v1/meetings"
-                              ? "meetings"
-                              : request.method === "GET" &&
-                                  flagshipProjectionRoute !== null
-                                ? "projection"
+                            : request.method === "POST" &&
+                                url.pathname === "/api/v1/decisions/candidates"
+                              ? "prepare-decision-candidate"
+                              : request.method === "POST" &&
+                                  url.pathname ===
+                                    "/api/v1/decisions/candidates/disposition"
+                                ? "disposition-decision-candidate"
                                 : request.method === "GET" &&
-                                    flagshipCollectionOperation !== undefined
-                                  ? flagshipCollectionOperation
-                                  : undefined;
+                                    url.pathname === "/api/v1/meetings"
+                                  ? "meetings"
+                                  : request.method === "GET" &&
+                                      flagshipProjectionRoute !== null
+                                    ? "projection"
+                                    : request.method === "GET" &&
+                                        flagshipCollectionOperation !==
+                                          undefined
+                                      ? flagshipCollectionOperation
+                                      : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;

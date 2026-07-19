@@ -6,10 +6,14 @@ import { describe, expect, it } from "vitest";
 import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
 import {
   ApproveDisclosureResponseSchema,
+  CommitDecisionResponseSchema,
+  DispositionSharedDecisionCandidateResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   SaveDecisionDraftResponseSchema,
+  SynthesizeSharedDecisionResponseSchema,
+  MarkDecisionReadyResponseSchema,
 } from "@counterpoint/protocol";
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
@@ -271,20 +275,119 @@ describe("Cloudflare Worker hosted flagship API", () => {
       previewHash: previewBody.previewHash,
     });
 
+    const candidateResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/decisions/candidates", {
+          body: JSON.stringify({
+            assistance: "manual",
+            draft: {
+              actions: [
+                {
+                  ownerParticipantId: "participant-product",
+                  scope: ["Run the staged pilot"],
+                },
+              ],
+              dissent: [],
+              monitorCondition: { description: "Review pilot metrics weekly" },
+              outcome: "Run the staged pilot with an explicit owner.",
+              premises: [
+                {
+                  evidenceReferenceIds: [approveBody.evidence.evidenceId],
+                  statement: "A staged pilot limits rollout risk.",
+                },
+              ],
+              title: "Staged rollout pilot",
+            },
+            expectedPosition: 5,
+            idempotencyKey: "worker-flagship-decision-candidate",
+            meetingId: FLAGSHIP_MEETING_ID,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(candidateResponse.status).toBe(201);
+    const candidateBody = SynthesizeSharedDecisionResponseSchema.parse(
+      await json(candidateResponse),
+    );
+    expect(candidateBody.candidate.draft.premiseCandidates).toHaveLength(1);
+    expect(candidateBody.candidate.draft.actionCandidates).toHaveLength(1);
+
+    const candidatePremise = candidateBody.candidate.draft.premiseCandidates[0];
+    const candidateAction = candidateBody.candidate.draft.actionCandidates[0];
+    if (candidatePremise === undefined || candidateAction === undefined) {
+      throw new Error("Manual candidate did not contain premise and action");
+    }
+    const dispositionResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          "https://203.0.113.7/api/v1/decisions/candidates/disposition",
+          {
+            body: JSON.stringify({
+              actions: [
+                {
+                  ownerParticipantId: candidateAction.ownerParticipantId,
+                  scope: candidateAction.scope,
+                },
+              ],
+              candidateId: candidateBody.candidate.candidateId,
+              dissent: [],
+              expectedPosition: 8,
+              idempotencyKey: "worker-flagship-decision-disposition",
+              meetingId: FLAGSHIP_MEETING_ID,
+              monitorCondition: { description: "Review pilot metrics weekly" },
+              outcome: "Run the staged pilot with an explicit owner.",
+              premiseDispositions: [
+                {
+                  candidateId: candidatePremise.candidateId,
+                  disposition: "confirmed",
+                  premise: {
+                    evidenceReferenceIds: [approveBody.evidence.evidenceId],
+                    statement: candidatePremise.statement,
+                  },
+                },
+              ],
+              reason: "Facilitator confirmed the staged pilot path.",
+              title: "Staged rollout pilot",
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(dispositionResponse.status).toBe(200);
+    const dispositionBody =
+      DispositionSharedDecisionCandidateResponseSchema.parse(
+        await json(dispositionResponse),
+      );
+    expect(dispositionBody.premises).toHaveLength(1);
+    expect(dispositionBody.actions).toHaveLength(1);
+    const premise = dispositionBody.premises[0];
+    const action = dispositionBody.actions[0];
+    if (premise === undefined || action === undefined) {
+      throw new Error("Disposition did not materialize premise and action");
+    }
+
     const draftResponse = await handler.fetch!(
       workerRequest(
         new Request("https://203.0.113.7/api/v1/decisions/drafts", {
           body: JSON.stringify({
-            actionIds: [],
+            actionIds: [action.actionId],
             changeReason: "Initial facilitator draft",
             dissentIds: [],
             evidenceIds: [approveBody.evidence.evidenceId],
-            expectedPosition: 5,
+            expectedPosition: 10,
             idempotencyKey: "worker-flagship-decision-draft",
             meetingId: FLAGSHIP_MEETING_ID,
             monitorCondition: { description: "Review pilot metrics weekly" },
             outcome: "Run the staged pilot with an explicit owner.",
-            premiseIds: [],
+            premiseIds: [premise.premiseId],
             title: "Staged rollout pilot",
           }),
           headers: { ...authorization, "content-type": "application/json" },
@@ -307,8 +410,52 @@ describe("Cloudflare Worker hosted flagship API", () => {
         },
         status: "DRAFT",
       },
-      position: 6,
     });
+    expect(draftBody.position).toBeGreaterThan(dispositionBody.position);
+
+    const readyResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/decisions/ready", {
+          body: JSON.stringify({
+            decisionId: draftBody.decision.decisionId,
+            expectedPosition: draftBody.position,
+            idempotencyKey: "worker-flagship-decision-ready",
+            meetingId: FLAGSHIP_MEETING_ID,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(readyResponse.status).toBe(200);
+    const readyBody = MarkDecisionReadyResponseSchema.parse(
+      await json(readyResponse),
+    );
+    expect(readyBody.decision.status).toBe("DECISION_READY");
+
+    const commitResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/decisions/commit", {
+          body: JSON.stringify({
+            decisionId: readyBody.decision.decisionId,
+            expectedPosition: readyBody.position,
+            idempotencyKey: "worker-flagship-decision-commit",
+            meetingId: FLAGSHIP_MEETING_ID,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(commitResponse.status).toBe(200);
+    const commitBody = CommitDecisionResponseSchema.parse(
+      await json(commitResponse),
+    );
+    expect(commitBody.decision.status).toBe("COMMITTED");
 
     const projectionAfterSourceResponse = await handler.fetch!(
       workerRequest(
@@ -333,8 +480,8 @@ describe("Cloudflare Worker hosted flagship API", () => {
       shared: {
         decisions: [
           expect.objectContaining({
-            decisionId: draftBody.decision.decisionId,
-            status: "DRAFT",
+            decisionId: commitBody.decision.decisionId,
+            status: "COMMITTED",
           }),
         ],
         evidence: [

@@ -567,8 +567,12 @@ The canonical implementation-facing artifacts are:
 - A facilitator can now save a manual hosted decision draft that references
   shared evidence; the Worker keeps application readiness and ownership checks
   authoritative, returns the revision receipt, and rehydrates the DRAFT
-  decision in the shared projection. Ready/commit routes are present but are
-  not claimed successful until the draft has all required references.
+  decision in the shared projection. Ready/commit routes remain gated by those
+  application-level reference and readiness checks.
+- Hosted manual Decision candidates now materialize confirmed Premises and
+  Actions, after which the same Worker path reaches `DRAFT` → `DECISION_READY`
+  → `COMMITTED`. The external-host Cloudflare test covers this full
+  source-to-Commitment journey without an OpenAI call.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call
