@@ -145,8 +145,14 @@ function request(
   });
 }
 
-async function responseBody(response: Response) {
-  return (await response.json()) as Record<string, unknown>;
+async function responseBody(
+  response: Response,
+): Promise<Record<string, unknown>> {
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new TypeError("Expected an object response body");
+  }
+  return Object.fromEntries(Object.entries(body));
 }
 
 describe("Worker private-disclosure boundary", () => {

@@ -1259,10 +1259,8 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
   it("settles metered judge usage without persisting private content", async () => {
     const proposer = {
       propose: vi.fn(
-        async (input: {
-          readonly sourceArtifactId: string;
-          readonly text: string;
-        }) => meteredProposal(input.sourceArtifactId, input.text),
+        (input: { readonly sourceArtifactId: string; readonly text: string }) =>
+          Promise.resolve(meteredProposal(input.sourceArtifactId, input.text)),
       ),
     };
     const handler = createWorkerHandler({
@@ -1456,10 +1454,8 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
   it("denies exhausted and ordinary-user managed work before the provider", async () => {
     const proposer = {
       propose: vi.fn(
-        async (input: {
-          readonly sourceArtifactId: string;
-          readonly text: string;
-        }) => meteredProposal(input.sourceArtifactId, input.text),
+        (input: { readonly sourceArtifactId: string; readonly text: string }) =>
+          Promise.resolve(meteredProposal(input.sourceArtifactId, input.text)),
       ),
     };
     const handler = createWorkerHandler({
@@ -1587,10 +1583,8 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
   it("keeps manual work off the ledger and fails closed when live wiring is unsafe", async () => {
     const proposer = {
       propose: vi.fn(
-        async (input: {
-          readonly sourceArtifactId: string;
-          readonly text: string;
-        }) => meteredProposal(input.sourceArtifactId, input.text),
+        (input: { readonly sourceArtifactId: string; readonly text: string }) =>
+          Promise.resolve(meteredProposal(input.sourceArtifactId, input.text)),
       ),
     };
     const handler = createWorkerHandler({

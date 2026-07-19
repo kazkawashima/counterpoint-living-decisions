@@ -125,6 +125,12 @@ interface Fixture {
   readonly usage: UsageLimiter;
 }
 
+function rejectFixture(error: unknown): Promise<never> {
+  return Promise.reject(
+    error instanceof Error ? error : new Error("Synthetic fixture failure"),
+  );
+}
+
 function fixture(
   options: {
     readonly claimError?: unknown;
@@ -145,13 +151,13 @@ function fixture(
     claimInputs.push(input);
     return options.claimError === undefined
       ? Promise.resolve(options.claimResult ?? "claimed")
-      : Promise.reject(options.claimError);
+      : rejectFixture(options.claimError);
   });
   const releaseClaim = vi.fn(() => {
     order.push("release-claim");
     return options.releaseClaimError === undefined
       ? Promise.resolve("released" as const)
-      : Promise.reject(options.releaseClaimError);
+      : rejectFixture(options.releaseClaimError);
   });
   const claims: JudgeManagedAiOperationClaimRepository = {
     claim,
@@ -161,7 +167,7 @@ function fixture(
     order.push("reserve");
     claimInputs.push({ request, subject });
     if (options.reserveError !== undefined) {
-      return Promise.reject(options.reserveError);
+      return rejectFixture(options.reserveError);
     }
     return Promise.resolve(
       options.reservationLimit === undefined
@@ -176,13 +182,13 @@ function fixture(
     order.push("finalize");
     return options.finalizeError === undefined
       ? Promise.resolve()
-      : Promise.reject(options.finalizeError);
+      : rejectFixture(options.finalizeError);
   });
   const releaseUsage = vi.fn(() => {
     order.push("release-usage");
     return options.releaseUsageError === undefined
       ? Promise.resolve()
-      : Promise.reject(options.releaseUsageError);
+      : rejectFixture(options.releaseUsageError);
   });
   const usage: UsageLimiter = {
     finalize,
@@ -191,16 +197,17 @@ function fixture(
   };
   const proposer = {
     propose: vi.fn(
-      (_input: {
+      (input: {
         readonly meetingId: string;
         readonly ownerParticipantId: string;
         readonly sourceArtifactId: string;
         readonly text: string;
       }): Promise<PrivateDisclosureProposal> => {
+        void input;
         order.push("provider");
         return options.proposerError === undefined
           ? Promise.resolve(options.proposal ?? proposal())
-          : Promise.reject(options.proposerError);
+          : rejectFixture(options.proposerError);
       },
     ),
   };
@@ -652,8 +659,12 @@ describe("judge private-disclosure orchestration", () => {
     [
       "missing",
       (() => {
-        const { billing: _billing, ...withoutBilling } = proposal();
-        return withoutBilling;
+        const complete = proposal();
+        return {
+          ai: complete.ai,
+          exactSnippet: complete.exactSnippet,
+          sourceRange: complete.sourceRange,
+        };
       })(),
     ],
     [
@@ -690,11 +701,13 @@ describe("judge private-disclosure orchestration", () => {
     expect(serialized).not.toContain(SOURCE_TEXT);
     expect(serialized).not.toContain("caller placeholder");
     expect(serialized).not.toContain(EXACT_SNIPPET);
-    expect(fixtureValue.claim).toHaveBeenCalledWith(
-      expect.objectContaining({
-        claimKeyHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
-        requestFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
-      }),
+    const claimInput = fixtureValue.claim.mock.calls[0]?.[0] as
+      { claimKeyHash?: unknown; requestFingerprint?: unknown } | undefined;
+    expect(claimInput?.claimKeyHash).toEqual(
+      expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+    );
+    expect(claimInput?.requestFingerprint).toEqual(
+      expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
     );
     expect(fixtureValue.reserve).toHaveBeenCalledWith(
       {
