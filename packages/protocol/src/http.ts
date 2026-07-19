@@ -340,6 +340,7 @@ export const DecisionSchema = z.strictObject({
   activeRevisionId: DecisionRevisionIdSchema,
   snapshot: DecisionSnapshotSchema,
   readiness: DecisionReadinessSchema,
+  supersededByDecisionId: DecisionIdSchema.optional(),
   updatedAt: UtcIsoTimestampSchema,
 });
 export const DecisionRevisionSchema = z.strictObject({
@@ -1001,6 +1002,132 @@ export const FacilitatorInvalidationReviewRequestSchema =
   ReviewInvalidationRequestSchema;
 export const FacilitatorInvalidationReviewResponseSchema =
   ReviewInvalidationResponseSchema;
+
+export const DecisionReviewResolutionSchema = z.enum([
+  "recommit_revision",
+  "supersede_decision",
+  "reject_decision",
+]);
+const DecisionReviewRequestShape = {
+  ...MeetingMutationShape,
+  decisionId: DecisionIdSchema,
+} as const;
+export const RecommitDecisionRevisionRequestSchema = z.strictObject({
+  ...DecisionReviewRequestShape,
+  resolution: z.literal("recommit_revision"),
+  changeReason: NonEmptyTextSchema,
+  title: TitleSchema,
+  outcome: NonEmptyTextSchema,
+  monitorCondition: z.strictObject({
+    description: NonEmptyTextSchema,
+  }),
+});
+export const SupersedeDecisionRequestSchema = z
+  .strictObject({
+    ...DecisionReviewRequestShape,
+    resolution: z.literal("supersede_decision"),
+    replacementDecisionId: DecisionIdSchema,
+  })
+  .refine(
+    ({ decisionId, replacementDecisionId }) =>
+      decisionId !== replacementDecisionId,
+    {
+      message: "replacement Decision must differ from the reviewed Decision",
+      path: ["replacementDecisionId"],
+    },
+  );
+export const RejectDecisionRequestSchema = z.strictObject({
+  ...DecisionReviewRequestShape,
+  resolution: z.literal("reject_decision"),
+  reason: ReviewReasonSchema,
+});
+export const ResolveDecisionReviewRequestSchema = z.discriminatedUnion(
+  "resolution",
+  [
+    RecommitDecisionRevisionRequestSchema,
+    SupersedeDecisionRequestSchema,
+    RejectDecisionRequestSchema,
+  ],
+);
+
+const CommittedDecisionSchema = DecisionSchema.extend({
+  status: z.literal("COMMITTED"),
+  snapshot: DecisionSnapshotSchema.extend({
+    status: z.literal("COMMITTED"),
+  }),
+});
+const CommittedDecisionRevisionSchema = DecisionRevisionSchema.extend({
+  previousRevisionId: DecisionRevisionIdSchema,
+  snapshot: DecisionSnapshotSchema.extend({
+    status: z.literal("COMMITTED"),
+  }),
+});
+const SupersededDecisionSchema = DecisionSchema.extend({
+  status: z.literal("SUPERSEDED"),
+  snapshot: DecisionSnapshotSchema.extend({
+    status: z.literal("SUPERSEDED"),
+  }),
+});
+const RejectedDecisionSchema = DecisionSchema.extend({
+  status: z.literal("REJECTED"),
+  snapshot: DecisionSnapshotSchema.extend({
+    status: z.literal("REJECTED"),
+  }),
+});
+const DecisionReviewResponseShape = {
+  ...MeetingMutationReceiptShape,
+} as const;
+export const RecommitDecisionRevisionResponseSchema = z
+  .strictObject({
+    ...DecisionReviewResponseShape,
+    resolution: z.literal("recommit_revision"),
+    decision: CommittedDecisionSchema,
+    revision: CommittedDecisionRevisionSchema,
+  })
+  .superRefine(({ decision, revision }, context) => {
+    if (
+      revision.decisionId !== decision.decisionId ||
+      revision.revisionId !== decision.activeRevisionId ||
+      revision.version !== decision.activeRevision
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "committed revision must be the Decision's new active revision",
+        path: ["revision"],
+      });
+    }
+  });
+export const SupersedeDecisionResponseSchema = z
+  .strictObject({
+    ...DecisionReviewResponseShape,
+    resolution: z.literal("supersede_decision"),
+    decision: SupersededDecisionSchema,
+    replacementDecisionId: DecisionIdSchema,
+  })
+  .refine(
+    ({ decision, replacementDecisionId }) =>
+      decision.decisionId !== replacementDecisionId,
+    {
+      message: "replacement Decision must differ from the superseded Decision",
+      path: ["replacementDecisionId"],
+    },
+  );
+export const RejectDecisionResponseSchema = z.strictObject({
+  ...DecisionReviewResponseShape,
+  resolution: z.literal("reject_decision"),
+  decision: RejectedDecisionSchema,
+  reason: ReviewReasonSchema,
+});
+export const ResolveDecisionReviewResponseSchema = z.discriminatedUnion(
+  "resolution",
+  [
+    RecommitDecisionRevisionResponseSchema,
+    SupersedeDecisionResponseSchema,
+    RejectDecisionResponseSchema,
+  ],
+);
+
 export const ListInvalidationEvaluationsResponseSchema = z.strictObject({
   ...MeetingMutationReceiptShape,
   evaluations: z.array(InvalidationEvaluationSchema),
@@ -1026,10 +1153,82 @@ export const DecisionAuditResponseSchema = z.strictObject({
   entries: z.array(AuditEntrySchema),
   ...RequiredCorrelationShape,
 });
+export const DecisionJsonExportQuerySchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  decisionId: DecisionIdSchema,
+  ...OptionalCorrelationShape,
+});
+export const DecisionJsonExportResponseSchema = z
+  .strictObject({
+    meetingId: MeetingIdSchema,
+    decision: DecisionSchema,
+    revisions: z.array(DecisionRevisionSchema).min(1),
+    auditEntries: z.array(AuditEntrySchema),
+    exportedAt: UtcIsoTimestampSchema,
+    ...RequiredCorrelationShape,
+  })
+  .superRefine(({ auditEntries, decision, meetingId, revisions }, context) => {
+    const revisionIds = new Set<string>();
+    const revisionVersions = new Set<number>();
+    let includesActiveRevision = false;
+
+    for (const [index, revision] of revisions.entries()) {
+      if (revision.decisionId !== decision.decisionId) {
+        context.addIssue({
+          code: "custom",
+          message: "export revisions must belong to the exported Decision",
+          path: ["revisions", index, "decisionId"],
+        });
+      }
+      if (
+        revision.revisionId === decision.activeRevisionId &&
+        revision.version === decision.activeRevision
+      ) {
+        includesActiveRevision = true;
+      }
+      if (revisionIds.has(revision.revisionId)) {
+        context.addIssue({
+          code: "custom",
+          message: "export revisions must have unique revision IDs",
+          path: ["revisions", index, "revisionId"],
+        });
+      }
+      if (revisionVersions.has(revision.version)) {
+        context.addIssue({
+          code: "custom",
+          message: "export revisions must have unique versions",
+          path: ["revisions", index, "version"],
+        });
+      }
+      revisionIds.add(revision.revisionId);
+      revisionVersions.add(revision.version);
+    }
+
+    if (!includesActiveRevision) {
+      context.addIssue({
+        code: "custom",
+        message: "export revisions must include the active Decision revision",
+        path: ["revisions"],
+      });
+    }
+
+    for (const [index, entry] of auditEntries.entries()) {
+      if (entry.meetingId !== meetingId) {
+        context.addIssue({
+          code: "custom",
+          message: "export audit entries must belong to the exported meeting",
+          path: ["auditEntries", index, "meetingId"],
+        });
+      }
+    }
+  });
 export const GetDecisionHistoryRequestSchema = DecisionHistoryQuerySchema;
 export const GetDecisionHistoryResponseSchema = DecisionHistoryResponseSchema;
 export const GetDecisionAuditRequestSchema = DecisionAuditQuerySchema;
 export const GetDecisionAuditResponseSchema = DecisionAuditResponseSchema;
+export const ExportDecisionJsonRequestSchema = DecisionJsonExportQuerySchema;
+export const ExportDecisionJsonResponseSchema =
+  DecisionJsonExportResponseSchema;
 
 export type SaveDecisionDraftRequest = z.infer<
   typeof SaveDecisionDraftRequestSchema
@@ -1090,6 +1289,31 @@ export type ReviewInvalidationResponse = z.infer<
 >;
 export type FacilitatorInvalidationReviewRequest = ReviewInvalidationRequest;
 export type FacilitatorInvalidationReviewResponse = ReviewInvalidationResponse;
+export type DecisionReviewResolution = z.infer<
+  typeof DecisionReviewResolutionSchema
+>;
+export type RecommitDecisionRevisionRequest = z.infer<
+  typeof RecommitDecisionRevisionRequestSchema
+>;
+export type SupersedeDecisionRequest = z.infer<
+  typeof SupersedeDecisionRequestSchema
+>;
+export type RejectDecisionRequest = z.infer<typeof RejectDecisionRequestSchema>;
+export type ResolveDecisionReviewRequest = z.infer<
+  typeof ResolveDecisionReviewRequestSchema
+>;
+export type RecommitDecisionRevisionResponse = z.infer<
+  typeof RecommitDecisionRevisionResponseSchema
+>;
+export type SupersedeDecisionResponse = z.infer<
+  typeof SupersedeDecisionResponseSchema
+>;
+export type RejectDecisionResponse = z.infer<
+  typeof RejectDecisionResponseSchema
+>;
+export type ResolveDecisionReviewResponse = z.infer<
+  typeof ResolveDecisionReviewResponseSchema
+>;
 export type ListInvalidationEvaluationsResponse = z.infer<
   typeof ListInvalidationEvaluationsResponseSchema
 >;
@@ -1099,10 +1323,18 @@ export type DecisionHistoryResponse = z.infer<
 >;
 export type DecisionAuditQuery = z.infer<typeof DecisionAuditQuerySchema>;
 export type DecisionAuditResponse = z.infer<typeof DecisionAuditResponseSchema>;
+export type DecisionJsonExportQuery = z.infer<
+  typeof DecisionJsonExportQuerySchema
+>;
+export type DecisionJsonExportResponse = z.infer<
+  typeof DecisionJsonExportResponseSchema
+>;
 export type GetDecisionHistoryRequest = DecisionHistoryQuery;
 export type GetDecisionHistoryResponse = DecisionHistoryResponse;
 export type GetDecisionAuditRequest = DecisionAuditQuery;
 export type GetDecisionAuditResponse = DecisionAuditResponse;
+export type ExportDecisionJsonRequest = DecisionJsonExportQuery;
+export type ExportDecisionJsonResponse = DecisionJsonExportResponse;
 
 export const HealthRequestSchema = z.strictObject({});
 export const HealthResponseSchema = z.strictObject({

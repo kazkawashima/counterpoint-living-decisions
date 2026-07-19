@@ -24,13 +24,17 @@ import {
   registerPrivateTextSource,
   rejectDisclosure,
   receiveRegulatoryChange,
+  recommitDecision,
+  rejectDecision,
   resolveMeetingAuthorization,
   reviewInvalidation,
   saveDecisionDraft,
   startDecisionMonitoring,
+  supersedeDecision,
   userAuthorizationContext,
   type DecisionCandidateFailure,
   type DecisionFailure,
+  type DecisionReviewResolutionFailure,
   type DisclosureFailure,
   type DisclosureDependencies,
   type InvalidationEvaluationView,
@@ -47,6 +51,7 @@ import {
   type ExternalEvent as DomainExternalEvent,
 } from "@counterpoint/domain";
 import type {
+  EventRecord,
   IdGenerator,
   MeetingRecord,
   ParticipantAssignment,
@@ -65,6 +70,8 @@ import {
   DecisionAuditResponseSchema,
   DecisionHistoryQuerySchema,
   DecisionHistoryResponseSchema,
+  DecisionJsonExportQuerySchema,
+  DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   HealthResponseSchema,
@@ -94,6 +101,8 @@ import {
   RegulatoryChangeWebhookResponseSchema,
   RejectDisclosureRequestSchema,
   RejectDisclosureResponseSchema,
+  ResolveDecisionReviewRequestSchema,
+  ResolveDecisionReviewResponseSchema,
   ReviewInvalidationRequestSchema,
   ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
@@ -418,6 +427,22 @@ function invalidationReviewFailureResponse(
       : errorResponse(context, "VALIDATION_FAILED");
 }
 
+function decisionReviewResolutionFailureResponse(
+  context: AppContext,
+  failure: DecisionReviewResolutionFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? errorResponse(context, "CONFLICT", {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : failure.code === "FORBIDDEN" ||
+        failure.code === "IDEMPOTENCY_CONFLICT" ||
+        failure.code === "INVALID_STATE_TRANSITION"
+      ? errorResponse(context, failure.code)
+      : errorResponse(context, "VALIDATION_FAILED");
+}
+
 function decisionReadiness(decision: DomainDecision) {
   return {
     actionIds: decision.actionIds.length > 0,
@@ -448,6 +473,9 @@ function decisionView(
       title: decision.title,
     },
     status: decision.status,
+    ...(decision.supersededByDecisionId === undefined
+      ? {}
+      : { supersededByDecisionId: decision.supersededByDecisionId }),
     updatedAt,
   };
 }
@@ -531,6 +559,69 @@ function invalidationEvaluationView(evaluation: InvalidationEvaluationView) {
         }),
     suggestionId: evaluation.suggestionId,
   };
+}
+
+function decisionAuditEntries(
+  records: readonly EventRecord<DomainEvent>[],
+  targetDecisionId?: string,
+) {
+  return records.flatMap(({ event, position }) => {
+    if (
+      ![
+        "ActionHeld",
+        "AssumptionInvalidationSuggested",
+        "DecisionCommitted",
+        "DecisionDrafted",
+        "DecisionMarkedAtRisk",
+        "DecisionMarkedReady",
+        "DecisionRejected",
+        "DecisionReviewRequired",
+        "DecisionRevisionCommitted",
+        "DecisionSuperseded",
+        "FacilitatorReviewed",
+        "MonitoringStarted",
+        "ReconsiderationTaskCreated",
+      ].includes(event.eventType)
+    ) {
+      return [];
+    }
+    if (
+      targetDecisionId !== undefined &&
+      !(
+        (event.eventType === "AssumptionInvalidationSuggested" &&
+          String(event.payload.decisionId) === String(targetDecisionId)) ||
+        (event.eventType === "ActionHeld" &&
+          String(event.payload.decisionId) === String(targetDecisionId)) ||
+        (event.eventType === "ReconsiderationTaskCreated" &&
+          String(event.payload.task.decisionId) === String(targetDecisionId)) ||
+        ("decision" in event.payload &&
+          String(event.payload.decision.id) === String(targetDecisionId))
+      )
+    ) {
+      return [];
+    }
+    return [
+      {
+        actor:
+          event.actor.kind === "participant"
+            ? event.actor
+            : {
+                actorId:
+                  event.actor.kind === "ai"
+                    ? `ai-${event.actor.model}`
+                    : "system",
+                kind: "system" as const,
+              },
+        auditId: `audit-${event.eventId}`,
+        correlationId: event.correlationId,
+        eventId: event.eventId,
+        eventType: event.eventType,
+        meetingId: event.meetingId,
+        occurredAt: event.occurredAt,
+        position,
+      },
+    ];
+  });
 }
 
 async function attemptInvalidationEvaluation(
@@ -1755,6 +1846,125 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     );
   });
 
+  app.post("/api/v1/decisions/review-resolution", async (context) => {
+    const request = await parseJson(
+      context,
+      ResolveDecisionReviewRequestSchema,
+    );
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const expectedEventType =
+      request.value.resolution === "recommit_revision"
+        ? "DecisionRevisionCommitted"
+        : request.value.resolution === "supersede_decision"
+          ? "DecisionSuperseded"
+          : "DecisionRejected";
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === expectedEventType,
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const commonInput = {
+      correlationId: context.get("correlationId"),
+      decisionId: request.value.decisionId,
+      expectedPosition: resolved.globalPosition,
+      idempotencyKey: request.value.idempotencyKey,
+      meetingId: request.value.meetingId,
+    };
+    const occurredAt = () =>
+      decisionMutationOccurredAt(
+        runtime,
+        request.value.meetingId,
+        request.value.idempotencyKey,
+      );
+    const visiblePosition = (position: number) =>
+      participantVisiblePositionAt(
+        runtime,
+        request.value.meetingId,
+        resolved.authorization.participantId,
+        position,
+      );
+
+    if (request.value.resolution === "recommit_revision") {
+      const result = await recommitDecision(
+        runtime.decisions,
+        resolved.authorization,
+        {
+          ...commonInput,
+          changeReason: request.value.changeReason,
+          explicitCommit: true,
+          monitorCondition: request.value.monitorCondition,
+          outcome: request.value.outcome,
+          title: request.value.title,
+        },
+      );
+      if (result.kind === "failed") {
+        return decisionReviewResolutionFailureResponse(context, result);
+      }
+      return context.json(
+        ResolveDecisionReviewResponseSchema.parse({
+          correlationId: result.correlationId,
+          decision: decisionView(result.decision, await occurredAt()),
+          meetingId: request.value.meetingId,
+          position: await visiblePosition(result.position),
+          resolution: "recommit_revision",
+          revision: decisionRevisionView(result.revision),
+        }),
+      );
+    }
+
+    if (request.value.resolution === "supersede_decision") {
+      const result = await supersedeDecision(
+        runtime.decisions,
+        resolved.authorization,
+        {
+          ...commonInput,
+          replacementDecisionId: request.value.replacementDecisionId,
+        },
+      );
+      if (result.kind === "failed") {
+        return decisionReviewResolutionFailureResponse(context, result);
+      }
+      return context.json(
+        ResolveDecisionReviewResponseSchema.parse({
+          correlationId: result.correlationId,
+          decision: decisionView(result.decision, await occurredAt()),
+          meetingId: request.value.meetingId,
+          position: await visiblePosition(result.position),
+          replacementDecisionId: result.replacementDecisionId,
+          resolution: "supersede_decision",
+        }),
+      );
+    }
+
+    const result = await rejectDecision(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        ...commonInput,
+        reason: request.value.reason,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionReviewResolutionFailureResponse(context, result);
+    }
+    return context.json(
+      ResolveDecisionReviewResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, await occurredAt()),
+        meetingId: request.value.meetingId,
+        position: await visiblePosition(result.position),
+        reason: result.reason,
+        resolution: "reject_decision",
+      }),
+    );
+  });
+
   app.post(
     "/api/v1/webhooks/regulatory-changes/:meetingId/:monitorRegistrationId",
     async (context) => {
@@ -1990,6 +2200,61 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     },
   );
 
+  app.get(
+    "/api/v1/meetings/:meetingId/decisions/:decisionId/export",
+    async (context) => {
+      const query = DecisionJsonExportQuerySchema.safeParse({
+        decisionId: context.req.param("decisionId"),
+        meetingId: context.req.param("meetingId"),
+      });
+      if (!query.success) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        query.data.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const records = await runtime.decisions.events.load(query.data.meetingId);
+      const projection = replayMeeting(
+        domainMeetingId(query.data.meetingId),
+        records.map(({ event, position }) => ({
+          ...event,
+          position: meetingPosition(position),
+        })),
+      );
+      const decision = projection.shared.decisions.find(
+        ({ id }) => String(id) === String(query.data.decisionId),
+      );
+      if (decision === undefined) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const revisions = projection.shared.decisionRevisions.filter(
+        ({ decisionId }) => decisionId === decision.id,
+      );
+      return context.json(
+        DecisionJsonExportResponseSchema.parse({
+          auditEntries: decisionAuditEntries(records, query.data.decisionId),
+          correlationId: context.get("correlationId"),
+          decision: decisionView(
+            decision,
+            revisions.at(-1)?.createdAt ?? decision.createdAt,
+          ),
+          exportedAt: runtime.clock.now(),
+          meetingId: query.data.meetingId,
+          revisions: revisions.map(decisionRevisionView),
+        }),
+      );
+    },
+  );
+
   app.get("/api/v1/meetings/:meetingId/decisions/audit", async (context) => {
     const query = DecisionAuditQuerySchema.safeParse({
       meetingId: context.req.param("meetingId"),
@@ -2013,63 +2278,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       return errorResponse(context, resolved.code);
     }
     const records = await runtime.decisions.events.load(query.data.meetingId);
-    const entries = records.flatMap(({ event, position }) => {
-      if (
-        ![
-          "ActionHeld",
-          "AssumptionInvalidationSuggested",
-          "DecisionCommitted",
-          "DecisionDrafted",
-          "DecisionMarkedAtRisk",
-          "DecisionMarkedReady",
-          "DecisionReviewRequired",
-          "FacilitatorReviewed",
-          "MonitoringStarted",
-          "ReconsiderationTaskCreated",
-        ].includes(event.eventType)
-      ) {
-        return [];
-      }
-      if (
-        query.data.decisionId !== undefined &&
-        !(
-          (event.eventType === "AssumptionInvalidationSuggested" &&
-            String(event.payload.decisionId) ===
-              String(query.data.decisionId)) ||
-          (event.eventType === "ActionHeld" &&
-            String(event.payload.decisionId) ===
-              String(query.data.decisionId)) ||
-          (event.eventType === "ReconsiderationTaskCreated" &&
-            String(event.payload.task.decisionId) ===
-              String(query.data.decisionId)) ||
-          ("decision" in event.payload &&
-            String(event.payload.decision.id) === String(query.data.decisionId))
-        )
-      ) {
-        return [];
-      }
-      return [
-        {
-          actor:
-            event.actor.kind === "participant"
-              ? event.actor
-              : {
-                  actorId:
-                    event.actor.kind === "ai"
-                      ? `ai-${event.actor.model}`
-                      : "system",
-                  kind: "system" as const,
-                },
-          auditId: `audit-${event.eventId}`,
-          correlationId: event.correlationId,
-          eventId: event.eventId,
-          eventType: event.eventType,
-          meetingId: event.meetingId,
-          occurredAt: event.occurredAt,
-          position,
-        },
-      ];
-    });
+    const entries = decisionAuditEntries(records, query.data.decisionId);
     const response = DecisionAuditResponseSchema.safeParse({
       correlationId: context.get("correlationId"),
       entries,

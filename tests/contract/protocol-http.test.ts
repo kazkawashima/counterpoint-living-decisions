@@ -5,6 +5,8 @@ import {
   CommitDecisionRequestSchema,
   ConfirmInvalidationReviewResponseSchema,
   CreateMeetingRequestSchema,
+  DecisionJsonExportQuerySchema,
+  DecisionJsonExportResponseSchema,
   DispositionConfirmedInferenceRequestSchema,
   FacilitatorInvalidationReviewRequestSchema,
   HealthRequestSchema,
@@ -25,16 +27,26 @@ import {
   RegulatoryChangeWebhookRequestSchema,
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
+  RejectDecisionRequestSchema,
+  RejectDecisionResponseSchema,
   RejectDisclosureRequestSchema,
   RejectInvalidationReviewResponseSchema,
+  RecommitDecisionRevisionResponseSchema,
+  ResolveDecisionReviewRequestSchema,
+  ResolveDecisionReviewResponseSchema,
   ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
   SaveDecisionDraftRequestSchema,
   StartDecisionMonitoringRequestSchema,
   StartDecisionMonitoringResponseSchema,
+  SupersedeDecisionRequestSchema,
+  SupersedeDecisionResponseSchema,
+  type DecisionJsonExportResponse,
   type FacilitatorInvalidationReviewRequest,
   type FacilitatorInvalidationReviewResponse,
   type LoginRequest,
+  type ResolveDecisionReviewRequest,
+  type ResolveDecisionReviewResponse,
 } from "@counterpoint/protocol";
 
 const meetingMutation = {
@@ -71,6 +83,32 @@ const monitoringDecision = {
     monitorCondition: true,
   },
   updatedAt: "2026-07-19T12:00:00.000Z",
+} as const;
+const committedReviewDecision = {
+  ...monitoringDecision,
+  status: "COMMITTED",
+  activeRevision: 3,
+  activeRevisionId: "decision-revision-3",
+  snapshot: {
+    ...monitoringDecision.snapshot,
+    status: "COMMITTED",
+    title: "Recommitted conditional rollout",
+    outcome: "Proceed after the revised control is complete.",
+    monitorCondition: {
+      description: "Watch the revised regulatory control.",
+    },
+  },
+  updatedAt: "2026-07-19T12:03:00.000Z",
+} as const;
+const committedReviewRevision = {
+  revisionId: "decision-revision-3",
+  decisionId: "decision-1",
+  version: 3,
+  previousRevisionId: "decision-revision-2",
+  snapshot: committedReviewDecision.snapshot,
+  changeReason: "Address the confirmed regulatory change.",
+  createdAt: "2026-07-19T12:03:00.000Z",
+  createdBy: "participant-facilitator",
 } as const;
 
 const mutationExamples = [
@@ -191,6 +229,38 @@ const mutationExamples = [
       suggestionId: "suggestion-1",
       disposition: "confirm_invalidation",
       reason: "The synthetic regulatory evidence is material.",
+    },
+  },
+  {
+    schema: ResolveDecisionReviewRequestSchema,
+    value: {
+      ...meetingMutation,
+      decisionId: "decision-1",
+      resolution: "recommit_revision",
+      changeReason: "Address the confirmed regulatory change.",
+      title: "Recommitted conditional rollout",
+      outcome: "Proceed after the revised control is complete.",
+      monitorCondition: {
+        description: "Watch the revised regulatory control.",
+      },
+    },
+  },
+  {
+    schema: ResolveDecisionReviewRequestSchema,
+    value: {
+      ...meetingMutation,
+      decisionId: "decision-1",
+      resolution: "supersede_decision",
+      replacementDecisionId: "decision-2",
+    },
+  },
+  {
+    schema: ResolveDecisionReviewRequestSchema,
+    value: {
+      ...meetingMutation,
+      decisionId: "decision-1",
+      resolution: "reject_decision",
+      reason: "The reviewed Decision is no longer viable.",
     },
   },
 ] as const;
@@ -540,6 +610,251 @@ describe("strict v1 HTTP protocol", () => {
       ReviewInvalidationResponseSchema.safeParse({
         ...rejected,
         decision: reviewRequiredDecision,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("strictly discriminates all Decision review resolution requests", () => {
+    const recommit = mutationExamples[15].value;
+    const supersede = mutationExamples[16].value;
+    const reject = mutationExamples[17].value;
+
+    const parsed = ResolveDecisionReviewRequestSchema.parse(recommit);
+    expectTypeOf(parsed).toEqualTypeOf<ResolveDecisionReviewRequest>();
+    expect(SupersedeDecisionRequestSchema.safeParse(supersede).success).toBe(
+      true,
+    );
+    expect(RejectDecisionRequestSchema.safeParse(reject).success).toBe(true);
+
+    expect(
+      ResolveDecisionReviewRequestSchema.safeParse({
+        ...recommit,
+        changeReason: " ",
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewRequestSchema.safeParse({
+        ...recommit,
+        monitorCondition: {
+          description: "Watch the revised regulatory control.",
+          registrationId: "client-chosen-registration",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewRequestSchema.safeParse({
+        ...supersede,
+        replacementDecisionId: supersede.decisionId,
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewRequestSchema.safeParse({
+        ...reject,
+        reason: " ",
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewRequestSchema.safeParse({
+        ...reject,
+        reason: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewRequestSchema.safeParse({
+        ...supersede,
+        reason: "Fields from another resolution must not be accepted.",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("enforces the status-specific Decision review resolution responses", () => {
+    const receipt = {
+      meetingId: "meeting-1",
+      position: 18,
+      correlationId: "correlation-1",
+    } as const;
+    const recommitted = {
+      ...receipt,
+      resolution: "recommit_revision",
+      decision: committedReviewDecision,
+      revision: committedReviewRevision,
+    } as const;
+    const superseded = {
+      ...receipt,
+      resolution: "supersede_decision",
+      decision: {
+        ...monitoringDecision,
+        status: "SUPERSEDED",
+        snapshot: {
+          ...monitoringDecision.snapshot,
+          status: "SUPERSEDED",
+        },
+      },
+      replacementDecisionId: "decision-2",
+    } as const;
+    const rejected = {
+      ...receipt,
+      resolution: "reject_decision",
+      decision: {
+        ...monitoringDecision,
+        status: "REJECTED",
+        snapshot: {
+          ...monitoringDecision.snapshot,
+          status: "REJECTED",
+        },
+      },
+      reason: "The reviewed Decision is no longer viable.",
+    } as const;
+
+    const parsed = ResolveDecisionReviewResponseSchema.parse(recommitted);
+    expectTypeOf(parsed).toEqualTypeOf<ResolveDecisionReviewResponse>();
+    expect(
+      RecommitDecisionRevisionResponseSchema.safeParse(recommitted).success,
+    ).toBe(true);
+    expect(SupersedeDecisionResponseSchema.safeParse(superseded).success).toBe(
+      true,
+    );
+    expect(RejectDecisionResponseSchema.safeParse(rejected).success).toBe(true);
+
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...recommitted,
+        decision: monitoringDecision,
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...recommitted,
+        revision: {
+          ...committedReviewRevision,
+          previousRevisionId: undefined,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...recommitted,
+        revision: {
+          ...committedReviewRevision,
+          revisionId: "decision-revision-other",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...superseded,
+        replacementDecisionId: "decision-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...superseded,
+        decision: monitoringDecision,
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...rejected,
+        reason: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveDecisionReviewResponseSchema.safeParse({
+        ...rejected,
+        replacementDecisionId: "decision-2",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps authorized Decision JSON exports complete, strict, and meeting-scoped", () => {
+    const query = {
+      meetingId: "meeting-1",
+      decisionId: "decision-1",
+      correlationId: "correlation-1",
+    };
+    expect(DecisionJsonExportQuerySchema.safeParse(query).success).toBe(true);
+    expect(
+      DecisionJsonExportQuerySchema.safeParse({
+        ...query,
+        participantId: "participant-other",
+      }).success,
+    ).toBe(false);
+
+    const exportResponse = {
+      meetingId: "meeting-1",
+      decision: committedReviewDecision,
+      revisions: [
+        {
+          ...committedReviewRevision,
+          revisionId: "decision-revision-2",
+          version: 2,
+          previousRevisionId: "decision-revision-1",
+          snapshot: monitoringDecision.snapshot,
+          changeReason: "Start monitoring the committed Decision.",
+          createdAt: "2026-07-19T12:00:00.000Z",
+        },
+        committedReviewRevision,
+      ],
+      auditEntries: [
+        {
+          auditId: "audit-decision-revision-3",
+          eventId: "event-decision-revision-3",
+          eventType: "DecisionRevisionCommitted",
+          meetingId: "meeting-1",
+          position: 18,
+          actor: {
+            kind: "participant",
+            participantId: "participant-facilitator",
+          },
+          occurredAt: "2026-07-19T12:03:00.000Z",
+          correlationId: "correlation-1",
+        },
+      ],
+      exportedAt: "2026-07-19T12:04:00.000Z",
+      correlationId: "correlation-1",
+    } as const;
+
+    const parsed = DecisionJsonExportResponseSchema.parse(exportResponse);
+    expectTypeOf(parsed).toEqualTypeOf<DecisionJsonExportResponse>();
+    expect(
+      DecisionJsonExportResponseSchema.safeParse({
+        ...exportResponse,
+        privateWorkspace: {},
+      }).success,
+    ).toBe(false);
+    expect(
+      DecisionJsonExportResponseSchema.safeParse({
+        ...exportResponse,
+        revisions: [exportResponse.revisions[0]],
+      }).success,
+    ).toBe(false);
+    expect(
+      DecisionJsonExportResponseSchema.safeParse({
+        ...exportResponse,
+        revisions: [
+          exportResponse.revisions[0],
+          {
+            ...committedReviewRevision,
+            decisionId: "decision-other",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      DecisionJsonExportResponseSchema.safeParse({
+        ...exportResponse,
+        auditEntries: [
+          {
+            ...exportResponse.auditEntries[0],
+            meetingId: "meeting-other",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      DecisionJsonExportResponseSchema.safeParse({
+        ...exportResponse,
+        exportedAt: undefined,
       }).success,
     ).toBe(false);
   });

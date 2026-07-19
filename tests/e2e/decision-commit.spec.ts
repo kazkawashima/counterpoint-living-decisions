@@ -19,6 +19,10 @@ const reviewScreenshotDirectory = resolve(
   "docs/media/screenshots/decision-review",
 );
 const reviewClipDirectory = resolve("docs/media/clips/decision-review");
+const resolutionScreenshotDirectory = resolve(
+  "docs/media/screenshots/decision-resolution",
+);
+const resolutionClipDirectory = resolve("docs/media/clips/decision-resolution");
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -36,6 +40,8 @@ test.beforeAll(async () => {
   await mkdir(invalidationScreenshotDirectory, { recursive: true });
   await mkdir(reviewScreenshotDirectory, { recursive: true });
   await mkdir(reviewClipDirectory, { recursive: true });
+  await mkdir(resolutionScreenshotDirectory, { recursive: true });
+  await mkdir(resolutionClipDirectory, { recursive: true });
 });
 
 test("facilitator commits a grounded Decision that participants can revisit", async ({
@@ -274,18 +280,68 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${reviewScreenshotDirectory}/2026-07-19-review-required-desktop.png`,
   });
 
+  const resolutionWorkbench = facilitatorPage.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  await expect(resolutionWorkbench).toContainText("Commit revised Decision");
+  await expect(resolutionWorkbench).toContainText("Close without replacement");
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-19-resolution-options-desktop.png`,
+  });
+  await resolutionWorkbench
+    .getByLabel("Revised Decision title")
+    .fill("Regulation-aware regional launch");
+  await resolutionWorkbench
+    .getByLabel("Revised outcome")
+    .fill(
+      "Pause regional launch until the revised regulatory approval gate is satisfied.",
+    );
+  await resolutionWorkbench
+    .getByLabel("Revised monitor condition")
+    .fill("Monitor the revised approval gate before resuming regional launch.");
+  await expect(
+    resolutionWorkbench.locator(".revision-comparison"),
+  ).toContainText("Proposed revision 3");
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-19-recommit-comparison-desktop.png`,
+  });
+  await resolutionWorkbench
+    .getByRole("button", { name: "Commit revision 3" })
+    .click();
+  await expect(
+    facilitatorPage.getByText("Revision 3 is now active"),
+  ).toBeVisible();
+  await expect(
+    facilitatorPage.locator(".audit-line").getByText("RevisionCommitted"),
+  ).toBeVisible();
+  await resolutionWorkbench
+    .getByRole("button", { name: "Prepare Decision JSON export" })
+    .click();
+  await expect(
+    resolutionWorkbench.getByRole("link", { name: /Download JSON/u }),
+  ).toContainText("3 revisions");
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-19-recommit-success-history-desktop.png`,
+  });
+
   await facilitatorPage.reload();
   const reloadedMeeting = facilitatorPage
     .getByRole("article")
     .filter({ hasText: meeting.purpose });
   await reloadedMeeting.getByRole("button", { name: "Open workspace" }).click();
   await expect(
-    facilitatorPage.getByText("Revision 2 · COMMITTED"),
+    facilitatorPage.getByText("Revision 3 · COMMITTED"),
   ).toBeVisible();
   await expect(
     facilitatorPage
       .locator(".committed-decision")
-      .getByText("REVIEW_REQUIRED · Human confirmed")
+      .getByText("COMMITTED · Revision 3")
       .first(),
   ).toBeVisible();
   await expect(
@@ -296,7 +352,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await facilitatorContext.close();
   await video?.saveAs(`${clipDirectory}/2026-07-19-candidate-to-commit.webm`);
   await video?.saveAs(
-    `${reviewClipDirectory}/2026-07-19-at-risk-to-review-required.webm`,
+    `${resolutionClipDirectory}/2026-07-19-review-required-to-recommit.webm`,
   );
 
   const participantContext = await browser.newContext({
@@ -313,11 +369,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     .click();
   await expect(
     participantPage.getByRole("heading", {
-      name: "Conditional regional launch",
+      name: "Regulation-aware regional launch",
     }),
   ).toBeVisible();
   await expect(
-    participantPage.getByText("Shared · Human confirmed review"),
+    participantPage.getByText("Shared · Human recommitted"),
   ).toBeVisible();
   await expect(
     participantPage.getByText("2 / 5 readiness checks"),
@@ -326,7 +382,10 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     participantPage.getByText("5 / 5 readiness checks"),
   ).toBeVisible();
   await expect(
-    participantPage.getByText("REVIEW_REQUIRED", { exact: true }),
+    participantPage.getByText("COMMITTED", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    participantPage.getByText("Revision 3", { exact: true }),
   ).toBeVisible();
   await expect(
     participantPage.locator(".shared-regulatory-event"),
@@ -343,6 +402,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     participantPage.getByRole("button", {
       name: "Confirm impact and open review",
+    }),
+  ).not.toBeVisible();
+  await expect(
+    participantPage.getByRole("region", {
+      name: "Resolve Decision review",
     }),
   ).not.toBeVisible();
   await expect(
@@ -368,7 +432,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await participantPage.screenshot({
     animations: "disabled",
     fullPage: true,
-    path: `${reviewScreenshotDirectory}/2026-07-19-participant-review-required-desktop.png`,
+    path: `${resolutionScreenshotDirectory}/2026-07-19-participant-recommitted-desktop.png`,
   });
 
   await participantPage.setViewportSize({ height: 844, width: 390 });
@@ -381,7 +445,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await participantPage.screenshot({
     animations: "disabled",
     fullPage: true,
-    path: `${reviewScreenshotDirectory}/2026-07-19-review-required-mobile-reduced-motion.png`,
+    path: `${resolutionScreenshotDirectory}/2026-07-19-participant-terminal-mobile-reduced-motion.png`,
   });
   await participantContext.close();
 });

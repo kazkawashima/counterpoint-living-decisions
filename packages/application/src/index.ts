@@ -60,6 +60,22 @@ export {
   type StartDecisionMonitoringResult,
 } from "./decisions.js";
 export {
+  recommitDecision,
+  recommitDecisionReview,
+  rejectDecision,
+  rejectDecisionReview,
+  supersedeDecision,
+  supersedeDecisionReview,
+  type DecisionReviewResolutionDependencies,
+  type DecisionReviewResolutionFailure,
+  type RecommitDecisionInput,
+  type RecommitDecisionResult,
+  type RejectDecisionInput,
+  type RejectDecisionResult,
+  type SupersedeDecisionInput,
+  type SupersedeDecisionResult,
+} from "./decision-review-resolutions.js";
+export {
   dispositionDecisionCandidate,
   prepareSharedDecisionCandidate,
   type DecisionCandidateDependencies,

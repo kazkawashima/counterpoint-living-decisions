@@ -4,6 +4,7 @@ import type {
   Decision as DecisionView,
   DecisionAuditResponse,
   DecisionHistoryResponse,
+  DecisionJsonExportResponse,
   DispositionSharedDecisionCandidateResponse,
   ExternalEventReceipt,
   InvalidationEvaluation,
@@ -18,6 +19,7 @@ import {
   clearStoredSession,
   commitDecision,
   dispositionSharedDecisionCandidate,
+  exportDecisionJson,
   getDecisionAudit,
   getDecisionHistory,
   injectDemoRegulatoryChange,
@@ -36,6 +38,7 @@ import {
   registerPrivateTextSource,
   rejectDisclosure,
   reviewInvalidation,
+  resolveDecisionReview,
   saveDecisionDraft,
   storeSession,
   startDecisionMonitoring,
@@ -404,6 +407,9 @@ function SharedDecisionCard({
   ).length;
   const review = invalidation?.review;
   const activeRisk = decision.status === "AT_RISK";
+  const recommitted =
+    decision.status === "COMMITTED" &&
+    review?.disposition === "confirm_invalidation";
 
   return (
     <section
@@ -419,9 +425,15 @@ function SharedDecisionCard({
             ? "Shared · AI inferred risk"
             : decision.status === "REVIEW_REQUIRED"
               ? "Shared · Human confirmed review"
-              : review?.disposition === "reject_suggestion"
-                ? "Shared · Facilitator rejected suggestion"
-                : "Shared · Human committed"}
+              : recommitted
+                ? "Shared · Human recommitted"
+                : decision.status === "SUPERSEDED"
+                  ? "Shared · Replaced Decision"
+                  : decision.status === "REJECTED"
+                    ? "Shared · Closed without replacement"
+                    : review?.disposition === "reject_suggestion"
+                      ? "Shared · Facilitator rejected suggestion"
+                      : "Shared · Human committed"}
         </p>
         <h2 id={`shared-decision-${decision.decisionId}`}>
           {decision.snapshot.title}
@@ -467,7 +479,13 @@ function SharedDecisionCard({
             {activeRisk
               ? "AT_RISK · AI suggestion"
               : review?.disposition === "confirm_invalidation"
-                ? "REVIEW_REQUIRED · Human confirmed"
+                ? recommitted
+                  ? `COMMITTED · Revision ${decision.activeRevision}`
+                  : decision.status === "SUPERSEDED"
+                    ? "SUPERSEDED · Human resolved"
+                    : decision.status === "REJECTED"
+                      ? "REJECTED · Human resolved"
+                      : "REVIEW_REQUIRED · Human confirmed"
                 : "AI suggestion rejected by facilitator"}
           </span>
           <strong>
@@ -487,6 +505,11 @@ function SharedDecisionCard({
                 {review.reconsiderationTask?.state ?? "open"}
               </span>
               <span>Committed revision remains immutable</span>
+              {decision.status === "SUPERSEDED" ? (
+                <span>
+                  Replacement {decision.supersededByDecisionId ?? "recorded"}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -534,29 +557,41 @@ function FacilitatorDecisionPanel({
     | "premise-confirmed"
     | "premise-rejected"
     | "ready"
+    | "recommitted"
     | "review-rejected"
     | "review-required"
     | "reviewing"
+    | "resolving"
     | "saving"
     | "starting-monitor"
+    | "superseded"
     | "synthesizing"
+    | "decision-rejected"
   >(
-    existingDecision?.status === "REVIEW_REQUIRED"
-      ? "review-required"
-      : existingDecision?.status === "AT_RISK"
-        ? "at-risk"
-        : existingDecision?.status === "MONITORING" &&
-            existingInvalidation?.review?.disposition === "reject_suggestion"
-          ? "review-rejected"
-          : existingDecision?.status === "MONITORING"
-            ? "monitoring"
-            : existingDecision?.status === "COMMITTED"
-              ? "committed"
-              : existingDecision?.status === "DECISION_READY"
-                ? "ready"
-                : existingDecision?.status === "DRAFT"
-                  ? "draft"
-                  : "idle",
+    existingDecision?.status === "SUPERSEDED"
+      ? "superseded"
+      : existingDecision?.status === "REJECTED"
+        ? "decision-rejected"
+        : existingDecision?.status === "COMMITTED" &&
+            existingInvalidation?.review?.disposition === "confirm_invalidation"
+          ? "recommitted"
+          : existingDecision?.status === "REVIEW_REQUIRED"
+            ? "review-required"
+            : existingDecision?.status === "AT_RISK"
+              ? "at-risk"
+              : existingDecision?.status === "MONITORING" &&
+                  existingInvalidation?.review?.disposition ===
+                    "reject_suggestion"
+                ? "review-rejected"
+                : existingDecision?.status === "MONITORING"
+                  ? "monitoring"
+                  : existingDecision?.status === "COMMITTED"
+                    ? "committed"
+                    : existingDecision?.status === "DECISION_READY"
+                      ? "ready"
+                      : existingDecision?.status === "DRAFT"
+                        ? "draft"
+                        : "idle",
   );
   const [candidate, setCandidate] =
     useState<SharedDecisionSynthesisCandidate>();
@@ -570,6 +605,26 @@ function FacilitatorDecisionPanel({
   const [externalEvent, setExternalEvent] = useState(existingExternalEvent);
   const [invalidation, setInvalidation] = useState(existingInvalidation);
   const [reviewReason, setReviewReason] = useState("");
+  const [resolutionChoice, setResolutionChoice] = useState<
+    "recommit_revision" | "reject_decision" | "supersede_decision"
+  >("recommit_revision");
+  const [resolutionDraft, setResolutionDraft] = useState({
+    changeReason:
+      "Regulatory change requires a revised approval gate before launch.",
+    monitorCondition:
+      existingDecision?.snapshot.monitorCondition.description ??
+      "Monitor the revised approval gate before resuming launch.",
+    outcome:
+      existingDecision?.snapshot.outcome ??
+      "Pause regional launch until the revised approval gate is satisfied.",
+    rejectionReason:
+      "The Decision can no longer proceed under the changed regulation.",
+    replacementDecisionId: "",
+    title:
+      existingDecision?.snapshot.title ?? "Revised conditional regional launch",
+  });
+  const [decisionExport, setDecisionExport] =
+    useState<DecisionJsonExportResponse>();
   const [receivingExternalEvent, setReceivingExternalEvent] = useState(false);
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<DecisionDraftForm>({
@@ -592,6 +647,9 @@ function FacilitatorDecisionPanel({
     regulatoryEvent: crypto.randomUUID(),
     ready: crypto.randomUUID(),
     reject: crypto.randomUUID(),
+    resolutionRecommit: crypto.randomUUID(),
+    resolutionReject: crypto.randomUUID(),
+    resolutionSupersede: crypto.randomUUID(),
     riskConfirm: crypto.randomUUID(),
     riskReject: crypto.randomUUID(),
     save: crypto.randomUUID(),
@@ -603,7 +661,9 @@ function FacilitatorDecisionPanel({
       existingDecision?.status !== "COMMITTED" &&
       existingDecision?.status !== "MONITORING" &&
       existingDecision?.status !== "AT_RISK" &&
-      existingDecision?.status !== "REVIEW_REQUIRED"
+      existingDecision?.status !== "REVIEW_REQUIRED" &&
+      existingDecision?.status !== "SUPERSEDED" &&
+      existingDecision?.status !== "REJECTED"
     ) {
       return;
     }
@@ -1021,6 +1081,114 @@ function FacilitatorDecisionPanel({
     }
   }
 
+  function setResolutionField(
+    field: keyof typeof resolutionDraft,
+    value: string,
+  ) {
+    setResolutionDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitDecisionResolution() {
+    if (decision === undefined) {
+      return;
+    }
+    if (
+      (resolutionChoice === "recommit_revision" &&
+        resolutionDraft.changeReason.trim().length === 0) ||
+      (resolutionChoice === "reject_decision" &&
+        resolutionDraft.rejectionReason.trim().length === 0) ||
+      (resolutionChoice === "supersede_decision" &&
+        resolutionDraft.replacementDecisionId.trim().length === 0)
+    ) {
+      setError("Complete the required resolution field before continuing.");
+      return;
+    }
+    setPhase("resolving");
+    setError(undefined);
+    try {
+      const common = {
+        decisionId: decision.decisionId,
+        expectedPosition: position,
+        meetingId: meeting.meetingId,
+      };
+      const response = await resolveDecisionReview(
+        session,
+        resolutionChoice === "recommit_revision"
+          ? {
+              ...common,
+              changeReason: resolutionDraft.changeReason.trim(),
+              idempotencyKey: commandKeys.current.resolutionRecommit,
+              monitorCondition: {
+                description: resolutionDraft.monitorCondition.trim(),
+              },
+              outcome: resolutionDraft.outcome.trim(),
+              resolution: "recommit_revision",
+              title: resolutionDraft.title.trim(),
+            }
+          : resolutionChoice === "supersede_decision"
+            ? {
+                ...common,
+                idempotencyKey: commandKeys.current.resolutionSupersede,
+                replacementDecisionId:
+                  resolutionDraft.replacementDecisionId.trim(),
+                resolution: "supersede_decision",
+              }
+            : {
+                ...common,
+                idempotencyKey: commandKeys.current.resolutionReject,
+                reason: resolutionDraft.rejectionReason.trim(),
+                resolution: "reject_decision",
+              },
+      );
+      const [nextHistory, nextAudit, exported] = await Promise.all([
+        getDecisionHistory(session, {
+          decisionId: response.decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+        getDecisionAudit(session, {
+          decisionId: response.decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+        exportDecisionJson(session, {
+          decisionId: response.decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+      ]);
+      advancePosition(response.position);
+      setDecision(response.decision);
+      onDecisionChange(response.decision);
+      setHistory(nextHistory);
+      setAudit(nextAudit);
+      setDecisionExport(exported);
+      setPhase(
+        response.resolution === "recommit_revision"
+          ? "recommitted"
+          : response.resolution === "supersede_decision"
+            ? "superseded"
+            : "decision-rejected",
+      );
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("review-required");
+    }
+  }
+
+  async function prepareDecisionExport() {
+    if (decision === undefined) {
+      return;
+    }
+    try {
+      setDecisionExport(
+        await exportDecisionJson(session, {
+          decisionId: decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+      );
+    } catch (cause) {
+      setError(messageFor(cause));
+    }
+  }
+
   const premiseCandidate = candidate?.draft.premiseCandidates[0];
   const aiProvenance =
     candidate?.provenance.origin === "ai_assisted"
@@ -1318,7 +1486,11 @@ function FacilitatorDecisionPanel({
         phase === "at-risk" ||
         phase === "reviewing" ||
         phase === "review-required" ||
-        phase === "review-rejected") &&
+        phase === "review-rejected" ||
+        phase === "resolving" ||
+        phase === "recommitted" ||
+        phase === "superseded" ||
+        phase === "decision-rejected") &&
       decision !== undefined ? (
         <div
           className={`committed-decision${
@@ -1341,11 +1513,17 @@ function FacilitatorDecisionPanel({
                 ? "AT_RISK · AI suggestion"
                 : phase === "review-required"
                   ? "REVIEW_REQUIRED · Human confirmed"
-                  : phase === "review-rejected"
-                    ? "Monitoring · AI suggestion rejected"
-                    : phase === "monitoring"
-                      ? "Monitoring active"
-                      : "Human committed"}
+                  : phase === "recommitted"
+                    ? `COMMITTED · Revision ${decision.activeRevision}`
+                    : phase === "superseded"
+                      ? "SUPERSEDED · Human resolved"
+                      : phase === "decision-rejected"
+                        ? "REJECTED · Human resolved"
+                        : phase === "review-rejected"
+                          ? "Monitoring · AI suggestion rejected"
+                          : phase === "monitoring"
+                            ? "Monitoring active"
+                            : "Human committed"}
             </p>
             <h3>{decision.snapshot.title}</h3>
             <p>{decision.snapshot.outcome}</p>
@@ -1618,6 +1796,241 @@ function FacilitatorDecisionPanel({
               )}
             </section>
           )}
+          {invalidation?.review?.disposition === "confirm_invalidation" &&
+          phase !== "at-risk" &&
+          phase !== "reviewing" ? (
+            <section
+              aria-labelledby="decision-resolution-title"
+              className="resolution-workbench"
+              role="region"
+            >
+              <div className="resolution-heading">
+                <div>
+                  <span>Append-only Decision history</span>
+                  <h4 id="decision-resolution-title">
+                    Resolve Decision review
+                  </h4>
+                </div>
+                <strong>
+                  {phase === "review-required" || phase === "resolving"
+                    ? `REVIEW_REQUIRED · Revision ${decision.activeRevision}`
+                    : `${decision.status} · Revision ${decision.activeRevision}`}
+                </strong>
+              </div>
+              {phase === "review-required" || phase === "resolving" ? (
+                <>
+                  <div className="resolution-options">
+                    {(
+                      [
+                        [
+                          "recommit_revision",
+                          "Commit revised Decision",
+                          "Append revision 3 and preserve revision 2.",
+                        ],
+                        [
+                          "supersede_decision",
+                          "Replace this Decision",
+                          "Point to a different canonical Decision.",
+                        ],
+                        [
+                          "reject_decision",
+                          "Close without replacement",
+                          "End this Decision with an audit reason.",
+                        ],
+                      ] as const
+                    ).map(([value, label, description]) => (
+                      <label key={value} className="resolution-option">
+                        <input
+                          checked={resolutionChoice === value}
+                          disabled={phase === "resolving"}
+                          name="decision-resolution"
+                          onChange={() => setResolutionChoice(value)}
+                          type="radio"
+                          value={value}
+                        />
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {resolutionChoice === "recommit_revision" ? (
+                    <div className="resolution-recommit-form">
+                      <div className="revision-comparison">
+                        <article>
+                          <span>
+                            Before · Revision {decision.activeRevision}
+                          </span>
+                          <strong>{decision.snapshot.title}</strong>
+                          <p>{decision.snapshot.outcome}</p>
+                          <small>
+                            {decision.snapshot.monitorCondition.description}
+                          </small>
+                        </article>
+                        <article className="proposed">
+                          <span>
+                            After · Proposed revision{" "}
+                            {decision.activeRevision + 1}
+                          </span>
+                          <strong>{resolutionDraft.title}</strong>
+                          <p>{resolutionDraft.outcome}</p>
+                          <small>{resolutionDraft.monitorCondition}</small>
+                        </article>
+                      </div>
+                      <label>
+                        Revised Decision title
+                        <input
+                          disabled={phase === "resolving"}
+                          onChange={(event) =>
+                            setResolutionField("title", event.target.value)
+                          }
+                          value={resolutionDraft.title}
+                        />
+                      </label>
+                      <label>
+                        Revised outcome
+                        <textarea
+                          disabled={phase === "resolving"}
+                          onChange={(event) =>
+                            setResolutionField("outcome", event.target.value)
+                          }
+                          rows={3}
+                          value={resolutionDraft.outcome}
+                        />
+                      </label>
+                      <label>
+                        Revised monitor condition
+                        <textarea
+                          disabled={phase === "resolving"}
+                          onChange={(event) =>
+                            setResolutionField(
+                              "monitorCondition",
+                              event.target.value,
+                            )
+                          }
+                          rows={2}
+                          value={resolutionDraft.monitorCondition}
+                        />
+                      </label>
+                      <label>
+                        Revision change reason
+                        <textarea
+                          disabled={phase === "resolving"}
+                          onChange={(event) =>
+                            setResolutionField(
+                              "changeReason",
+                              event.target.value,
+                            )
+                          }
+                          rows={2}
+                          value={resolutionDraft.changeReason}
+                        />
+                      </label>
+                    </div>
+                  ) : resolutionChoice === "supersede_decision" ? (
+                    <label className="resolution-single-field">
+                      Replacement Decision ID
+                      <input
+                        disabled={phase === "resolving"}
+                        onChange={(event) =>
+                          setResolutionField(
+                            "replacementDecisionId",
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Select a different canonical Decision ID"
+                        value={resolutionDraft.replacementDecisionId}
+                      />
+                      <small>
+                        The replacement must already exist in this meeting. The
+                        old revision history remains unchanged.
+                      </small>
+                    </label>
+                  ) : (
+                    <label className="resolution-single-field">
+                      Decision rejection reason
+                      <textarea
+                        disabled={phase === "resolving"}
+                        onChange={(event) =>
+                          setResolutionField(
+                            "rejectionReason",
+                            event.target.value,
+                          )
+                        }
+                        rows={3}
+                        value={resolutionDraft.rejectionReason}
+                      />
+                      <small>
+                        This closes the Decision itself; it does not reject only
+                        the AI suggestion.
+                      </small>
+                    </label>
+                  )}
+                  <button
+                    className="resolution-submit"
+                    disabled={phase === "resolving"}
+                    onClick={() => void submitDecisionResolution()}
+                    type="button"
+                  >
+                    {phase === "resolving"
+                      ? "Recording resolution…"
+                      : resolutionChoice === "recommit_revision"
+                        ? `Commit revision ${decision.activeRevision + 1}`
+                        : resolutionChoice === "supersede_decision"
+                          ? "Replace this Decision"
+                          : "Close Decision as rejected"}
+                  </button>
+                </>
+              ) : (
+                <div className="resolution-success" role="status">
+                  <span>Human resolution recorded</span>
+                  <strong>
+                    {phase === "recommitted"
+                      ? `Revision ${decision.activeRevision} is now active`
+                      : phase === "superseded"
+                        ? `Replaced by ${decision.supersededByDecisionId}`
+                        : "Decision closed without replacement"}
+                  </strong>
+                  {history !== undefined && history.revisions.length >= 2 ? (
+                    <div className="revision-comparison">
+                      {history.revisions.slice(-2).map((revision, index) => (
+                        <article
+                          className={index === 1 ? "proposed" : undefined}
+                          key={revision.revisionId}
+                        >
+                          <span>Revision {revision.version}</span>
+                          <strong>{revision.snapshot.title}</strong>
+                          <p>{revision.snapshot.outcome}</p>
+                          <small>{revision.changeReason}</small>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="resolution-export">
+                    <button
+                      onClick={() => void prepareDecisionExport()}
+                      type="button"
+                    >
+                      Prepare Decision JSON export
+                    </button>
+                    {decisionExport === undefined ? null : (
+                      <a
+                        download={`counterpoint-${decision.decisionId}.json`}
+                        href={`data:application/json;charset=utf-8,${encodeURIComponent(
+                          JSON.stringify(decisionExport, null, 2),
+                        )}`}
+                      >
+                        Download JSON · {decisionExport.revisions.length}{" "}
+                        revisions · {decisionExport.auditEntries.length} audit
+                        entries
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+          ) : null}
         </div>
       ) : null}
 
@@ -2119,7 +2532,9 @@ function WorkspaceShell({
           ) : sharedDecision?.status === "COMMITTED" ||
             sharedDecision?.status === "MONITORING" ||
             sharedDecision?.status === "AT_RISK" ||
-            sharedDecision?.status === "REVIEW_REQUIRED" ? (
+            sharedDecision?.status === "REVIEW_REQUIRED" ||
+            sharedDecision?.status === "SUPERSEDED" ||
+            sharedDecision?.status === "REJECTED" ? (
             <SharedDecisionCard
               decision={sharedDecision}
               externalEvent={sharedExternalEvent}

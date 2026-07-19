@@ -59,10 +59,10 @@ history.
 
 ### D6 — Revision workflow
 
-- [ ] Allow review to end in recommitted revision, superseded, or rejected.
-- [ ] Keep all historical revisions and event lineage.
-- [ ] Show before/after comparison.
-- [ ] Ensure export includes history and current state.
+- [x] Allow review to end in recommitted revision, superseded, or rejected.
+- [x] Keep all historical revisions and event lineage.
+- [x] Show before/after comparison.
+- [x] Ensure export includes history and current state.
 
 ### D7 — Guided flagship
 

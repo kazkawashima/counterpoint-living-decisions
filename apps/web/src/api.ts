@@ -3,6 +3,7 @@ import {
   CommitDecisionResponseSchema,
   DecisionAuditResponseSchema,
   DecisionHistoryResponseSchema,
+  DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   InjectDemoRegulatoryChangeResponseSchema,
@@ -19,6 +20,7 @@ import {
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
+  ResolveDecisionReviewResponseSchema,
   ReviewInvalidationResponseSchema,
   SaveDecisionDraftResponseSchema,
   StartDecisionMonitoringResponseSchema,
@@ -31,6 +33,7 @@ import {
   type DecisionAuditResponse,
   type DecisionHistoryQuery,
   type DecisionHistoryResponse,
+  type DecisionJsonExportResponse,
   type DispositionSharedDecisionCandidateRequest,
   type DispositionSharedDecisionCandidateResponse,
   type LoginResponse,
@@ -47,6 +50,7 @@ import {
   type RejectDisclosureResponse,
   type ReviewInvalidationRequest,
   type ReviewInvalidationResponse,
+  type ResolveDecisionReviewResponse,
   type SaveDecisionDraftRequest,
   type SaveDecisionDraftResponse,
   type StartDecisionMonitoringResponse,
@@ -62,6 +66,7 @@ export type {
   DecisionAuditResponse,
   DecisionHistoryQuery,
   DecisionHistoryResponse,
+  DecisionJsonExportResponse,
   InjectDemoRegulatoryChangeResponse,
   ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
@@ -70,6 +75,7 @@ export type {
   MarkDecisionReadyResponse,
   ReviewInvalidationRequest,
   ReviewInvalidationResponse,
+  ResolveDecisionReviewResponse,
   SaveDecisionDraftRequest,
   SaveDecisionDraftResponse,
   StartDecisionMonitoringResponse,
@@ -90,6 +96,28 @@ export interface ReviewInvalidationClientInput extends MeetingMutationInput {
   readonly reason: string;
   readonly suggestionId: string;
 }
+
+export type ResolveDecisionReviewClientInput = MeetingMutationInput &
+  (
+    | {
+        readonly changeReason: string;
+        readonly decisionId: string;
+        readonly monitorCondition: { readonly description: string };
+        readonly outcome: string;
+        readonly resolution: "recommit_revision";
+        readonly title: string;
+      }
+    | {
+        readonly decisionId: string;
+        readonly replacementDecisionId: string;
+        readonly resolution: "supersede_decision";
+      }
+    | {
+        readonly decisionId: string;
+        readonly reason: string;
+        readonly resolution: "reject_decision";
+      }
+  );
 
 export interface ManualSharedDecisionDraftClientInput {
   readonly actions: readonly {
@@ -606,6 +634,21 @@ export async function reviewInvalidation(
   return ReviewInvalidationResponseSchema.parse(body);
 }
 
+export async function resolveDecisionReview(
+  session: StoredSession,
+  input: ResolveDecisionReviewClientInput,
+): Promise<ResolveDecisionReviewResponse> {
+  const body = await request(
+    "/api/v1/decisions/review-resolution",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return ResolveDecisionReviewResponseSchema.parse(body);
+}
+
 export async function injectDemoRegulatoryChange(
   session: StoredSession,
   input: {
@@ -635,6 +678,19 @@ export async function getDecisionHistory(
     session,
   );
   return DecisionHistoryResponseSchema.parse(body);
+}
+
+export async function exportDecisionJson(
+  session: StoredSession,
+  query: DecisionHistoryClientQuery,
+  signal?: AbortSignal,
+): Promise<DecisionJsonExportResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(query.meetingId)}/decisions/${encodeURIComponent(query.decisionId)}/export`,
+    signal === undefined ? {} : { signal },
+    session,
+  );
+  return DecisionJsonExportResponseSchema.parse(body);
 }
 
 export async function getDecisionAudit(

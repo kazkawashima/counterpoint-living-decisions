@@ -163,10 +163,22 @@ The canonical implementation-facing artifacts are:
 - Browser proof covers the review workbench, required reason, confirmation,
   audit lineage, reload, participant view, mobile reduced motion, five new
   screenshots, and a dedicated review clip.
+- D6 adds facilitator-only, discriminated resolution commands for a new
+  committed revision, superseding replacement, or Decision rejection.
+  Recommit derives revision 3 server-side, preserves all canonical references,
+  validates append-only history, and records `DecisionRevisionCommitted`;
+  supersede and reject leave the prior revision count unchanged.
+- The UI shows revision 2 beside the proposed revision 3, then retains all
+  three snapshots and the D5 review context after commitment. Assigned
+  participants receive the new current state without resolution controls.
+- Authorized Decision JSON export returns the current Decision, every revision,
+  and filtered audit lineage. Browser proof covers resolution choices,
+  before/after editing, recommit, export, reload, participant desktop, and
+  mobile reduced motion with five screenshots and one clip.
 
 ## In progress
 
-- Add D6 revision outcomes from `REVIEW_REQUIRED`.
+- Assemble the guided D7 flagship and verification copy.
 - Complete the versioned capability surface and realtime resume path.
 
 ## Not started
@@ -176,10 +188,10 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue D6 in
+Continue D7 in
 [`04-commitment-and-living-decision.md`](../04-commitment-and-living-decision.md):
-allow a human-reviewed Decision to finish in a new committed revision,
-superseded Decision, or explicit rejection while preserving immutable history.
+turn the implemented private-to-shared-to-living-Decision path into the
+timed, deterministic flagship flow and capture the remaining guided copy.
 
 ## Open gates
 

@@ -16,6 +16,7 @@ import {
   CreateMeetingResponseSchema,
   DecisionAuditResponseSchema,
   DecisionHistoryResponseSchema,
+  DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   JoinMeetingByCodeResponseSchema,
@@ -32,6 +33,7 @@ import {
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   ReviewInvalidationResponseSchema,
+  ResolveDecisionReviewResponseSchema,
   SaveDecisionDraftResponseSchema,
   StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
@@ -1404,6 +1406,97 @@ describe("Node HTTP flagship shell", () => {
         "ActionHeld",
         "ReconsiderationTaskCreated",
       ]),
+    );
+
+    const participantResolution = await app.request(
+      "/api/v1/decisions/review-resolution",
+      {
+        body: JSON.stringify({
+          changeReason: "A participant cannot commit a new revision.",
+          decisionId: draft.decision.decisionId,
+          expectedPosition: reviewedInvalidations.position,
+          idempotencyKey: "participant-review-resolution",
+          meetingId,
+          monitorCondition: {
+            description: "Continue monitoring regulatory approval.",
+          },
+          outcome: "Pause launch while the approval gate is revised.",
+          resolution: "recommit_revision",
+          title: "Revised conditional regional launch",
+        }),
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(participantResolution.status).toBe(403);
+
+    const resolutionResponse = await app.request(
+      "/api/v1/decisions/review-resolution",
+      {
+        body: JSON.stringify({
+          changeReason:
+            "Regulatory change now requires a revised approval gate.",
+          decisionId: draft.decision.decisionId,
+          expectedPosition: review.position,
+          idempotencyKey: "facilitator-review-resolution",
+          meetingId,
+          monitorCondition: {
+            description:
+              "Monitor the revised approval gate before resuming launch.",
+          },
+          outcome:
+            "Pause regional launch until the revised approval gate is satisfied.",
+          resolution: "recommit_revision",
+          title: "Revised conditional regional launch",
+        }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(resolutionResponse.status).toBe(200);
+    const resolution = ResolveDecisionReviewResponseSchema.parse(
+      await resolutionResponse.json(),
+    );
+    expect(resolution).toMatchObject({
+      decision: {
+        activeRevision: 3,
+        snapshot: {
+          outcome:
+            "Pause regional launch until the revised approval gate is satisfied.",
+          status: "COMMITTED",
+          title: "Revised conditional regional launch",
+        },
+        status: "COMMITTED",
+      },
+      resolution: "recommit_revision",
+      revision: {
+        previousRevisionId: review.decision.activeRevisionId,
+        version: 3,
+      },
+    });
+
+    const exportResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions/${draft.decision.decisionId}/export`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    expect(exportResponse.status).toBe(200);
+    const exported = DecisionJsonExportResponseSchema.parse(
+      await exportResponse.json(),
+    );
+    expect(exported.decision).toMatchObject({
+      activeRevision: 3,
+      status: "COMMITTED",
+    });
+    expect(exported.revisions.map(({ version }) => version)).toEqual([1, 2, 3]);
+    expect(exported.auditEntries.map(({ eventType }) => eventType)).toContain(
+      "DecisionRevisionCommitted",
     );
 
     const staleReady = await app.request("/api/v1/decisions/ready", {
