@@ -503,6 +503,9 @@ describe("D1 managed Realtime call ownership", () => {
         ownerships: repository,
         request: authenticatedRequest,
       }),
-    ).resolves.toMatchObject({ code: "SESSION_EXPIRED", kind: "rejected" });
+    ).resolves.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+      kind: "rejected",
+    });
   });
 });

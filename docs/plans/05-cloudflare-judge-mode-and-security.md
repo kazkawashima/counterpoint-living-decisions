@@ -222,6 +222,10 @@ C4 foundation notes:
   `CF-Connecting-IP` plus the distinct HMAC Secret is still mandatory, and the
   route remains fail-closed until hosted parity proof, measured limits, and
   bounded settlement are complete. No remote Secret registration occurs.
+- Cloudflare-pool integration now exercises the enabled route with a synthetic
+  controller: judge authentication, cross-meeting rejection, turn/transcript
+  forwarding, termination settlement, and the next-call
+  `USAGE_LIMIT_REACHED` response are covered without contacting OpenAI.
 
 ### C5 — Security hardening
 

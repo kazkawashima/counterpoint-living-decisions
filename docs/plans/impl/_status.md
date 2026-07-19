@@ -538,24 +538,31 @@ The canonical implementation-facing artifacts are:
   run before any remote phase. Approved apply mode then orders forward-only D1
   migration, strict deployment, bounded health/readiness/SPA/authentication
   smoke, and credential-free commit/configuration hash recording.
-- The current remote smoke deliberately rejects the parity-pending Worker API.
-  Full authenticated flagship smoke, an approved remote migration/deployment,
-  and a real deployment record remain open. The rollback and judge-secret
-  shutdown runbook forbids schema down migration and secret-value inspection.
-  No remote resource, secret, migration, deployment, or repository visibility
-  changed during this preparation.
+- The current remote smoke verifies health, migration readiness, the SPA, and
+  the unauthenticated authentication boundary. Full authenticated flagship
+  smoke, an approved remote migration/deployment, and a real deployment record
+  remain open. The rollback and judge-secret shutdown runbook forbids schema
+  down migration and secret-value inspection. No remote resource, secret,
+  migration, deployment, or repository visibility changed during this
+  preparation.
 - The minimum hosted flagship read path is now wired: migration 0008 seeds
   synthetic demo identities and the Work & Productivity flagship meeting;
   Cloudflare scrypt authentication, persisted Bearer sessions, assigned
   meetings, and role projection are served by the Worker. Two Cloudflare
   integration cases use external-host-style URLs, and the local Wrangler smoke
   reaches login, meetings, and projection through `0.0.0.0`.
-- C4 is not complete: judge billable-path reservation, `USAGE_LIMIT_REACHED`
-  integration proof, measured flagship limits, the web managed-call switch,
-  structured judge AI routes, and broader content-free operator visibility
-  remain. The managed realtime route adapter is covered by three unit cases
-  plus a four-case Cloudflare Worker gate suite, and remains disabled by
-  default. Full hosted flagship mutation parity remains a later slice.
+- The enabled managed Realtime Worker route now has one Cloudflare integration
+  proof covering judge authentication, cross-meeting isolation, turn and
+  transcript forwarding, termination settlement, and the next-call
+  `USAGE_LIMIT_REACHED` boundary. The test uses a synthetic controller stub, so
+  no provider call or API spend occurs.
+- C4 is not complete: broader judge billable-path coverage, measured flagship
+  limits, the web managed-call switch, structured judge AI routes, and broader
+  content-free operator visibility remain. The managed realtime route adapter
+  is covered by three unit cases, a four-case Worker gate suite, and the new
+  three-case Cloudflare integration suite; it remains disabled by default.
+  Full hosted flagship mutation parity and structured judge AI remain later
+  slices.
 - The current regular baseline is 631 Vitest tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted
@@ -566,8 +573,9 @@ The canonical implementation-facing artifacts are:
   reauthorization cases were added; rerunning those two was blocked by the
   execution environment's escalated usage limit. The focused security rerun
   passed 279 cases; its four WebSocket cases were blocked only because the
-  sandbox denied their required `0.0.0.0` listen. The prior full baselines
-  remain 283 focused security and 70 Cloudflare-native tests. No visible UI
+  sandbox denied their required `0.0.0.0` listen. The managed Worker route
+  integration suite passes in the Cloudflare pool; the full Cloudflare pool
+  baseline is now 10 files and 84 tests. No visible UI
   changed, so no browser capture was required. Reel shooting and reel-material
   organization are deferred from the active goal; product visibility remains
   the priority, while the AGENTS.md capture rule stays available for later UI
@@ -580,16 +588,15 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 by adding hosted Worker integration proof for the now
-feature-gated start, turn, transcript, and terminate adapter, including
-reservation-limit, cleanup, session-revocation, assignment-removal, and
-cross-meeting cases. Then measure the flagship to replace
-full-cap-per-attempt settlement with safe derived limits and only then enable
-the public judge route or switch the judge UI. Never accept reservation,
-provider call, participant, session, or key-source identity from the browser.
-Keep remote Secret registration and deployment mutation behind an explicit
-deployment boundary. Reel production is intentionally outside this active
-slice until the hosted product path is demonstrably viewable.
+Continue Plan 05 by extending hosted Worker proof to session revocation,
+assignment removal, and real Durable Object lifecycle behavior. Then measure
+the flagship to replace full-cap-per-attempt settlement with safe derived
+limits and only then enable the public judge route or switch the judge UI.
+Never accept reservation, provider call, participant, session, or key-source
+identity from the browser. Keep remote Secret registration and deployment
+mutation behind an explicit deployment boundary. Reel production is
+intentionally outside this active slice until the hosted product path is
+demonstrably viewable.
 
 ## Open gates
 
