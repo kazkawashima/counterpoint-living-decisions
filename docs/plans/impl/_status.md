@@ -7,12 +7,13 @@ Updated: 2026-07-19
 **The complete local guided flagship is implemented from private evidence
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
-The revocable read-only shared display, A6 transient BYOK/client-secret path,
-A7 shared-floor speech controls, and A8 durable degraded mode are also
-complete. OpenAI, Realtime, and BYOK loss now leave state reads, manual text,
-human-authored Decisions, audit, and export usable through explicit bounded
-recovery UI. Plan 03 artifact upload and SSRF-safe URL ingestion are the next
-remaining local slices before hosted Cloudflare parity and judge mode.**
+The revocable read-only shared display, A1 validated artifact ingestion, A6
+transient BYOK/client-secret path, A7 shared-floor speech controls, and A8
+durable degraded mode are also complete. OpenAI, Realtime, and BYOK loss now
+leave state reads, manual text, human-authored Decisions, audit, and export
+usable through explicit bounded recovery UI. Plan 03 SSRF-safe URL ingestion
+is the next remaining local slice before hosted Cloudflare parity and judge
+mode.**
 
 The canonical implementation-facing artifacts are:
 
@@ -304,14 +305,26 @@ The canonical implementation-facing artifacts are:
 - A8 visual proof includes four screenshots and two clips spanning Realtime
   fallback, BYOK loss, manual Decision editing, audit, and export. All content,
   peers, credentials, and failures are synthetic.
-- The complete verification surface now passes 299 unit/contract/integration
-  tests and all 13 browser E2E scenarios, in addition to build, lint,
-  typecheck, formatting, and architecture checks.
+- A1 accepts validated PDF, Markdown, plain text, and JSON uploads under strict
+  filename, claimed-type, UTF-8/magic, parse, 20 MB file, 10-item owner, and
+  100 MB meeting limits. Source and derived bytes have separate scoped storage
+  records, IDs, hashes, sizes, and owner-authorized downloads.
+- Uploaded document derivatives now feed the existing owner-private disclosure
+  path without re-registering source text. Failed extraction stores only the
+  private source and exposes a safe processing state without content-bearing
+  errors; cross-owner existing and missing retrievals are indistinguishable.
+- The A1 vault UI shows validating/processing/processed/failed states, explicit
+  source/derived controls, and private activation before exact preview. Three
+  synthetic screenshots and one clip record desktop processing/preview and a
+  reduced-motion cross-owner empty state.
+- The complete verification surface now passes 322 unit/contract/integration
+  tests and all 14 browser E2E scenarios, in addition to build, lint,
+  typecheck, formatting, architecture, environment, and Compose checks.
 
 ## In progress
 
-- Continue Plan 03 A1 artifact ingestion while preserving the completed
-  disclosure, AI, Realtime, and degraded-mode boundaries.
+- Continue Plan 03 A2 SSRF-safe URL ingestion while preserving the completed
+  artifact, disclosure, AI, Realtime, and degraded-mode boundaries.
 
 ## Not started
 
@@ -321,11 +334,11 @@ The canonical implementation-facing artifacts are:
 
 Continue Plan 03 in
 [`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md)
-at A1: add validated PDF/Markdown/text upload, owner/meeting limits,
-source/derived hashes, authorized retrieval, processing states, browser E2E,
-and visual evidence. Follow with A2 SSRF-safe URL ingestion before moving to
-Plan 05; preserve the allowlisted judge-managed source and USD 25 rolling
-24-hour product spend gate for H3/H4.
+at A2: add scheme/destination/redirect revalidation, bounded bytes/timeouts,
+DNS rebinding and private-network attack fixtures, owner-private retrieval,
+browser E2E, and visual evidence for URL ingestion. Then move to Plan 05;
+preserve the allowlisted judge-managed source and USD 25 rolling 24-hour
+product spend gate for H3/H4.
 
 ## Open gates
 

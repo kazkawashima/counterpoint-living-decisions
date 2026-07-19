@@ -208,6 +208,9 @@ export interface DomainEventPayloads {
     readonly artifactId: ArtifactId;
     readonly processingState: "processed" | "failed";
     readonly contentHash?: ContentHash;
+    readonly derivedArtifactId?: ArtifactId;
+    readonly derivedSizeBytes?: number;
+    readonly derivedStorageReference?: NonEmptyText;
     readonly failureCode?: NonEmptyText;
   };
   readonly UtteranceCaptured: {

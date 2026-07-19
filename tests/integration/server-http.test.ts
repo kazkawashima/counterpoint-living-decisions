@@ -50,6 +50,7 @@ import {
   SharedDisplayProjectionResponseSchema,
   StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
+  UploadPrivateArtifactResponseSchema,
 } from "@counterpoint/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -169,6 +170,190 @@ describe("Node HTTP flagship shell", () => {
     expect(registration.status).toBe(503);
     expect(ErrorEnvelopeSchema.parse(await registration.json())).toMatchObject({
       code: "ARTIFACT_STORAGE_UNAVAILABLE",
+    });
+  });
+
+  it("uploads private Markdown as distinct source and derived artifacts without leaking its existence", async () => {
+    const { app } = await fixture();
+    const meetingId = "meeting-global-ai-rollout";
+    const filename = "synthetic-private-rollout.md";
+    const derivedMarkdown =
+      "# Synthetic rollout note\n\nThe rollback gate stays owner-approved.";
+    const sourceMarkdown = `\uFEFF${derivedMarkdown}`;
+    const exactSnippet = "The rollback gate stays owner-approved.";
+    const snippetStart = derivedMarkdown.indexOf(exactSnippet);
+    const safety = await login(app, "safety", "counterpoint-safety");
+    const legal = await login(app, "legal", "counterpoint-legal");
+    const safetyAuthorization = {
+      authorization: `Bearer ${safety.bearerToken}`,
+    };
+    const legalAuthorization = {
+      authorization: `Bearer ${legal.bearerToken}`,
+    };
+    const uploadBody = new FormData();
+    uploadBody.set("idempotencyKey", "upload-synthetic-private-markdown");
+    uploadBody.set("meetingId", meetingId);
+    uploadBody.set(
+      "file",
+      new File([sourceMarkdown], filename, { type: "text/markdown" }),
+    );
+
+    const uploadResponse = await app.request("/api/v1/artifacts", {
+      body: uploadBody,
+      headers: {
+        ...safetyAuthorization,
+        host: "100.96.14.8:8787",
+      },
+      method: "POST",
+    });
+    expect(uploadResponse.status).toBe(201);
+    const uploaded = UploadPrivateArtifactResponseSchema.parse(
+      await uploadResponse.json(),
+    );
+    expect(uploaded).toMatchObject({
+      artifact: {
+        contentType: "text/markdown",
+        derivedSizeBytes: new TextEncoder().encode(derivedMarkdown).byteLength,
+        filename,
+        processingState: "processed",
+        sizeBytes: new TextEncoder().encode(sourceMarkdown).byteLength,
+      },
+      meetingId,
+      position: 2,
+    });
+    const { artifact } = uploaded;
+    if (
+      artifact.derivedArtifactId === undefined ||
+      artifact.derivedContentHash === undefined
+    ) {
+      throw new Error("Markdown upload did not produce a derived artifact");
+    }
+    expect(artifact.derivedArtifactId).not.toBe(artifact.sourceArtifactId);
+    expect(artifact.derivedContentHash).not.toBe(artifact.sourceContentHash);
+
+    const ownerProjectionResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers: safetyAuthorization },
+    );
+    expect(ownerProjectionResponse.status).toBe(200);
+    const ownerProjection = RoleProjectionResponseSchema.parse(
+      await ownerProjectionResponse.json(),
+    );
+    expect(ownerProjection.privateWorkspace.artifacts).toEqual([artifact]);
+    expect(ownerProjection.privateWorkspace.sources).toEqual([]);
+    expect(
+      Object.keys(ownerProjection.privateWorkspace.artifacts[0] ?? {}).sort(),
+    ).toEqual(
+      [
+        "contentType",
+        "createdAt",
+        "derivedArtifactId",
+        "derivedContentHash",
+        "derivedSizeBytes",
+        "filename",
+        "processingState",
+        "sizeBytes",
+        "sourceArtifactId",
+        "sourceContentHash",
+      ].sort(),
+    );
+    expect(JSON.stringify(ownerProjection)).not.toContain(exactSnippet);
+
+    const participantProjectionResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers: legalAuthorization },
+    );
+    expect(participantProjectionResponse.status).toBe(200);
+    const participantProjection = RoleProjectionResponseSchema.parse(
+      await participantProjectionResponse.json(),
+    );
+    expect(participantProjection.privateWorkspace.artifacts).toEqual([]);
+    const serializedParticipantProjection = JSON.stringify(
+      participantProjection,
+    );
+    expect(serializedParticipantProjection).not.toContain(
+      artifact.sourceArtifactId,
+    );
+    expect(serializedParticipantProjection).not.toContain(
+      artifact.derivedArtifactId,
+    );
+
+    const sourceDownload = await app.request(
+      `/api/v1/meetings/${meetingId}/artifacts/${artifact.sourceArtifactId}?representation=source`,
+      { headers: safetyAuthorization },
+    );
+    expect(sourceDownload.status).toBe(200);
+    expect(sourceDownload.headers.get("content-type")).toContain(
+      "text/markdown",
+    );
+    expect(sourceDownload.headers.get("cache-control")).toContain("no-store");
+    expect(sourceDownload.headers.get("x-content-type-options")).toBe(
+      "nosniff",
+    );
+    expect(new Uint8Array(await sourceDownload.arrayBuffer())).toEqual(
+      new TextEncoder().encode(sourceMarkdown),
+    );
+
+    const derivedDownload = await app.request(
+      `/api/v1/meetings/${meetingId}/artifacts/${artifact.sourceArtifactId}?representation=derived`,
+      { headers: safetyAuthorization },
+    );
+    expect(derivedDownload.status).toBe(200);
+    expect(derivedDownload.headers.get("content-type")).toContain("text/plain");
+    expect(await derivedDownload.text()).toBe(derivedMarkdown);
+
+    for (const representation of ["source", "derived"] as const) {
+      const forbiddenExisting = await app.request(
+        `/api/v1/meetings/${meetingId}/artifacts/${artifact.sourceArtifactId}?representation=${representation}`,
+        { headers: legalAuthorization },
+      );
+      expect(forbiddenExisting.status).toBe(403);
+      expect(
+        ErrorEnvelopeSchema.parse(await forbiddenExisting.json()),
+      ).toMatchObject({ code: "FORBIDDEN" });
+
+      const forbiddenMissing = await app.request(
+        `/api/v1/meetings/${meetingId}/artifacts/artifact-synthetic-missing?representation=${representation}`,
+        { headers: legalAuthorization },
+      );
+      expect(forbiddenMissing.status).toBe(403);
+      expect(
+        ErrorEnvelopeSchema.parse(await forbiddenMissing.json()),
+      ).toMatchObject({ code: "FORBIDDEN" });
+    }
+
+    const proposalResponse = await app.request(
+      "/api/v1/disclosures/proposals",
+      {
+        body: JSON.stringify({
+          exactSnippet,
+          expectedPosition: uploaded.position,
+          idempotencyKey: "propose-uploaded-synthetic-markdown",
+          meetingId,
+          sourceArtifactId: artifact.sourceArtifactId,
+          sourceRange: {
+            end: snippetStart + exactSnippet.length,
+            start: snippetStart,
+          },
+        }),
+        headers: {
+          ...safetyAuthorization,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(proposalResponse.status).toBe(201);
+    expect(
+      ProposeDisclosureResponseSchema.parse(await proposalResponse.json()),
+    ).toMatchObject({
+      candidate: {
+        outgoingPayload: {
+          exactSnippet,
+          sourceArtifactId: artifact.sourceArtifactId,
+        },
+      },
+      origin: "human_selected",
     });
   });
 

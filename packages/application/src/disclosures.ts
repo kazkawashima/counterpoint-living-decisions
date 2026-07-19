@@ -532,8 +532,26 @@ async function loadOwnedSource(
     return failed("FORBIDDEN");
   }
 
+  const processed =
+    registered.payload.artifact.artifactType === "text"
+      ? undefined
+      : normalizeRecords(records).find(
+          (event): event is EventOf<"ArtifactProcessed"> =>
+            event.eventType === "ArtifactProcessed" &&
+            event.ownerParticipantId === registered.ownerParticipantId &&
+            event.payload.artifactId === sourceArtifactId,
+        );
+  const readableArtifactId =
+    registered.payload.artifact.artifactType === "text"
+      ? sourceArtifactId
+      : processed?.payload.processingState === "processed"
+        ? processed.payload.derivedArtifactId
+        : undefined;
+  if (readableArtifactId === undefined) {
+    return failed("VALIDATION_FAILED");
+  }
   const bytes = await dependencies.artifacts.get({
-    artifactId: sourceArtifactId,
+    artifactId: readableArtifactId,
     meetingId: meetingScope,
     ownerParticipantId: registered.ownerParticipantId,
     visibility: "private",

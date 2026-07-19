@@ -5,6 +5,7 @@ import {
   replayMeeting,
   type Decision as DomainDecision,
   type DomainEvent,
+  type SourceArtifact,
 } from "@counterpoint/domain";
 import {
   RealtimeRoleProjectionSchema,
@@ -224,6 +225,55 @@ async function privateSources(
   );
 }
 
+function privateArtifacts(
+  artifacts: readonly SourceArtifact[],
+  events: readonly DomainEvent[],
+) {
+  return artifacts.flatMap((artifact) => {
+    if (
+      artifact.originalFilename === undefined ||
+      artifact.contentType === undefined ||
+      (artifact.processingState !== "processed" &&
+        artifact.processingState !== "failed")
+    ) {
+      return [];
+    }
+    const processed = events.find(
+      (
+        event,
+      ): event is Extract<
+        DomainEvent,
+        { readonly eventType: "ArtifactProcessed" }
+      > =>
+        event.eventType === "ArtifactProcessed" &&
+        event.payload.artifactId === artifact.id,
+    );
+    return [
+      {
+        contentType: artifact.contentType,
+        createdAt: artifact.createdAt,
+        ...(artifact.derivedArtifactId === undefined
+          ? {}
+          : { derivedArtifactId: artifact.derivedArtifactId }),
+        ...(artifact.derivedContentHash === undefined
+          ? {}
+          : { derivedContentHash: artifact.derivedContentHash }),
+        ...(artifact.derivedSizeBytes === undefined
+          ? {}
+          : { derivedSizeBytes: artifact.derivedSizeBytes }),
+        ...(processed?.payload.failureCode === undefined
+          ? {}
+          : { failureCode: processed.payload.failureCode }),
+        filename: artifact.originalFilename,
+        processingState: artifact.processingState,
+        sizeBytes: artifact.sizeBytes,
+        sourceArtifactId: artifact.id,
+        sourceContentHash: artifact.contentHash,
+      },
+    ];
+  });
+}
+
 export async function roleProjectionFor(
   runtime: ServerRuntime,
   authorization: UserAuthorizationContext,
@@ -289,6 +339,10 @@ export async function roleProjectionFor(
       userId: assignment.userId,
     },
     privateWorkspace: {
+      artifacts: privateArtifacts(
+        privateWorkspace?.artifacts ?? [],
+        activePrivateEvents,
+      ),
       disclosureCandidates: privateDisclosureCandidates(
         activePrivateEvents,
         authorization.participantId,

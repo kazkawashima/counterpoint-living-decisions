@@ -41,6 +41,7 @@ import {
   StartDecisionMonitoringResponseSchema,
   SharedDisplayProjectionResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
+  UploadPrivateArtifactResponseSchema,
   type AcquireSharedFloorRequest,
   type AcquireSharedFloorResponse,
   type AssignedMeeting,
@@ -90,6 +91,7 @@ import {
   type SynthesizeSharedDecisionResponse,
   type TextRange,
   type UtteranceChannel,
+  type UploadPrivateArtifactResponse,
 } from "@counterpoint/protocol";
 
 export type {
@@ -130,6 +132,7 @@ export type {
   SharedDisplayProjectionResponse,
   SynthesizeSharedDecisionRequest,
   SynthesizeSharedDecisionResponse,
+  UploadPrivateArtifactResponse,
 };
 
 interface MeetingMutationInput {
@@ -389,7 +392,7 @@ async function request(
   session?: StoredSession,
 ): Promise<unknown> {
   const headers = new Headers(options.headers);
-  if (options.body !== undefined) {
+  if (options.body !== undefined && !(options.body instanceof FormData)) {
     headers.set("content-type", "application/json");
   }
   if (session !== undefined) {
@@ -408,6 +411,66 @@ async function request(
     throw new ApiError("REQUEST_FAILED", "The request could not be completed.");
   }
   return body;
+}
+
+export async function uploadPrivateArtifact(
+  session: StoredSession,
+  input: {
+    readonly file: File;
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+  },
+): Promise<UploadPrivateArtifactResponse> {
+  const form = new FormData();
+  form.set("meetingId", input.meetingId);
+  form.set("idempotencyKey", input.idempotencyKey);
+  form.set("file", input.file);
+  const body = await request(
+    "/api/v1/artifacts",
+    {
+      body: form,
+      method: "POST",
+    },
+    session,
+  );
+  return UploadPrivateArtifactResponseSchema.parse(body);
+}
+
+export async function downloadPrivateArtifact(
+  session: StoredSession,
+  input: {
+    readonly artifactId: string;
+    readonly meetingId: string;
+    readonly representation: "derived" | "source";
+  },
+): Promise<{ readonly blob: Blob; readonly filename: string }> {
+  const search = new URLSearchParams({
+    representation: input.representation,
+  });
+  const response = await fetch(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/artifacts/${encodeURIComponent(input.artifactId)}?${search.toString()}`,
+    {
+      headers: {
+        authorization: `Bearer ${session.bearerToken}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    const body = await responseJson(response);
+    const error = ErrorEnvelopeSchema.safeParse(body);
+    throw error.success
+      ? new ApiError(error.data.code, error.data.message)
+      : new ApiError("REQUEST_FAILED", "The artifact could not be downloaded.");
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const encodedFilename = /filename\*=UTF-8''([^;]+)/iu.exec(disposition)?.[1];
+  return {
+    blob: await response.blob(),
+    filename:
+      encodedFilename === undefined
+        ? "artifact"
+        : decodeURIComponent(encodedFilename),
+  };
 }
 
 export async function login(

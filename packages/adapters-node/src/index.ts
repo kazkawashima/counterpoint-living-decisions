@@ -1,4 +1,5 @@
 export { LocalArtifactStore } from "./artifacts.js";
+export { NodeArtifactTextExtractor } from "./artifact-text-extractor.js";
 export {
   NodeMeetingApiKeyLeaseStore,
   type NodeMeetingApiKeyLeaseStoreOptions,

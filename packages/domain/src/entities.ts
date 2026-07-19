@@ -128,6 +128,12 @@ export type SourceArtifact = DomainRecord<{
   readonly artifactType: ArtifactType;
   readonly storageReference: NonEmptyText;
   readonly contentHash: ContentHash;
+  readonly contentType?: NonEmptyText;
+  readonly derivedArtifactId?: ArtifactId;
+  readonly derivedContentHash?: ContentHash;
+  readonly derivedSizeBytes?: number;
+  readonly derivedStorageReference?: NonEmptyText;
+  readonly originalFilename?: NonEmptyText;
   readonly sizeBytes: number;
   readonly processingState: ArtifactProcessingState;
 }>;
@@ -436,6 +442,16 @@ export function createSourceArtifact(input: SourceArtifact): SourceArtifact {
   }
   if (input.sizeBytes > 20 * 1024 * 1024) {
     throw new DomainValueError("SourceArtifact exceeds the 20 MB domain limit");
+  }
+  if (
+    input.derivedSizeBytes !== undefined &&
+    (!Number.isSafeInteger(input.derivedSizeBytes) ||
+      input.derivedSizeBytes < 0 ||
+      input.derivedSizeBytes > 20 * 1024 * 1024)
+  ) {
+    throw new DomainValueError(
+      "SourceArtifact derivedSizeBytes must satisfy the 20 MB domain limit",
+    );
   }
   return input;
 }

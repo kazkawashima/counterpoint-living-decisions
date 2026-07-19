@@ -12,3 +12,8 @@ hackathon introduction reel.
 
 Use stable filenames and include the viewport and state in the accompanying
 note. Never capture secrets, private user data, or real decision content.
+
+Current feature notes include
+[`artifact-ingestion/notes.md`](artifact-ingestion/notes.md), covering the
+owner-private upload, derivation, exact-preview, and cross-owner isolation
+sequence.

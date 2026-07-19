@@ -13,7 +13,8 @@
     "@counterpoint/application": "0.0.0",
     "@counterpoint/domain": "0.0.0",
     "@counterpoint/ports": "0.0.0",
-    "@counterpoint/protocol": "0.0.0"
+    "@counterpoint/protocol": "0.0.0",
+    "unpdf": "^1.6.2"
   },
   "scripts": {
     "build": "tsc -b"

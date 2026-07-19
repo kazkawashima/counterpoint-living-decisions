@@ -67,6 +67,7 @@ describe("A7 browser API helpers", () => {
         userId: "user-synthetic",
       },
       privateWorkspace: {
+        artifacts: [],
         disclosureCandidates: [],
         inferenceSuggestions: [],
         sources: [],

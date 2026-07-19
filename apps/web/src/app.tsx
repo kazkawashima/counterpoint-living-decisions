@@ -53,6 +53,7 @@ import {
   type StoredSession,
 } from "./api.js";
 import { RealtimePanel } from "./realtime-panel.js";
+import { ArtifactPanel } from "./artifact-panel.js";
 
 const DEMO_IDENTITIES = [
   { label: "Product", role: "Facilitator", userId: "product" },
@@ -2318,6 +2319,11 @@ function WorkspaceShell({
   const [selectedSnippet, setSelectedSnippet] = useState(
     SYNTHETIC_EXACT_SNIPPET,
   );
+  const [uploadedPrivateSource, setUploadedPrivateSource] = useState<{
+    readonly filename: string;
+    readonly sourceArtifactId: string;
+    readonly text: string;
+  }>();
   const commandKeys = useRef({
     approve: crypto.randomUUID(),
     preview: crypto.randomUUID(),
@@ -2380,33 +2386,49 @@ function WorkspaceShell({
     setPhase("preparing");
     setError(undefined);
     try {
+      const privateText = uploadedPrivateSource?.text ?? SYNTHETIC_PRIVATE_NOTE;
       const exactSnippet = selectedSnippet.trim();
-      const start = SYNTHETIC_PRIVATE_NOTE.indexOf(exactSnippet);
+      const start = privateText.indexOf(exactSnippet);
       if (exactSnippet.length === 0 || start < 0) {
         throw new ApiError(
           "VALIDATION_FAILED",
-          "Choose an exact excerpt from the staged private note.",
+          "Choose an exact excerpt from the active private source.",
         );
       }
       const sourceRange = { end: start + exactSnippet.length, start };
-      const registered = await registerPrivateTextSource(session, {
-        expectedPosition: position,
-        idempotencyKey: commandKeys.current.register,
-        meetingId: meeting.meetingId,
-        text: SYNTHETIC_PRIVATE_NOTE,
-        title: "Regional launch readiness note",
-      });
-      advancePosition(registered.position);
+      const registered =
+        uploadedPrivateSource === undefined
+          ? await registerPrivateTextSource(session, {
+              expectedPosition: position,
+              idempotencyKey: commandKeys.current.register,
+              meetingId: meeting.meetingId,
+              text: privateText,
+              title: "Regional launch readiness note",
+            })
+          : undefined;
+      const sourcePosition = registered?.position ?? position;
+      if (registered !== undefined) {
+        advancePosition(registered.position);
+      }
+      const sourceArtifactId =
+        uploadedPrivateSource?.sourceArtifactId ??
+        registered?.source.sourceArtifactId;
+      if (sourceArtifactId === undefined) {
+        throw new ApiError(
+          "INVALID_STATE",
+          "The active private source is unavailable.",
+        );
+      }
       const proposed = await proposeDisclosure(session, {
         assistance,
         exactSnippet,
-        expectedPosition: registered.position,
+        expectedPosition: sourcePosition,
         idempotencyKey:
           assistance === "ai_preferred"
             ? commandKeys.current.proposeAi
             : commandKeys.current.proposeManual,
         meetingId: meeting.meetingId,
-        sourceArtifactId: registered.source.sourceArtifactId,
+        sourceArtifactId,
         sourceRange,
       });
       advancePosition(proposed.position);
@@ -2501,6 +2523,7 @@ function WorkspaceShell({
       setDisplayAccess(undefined);
       setDisplayAccessState("idle");
       setSelectedSnippet(SYNTHETIC_EXACT_SNIPPET);
+      setUploadedPrivateSource(undefined);
       commandKeys.current = {
         approve: crypto.randomUUID(),
         preview: crypto.randomUUID(),
@@ -2751,14 +2774,40 @@ function WorkspaceShell({
               §
             </div>
             <div>
-              <span className="source-type">Synthetic source</span>
-              <h2>Regional launch readiness note</h2>
+              <span className="source-type">
+                {uploadedPrivateSource === undefined
+                  ? "Synthetic source"
+                  : "Uploaded private source"}
+              </span>
+              <h2>
+                {uploadedPrivateSource?.filename ??
+                  "Regional launch readiness note"}
+              </h2>
               <p>
                 Visible only here. No private-existence hint reaches the shared
                 room.
               </p>
             </div>
           </div>
+          <ArtifactPanel
+            meetingId={meeting.meetingId}
+            onPositionChange={advancePosition}
+            onUseArtifact={(source) => {
+              const trimmed = source.text.trim();
+              setUploadedPrivateSource(source);
+              setSelectedSnippet(
+                trimmed.slice(0, Math.min(400, trimmed.length)),
+              );
+              setPhase("idle");
+              setPreview(undefined);
+              setProposalOrigin(undefined);
+              setError(undefined);
+              commandKeys.current.proposeAi = crypto.randomUUID();
+              commandKeys.current.proposeManual = crypto.randomUUID();
+              commandKeys.current.preview = crypto.randomUUID();
+            }}
+            session={session}
+          />
           <section className="private-assistant" aria-label="Private assistant">
             <div className="assistant-signal" aria-hidden="true">
               <span />
@@ -2792,12 +2841,16 @@ function WorkspaceShell({
             </button>
           </div>
           <div className="workspace-input">
-            <label htmlFor="private-note">Staged private note</label>
+            <label htmlFor="private-note">
+              {uploadedPrivateSource === undefined
+                ? "Staged private note"
+                : "Active uploaded source · derived text"}
+            </label>
             <textarea
               id="private-note"
               readOnly
               rows={5}
-              value={SYNTHETIC_PRIVATE_NOTE}
+              value={uploadedPrivateSource?.text ?? SYNTHETIC_PRIVATE_NOTE}
             />
             <label htmlFor="selected-excerpt">Exact excerpt to preview</label>
             <textarea
@@ -2808,7 +2861,8 @@ function WorkspaceShell({
               value={selectedSnippet}
             />
             <small className="excerpt-hint">
-              Edit this selection using an exact span from the private note.
+              Edit this selection using an exact span from the active private
+              source.
             </small>
             {phase === "idle" ? (
               <button

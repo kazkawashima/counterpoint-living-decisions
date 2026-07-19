@@ -15,6 +15,7 @@ import {
   CreateMeetingRequestSchema,
   DecisionJsonExportQuerySchema,
   DecisionJsonExportResponseSchema,
+  DownloadPrivateArtifactQuerySchema,
   DispositionConfirmedInferenceRequestSchema,
   FacilitatorDemoResetRequestSchema,
   FacilitatorDemoResetResponseSchema,
@@ -55,6 +56,7 @@ import {
   RevokeDisplayTokenRequestSchema,
   RevokeDisplayTokenResponseSchema,
   ReviewInvalidationResponseSchema,
+  RoleProjectionResponseSchema,
   RoleProjectionQuerySchema,
   SaveDecisionDraftRequestSchema,
   StartDecisionMonitoringRequestSchema,
@@ -62,6 +64,8 @@ import {
   SharedDisplayProjectionResponseSchema,
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
+  UploadPrivateArtifactFieldsSchema,
+  UploadPrivateArtifactResponseSchema,
   type AcquireSharedFloorRequest,
   type AcquireSharedFloorResponse,
   type CaptureUtteranceRequest,
@@ -89,6 +93,8 @@ import {
   type ReleaseSharedFloorRequest,
   type ReleaseSharedFloorResponse,
   type SharedDisplayProjectionResponse,
+  type UploadPrivateArtifactFields,
+  type UploadPrivateArtifactResponse,
 } from "@counterpoint/protocol";
 
 const meetingMutation = {
@@ -1555,5 +1561,104 @@ describe("strict v1 HTTP protocol", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("contracts owner-private artifact upload, retrieval, and projection metadata", () => {
+    const fields = {
+      meetingId: "meeting-1",
+      idempotencyKey: "artifact-upload-1",
+      correlationId: "correlation-artifact-1",
+    } as const;
+    const parsedFields = UploadPrivateArtifactFieldsSchema.parse(fields);
+    expectTypeOf(parsedFields).toEqualTypeOf<UploadPrivateArtifactFields>();
+
+    const artifact = {
+      sourceArtifactId: "artifact-source-1",
+      derivedArtifactId: "artifact-derived-1",
+      filename: "synthetic-readiness.md",
+      contentType: "text/markdown",
+      sourceContentHash: `sha256:${"1".repeat(64)}`,
+      derivedContentHash: `sha256:${"2".repeat(64)}`,
+      sizeBytes: 128,
+      derivedSizeBytes: 112,
+      processingState: "processed",
+      createdAt: "2026-07-19T12:00:00.000Z",
+    } as const;
+    const response = {
+      meetingId: "meeting-1",
+      position: 3,
+      correlationId: "correlation-artifact-1",
+      artifact,
+    } as const;
+    const parsedResponse = UploadPrivateArtifactResponseSchema.parse(response);
+    expectTypeOf(parsedResponse).toEqualTypeOf<UploadPrivateArtifactResponse>();
+
+    expect(
+      UploadPrivateArtifactResponseSchema.safeParse({
+        ...response,
+        artifact: {
+          ...artifact,
+          sourceText: "private content must not enter metadata responses",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      UploadPrivateArtifactResponseSchema.safeParse({
+        ...response,
+        artifact: {
+          ...artifact,
+          sizeBytes: 20 * 1024 * 1024 + 1,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      DownloadPrivateArtifactQuerySchema.parse({
+        artifactId: artifact.sourceArtifactId,
+        meetingId: "meeting-1",
+      }).representation,
+    ).toBe("source");
+    expect(
+      DownloadPrivateArtifactQuerySchema.safeParse({
+        artifactId: artifact.sourceArtifactId,
+        meetingId: "meeting-1",
+        representation: "raw",
+      }).success,
+    ).toBe(false);
+
+    const roleProjection = {
+      meeting: {
+        meetingId: "meeting-1",
+        purpose: "Synthetic rollout decision",
+        phase: "deliberating",
+      },
+      participant: {
+        participantId: "participant-1",
+        userId: "user-1",
+        role: "participant",
+      },
+      capabilities: ["meeting:read", "artifact:create-own"],
+      shared: {
+        position: 3,
+        participants: [],
+        evidence: [],
+        premises: [],
+        dissent: [],
+        actions: [],
+        decisions: [],
+        utterances: [],
+        sharedFloor: null,
+      },
+      privateWorkspace: {
+        artifacts: [artifact],
+        sources: [],
+        disclosureCandidates: [],
+        inferenceSuggestions: [],
+        utterances: [],
+      },
+      correlationId: "correlation-artifact-1",
+    } as const;
+    expect(RoleProjectionResponseSchema.parse(roleProjection)).toMatchObject({
+      privateWorkspace: { artifacts: [artifact] },
+    });
   });
 });

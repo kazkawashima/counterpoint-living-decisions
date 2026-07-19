@@ -19,6 +19,7 @@ import {
   createMeeting,
   dispositionDecisionCandidate,
   evaluateAssumptionInvalidation,
+  getPrivateArtifact,
   injectDemoRegulatoryChange,
   heartbeatMeetingByok,
   issueDisplayToken,
@@ -45,10 +46,12 @@ import {
   saveDecisionDraft,
   startDecisionMonitoring,
   supersedeDecision,
+  uploadPrivateArtifact,
   userAuthorizationContext,
   type DecisionCandidateFailure,
   type DecisionFailure,
   type DecisionReviewResolutionFailure,
+  type ArtifactIngestionFailure,
   type DisclosureFailure,
   type DisclosureDependencies,
   type InvalidationEvaluationView,
@@ -95,6 +98,7 @@ import {
   DecisionHistoryResponseSchema,
   DecisionJsonExportQuerySchema,
   DecisionJsonExportResponseSchema,
+  DownloadPrivateArtifactQuerySchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   FacilitatorDemoResetRequestSchema,
@@ -150,6 +154,8 @@ import {
   SaveDecisionDraftResponseSchema,
   SynthesizeSharedDecisionRequestSchema,
   SynthesizeSharedDecisionResponseSchema,
+  UploadPrivateArtifactFieldsSchema,
+  UploadPrivateArtifactResponseSchema,
   StartDecisionMonitoringRequestSchema,
   StartDecisionMonitoringResponseSchema,
   type ErrorCode,
@@ -827,6 +833,18 @@ function manualDisclosureDependencies(
     ids: dependencies.ids,
     projections: dependencies.projections,
   };
+}
+
+function artifactIngestionFailureResponse(
+  context: AppContext,
+  failure: ArtifactIngestionFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? errorResponse(context, "CONFLICT", {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : errorResponse(context, failure.code);
 }
 
 function displayTokenDependencies(runtime: ServerRuntime) {
@@ -1846,6 +1864,121 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       201,
     );
   });
+
+  app.post("/api/v1/artifacts", async (context) => {
+    const contentLength = Number(context.req.header("content-length") ?? "0");
+    if (Number.isFinite(contentLength) && contentLength > 21 * 1024 * 1024) {
+      return errorResponse(context, "ARTIFACT_TOO_LARGE");
+    }
+    let body: Record<string, File | string>;
+    try {
+      body = await context.req.parseBody();
+    } catch {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const file = body.file;
+    const fields = UploadPrivateArtifactFieldsSchema.safeParse({
+      correlationId:
+        typeof body.correlationId === "string" ? body.correlationId : undefined,
+      idempotencyKey: body.idempotencyKey,
+      meetingId: body.meetingId,
+    });
+    if (!fields.success || !(file instanceof File)) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      fields.data.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    if (!runtime.artifactStorageAvailable) {
+      return errorResponse(context, "ARTIFACT_STORAGE_UNAVAILABLE");
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      return errorResponse(context, "ARTIFACT_TOO_LARGE");
+    }
+    const result = await uploadPrivateArtifact(
+      runtime.artifactIngestion,
+      resolved.authorization,
+      {
+        bytes: new Uint8Array(await file.arrayBuffer()),
+        contentType: file.type,
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.artifactIngestion.events.position(
+          fields.data.meetingId,
+        ),
+        filename: file.name,
+        idempotencyKey: fields.data.idempotencyKey,
+        meetingId: fields.data.meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return artifactIngestionFailureResponse(context, result);
+    }
+    return context.json(
+      UploadPrivateArtifactResponseSchema.parse({
+        artifact: result.artifact,
+        correlationId: result.correlationId,
+        meetingId: fields.data.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          fields.data.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      201,
+    );
+  });
+
+  app.get(
+    "/api/v1/meetings/:meetingId/artifacts/:artifactId",
+    async (context) => {
+      const query = DownloadPrivateArtifactQuerySchema.safeParse({
+        artifactId: context.req.param("artifactId"),
+        meetingId: context.req.param("meetingId"),
+        representation: context.req.query("representation"),
+      });
+      if (!query.success) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        query.data.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const result = await getPrivateArtifact(
+        runtime.artifactIngestion,
+        resolved.authorization,
+        query.data,
+      );
+      if (result.kind === "failed") {
+        return errorResponse(context, result.code);
+      }
+      context.header(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
+      );
+      context.header("Content-Type", result.contentType);
+      context.header("Cache-Control", "private, no-store");
+      context.header("X-Content-Type-Options", "nosniff");
+      return context.body(Uint8Array.from(result.bytes).buffer);
+    },
+  );
 
   app.post("/api/v1/disclosures/proposals", async (context) => {
     const request = await parseJson(context, ProposeDisclosureRequestSchema);

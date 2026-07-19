@@ -359,7 +359,21 @@ function reducePrivateWorkspace(
                 processingState: event.payload.processingState,
                 ...(event.payload.contentHash === undefined
                   ? {}
-                  : { contentHash: event.payload.contentHash }),
+                  : event.payload.derivedArtifactId === undefined
+                    ? { contentHash: event.payload.contentHash }
+                    : { derivedContentHash: event.payload.contentHash }),
+                ...(event.payload.derivedArtifactId === undefined
+                  ? {}
+                  : { derivedArtifactId: event.payload.derivedArtifactId }),
+                ...(event.payload.derivedSizeBytes === undefined
+                  ? {}
+                  : { derivedSizeBytes: event.payload.derivedSizeBytes }),
+                ...(event.payload.derivedStorageReference === undefined
+                  ? {}
+                  : {
+                      derivedStorageReference:
+                        event.payload.derivedStorageReference,
+                    }),
               }
             : artifact,
         ),
@@ -560,7 +574,21 @@ function reduceSharedEvent(
                 processingState: event.payload.processingState,
                 ...(event.payload.contentHash === undefined
                   ? {}
-                  : { contentHash: event.payload.contentHash }),
+                  : event.payload.derivedArtifactId === undefined
+                    ? { contentHash: event.payload.contentHash }
+                    : { derivedContentHash: event.payload.contentHash }),
+                ...(event.payload.derivedArtifactId === undefined
+                  ? {}
+                  : { derivedArtifactId: event.payload.derivedArtifactId }),
+                ...(event.payload.derivedSizeBytes === undefined
+                  ? {}
+                  : { derivedSizeBytes: event.payload.derivedSizeBytes }),
+                ...(event.payload.derivedStorageReference === undefined
+                  ? {}
+                  : {
+                      derivedStorageReference:
+                        event.payload.derivedStorageReference,
+                    }),
               }
             : artifact,
         ),

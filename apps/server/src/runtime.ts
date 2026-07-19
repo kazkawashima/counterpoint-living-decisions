@@ -5,6 +5,7 @@ import {
   CURRENT_SQLITE_MIGRATION_COUNT,
   createJsonCodec,
   LocalArtifactStore,
+  NodeArtifactTextExtractor,
   NodeMeetingApiKeyLeaseStore,
   NodeSqliteDatabase,
   NodeHmacWebhookVerifier,
@@ -32,6 +33,7 @@ import {
   OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
 import type {
+  ArtifactIngestionDependencies,
   DecisionCandidateDependencies,
   DecisionDependencies,
   DisclosureDependencies,
@@ -62,6 +64,7 @@ import {
 } from "./realtime.js";
 
 export interface ServerRuntime {
+  readonly artifactIngestion: ArtifactIngestionDependencies;
   readonly artifactStorageAvailable: boolean;
   readonly clock: Clock;
   readonly decisionCandidates: DecisionCandidateDependencies;
@@ -207,6 +210,12 @@ const sha256 = {
   },
 };
 
+const sha256Bytes = {
+  hash(bytes: Uint8Array): string {
+    return `sha256:${createHash("sha256").update(bytes).digest("base64url")}`;
+  },
+};
+
 async function seedFlagshipMeeting(
   meetings: MeetingRepository,
   configuration: ServerConfiguration,
@@ -317,6 +326,15 @@ export async function createLocalServerRuntime(
         : { candidateProposer: configuredCandidateProposer }),
       ...decisions,
     };
+    const artifactIngestion: ArtifactIngestionDependencies = {
+      artifacts,
+      clock,
+      events,
+      extractor: new NodeArtifactTextExtractor(),
+      hashBytes: sha256Bytes,
+      ids,
+      projections,
+    };
     const webhookVerifier =
       configuration.regulatoryWebhookSecret === undefined
         ? undefined
@@ -327,6 +345,7 @@ export async function createLocalServerRuntime(
           });
 
     return {
+      artifactIngestion,
       artifactStorageAvailable,
       clock,
       close: () => {

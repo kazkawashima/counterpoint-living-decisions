@@ -247,6 +247,28 @@ export const PrivateTextSourceFixtureSchema = z.strictObject({
   text: NonEmptyTextSchema,
   createdAt: UtcIsoTimestampSchema,
 });
+export const PrivateArtifactSchema = z.strictObject({
+  sourceArtifactId: SourceArtifactIdSchema,
+  derivedArtifactId: SourceArtifactIdSchema.optional(),
+  filename: TitleSchema,
+  contentType: z.string().trim().min(1).max(256),
+  sourceContentHash: ContentHashSchema,
+  derivedContentHash: ContentHashSchema.optional(),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(20 * 1024 * 1024),
+  derivedSizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(20 * 1024 * 1024)
+    .optional(),
+  processingState: z.enum(["processed", "failed"]),
+  failureCode: z.string().trim().min(1).max(256).optional(),
+  createdAt: UtcIsoTimestampSchema,
+});
 export const DisclosureOutgoingPayloadSchema = z.strictObject({
   sourceArtifactId: SourceArtifactIdSchema,
   exactSnippet: NonEmptyTextSchema,
@@ -269,6 +291,7 @@ export type TextRange = z.infer<typeof TextRangeSchema>;
 export type PrivateTextSourceFixture = z.infer<
   typeof PrivateTextSourceFixtureSchema
 >;
+export type PrivateArtifact = z.infer<typeof PrivateArtifactSchema>;
 export type DisclosureOutgoingPayload = z.infer<
   typeof DisclosureOutgoingPayloadSchema
 >;
@@ -443,6 +466,7 @@ export const RoleProjectionResponseSchema = z.strictObject({
     sharedFloor: SharedFloorProjectionSchema.nullable(),
   }),
   privateWorkspace: z.strictObject({
+    artifacts: z.array(PrivateArtifactSchema),
     sources: z.array(PrivateTextSourceFixtureSchema),
     disclosureCandidates: z.array(DisclosureCandidateSchema),
     inferenceSuggestions: z.array(InferenceSuggestionSchema),
@@ -664,6 +688,20 @@ export const RegisterPrivateTextSourceFixtureResponseSchema = z.strictObject({
   ...MeetingMutationReceiptShape,
   source: PrivateTextSourceFixtureSchema,
 });
+export const UploadPrivateArtifactFieldsSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  idempotencyKey: IdempotencyKeySchema,
+  ...OptionalCorrelationShape,
+});
+export const UploadPrivateArtifactResponseSchema = z.strictObject({
+  ...MeetingMutationReceiptShape,
+  artifact: PrivateArtifactSchema,
+});
+export const DownloadPrivateArtifactQuerySchema = z.strictObject({
+  artifactId: SourceArtifactIdSchema,
+  meetingId: MeetingIdSchema,
+  representation: z.enum(["source", "derived"]).default("source"),
+});
 export const PrivateTextSourceFixtureRegistrationRequestSchema =
   RegisterPrivateTextSourceFixtureRequestSchema;
 export const PrivateTextSourceFixtureRegistrationResponseSchema =
@@ -679,6 +717,15 @@ export type PrivateTextSourceFixtureRegistrationRequest =
   RegisterPrivateTextSourceFixtureRequest;
 export type PrivateTextSourceFixtureRegistrationResponse =
   RegisterPrivateTextSourceFixtureResponse;
+export type UploadPrivateArtifactFields = z.infer<
+  typeof UploadPrivateArtifactFieldsSchema
+>;
+export type UploadPrivateArtifactResponse = z.infer<
+  typeof UploadPrivateArtifactResponseSchema
+>;
+export type DownloadPrivateArtifactQuery = z.infer<
+  typeof DownloadPrivateArtifactQuerySchema
+>;
 
 export const DisclosureAssistanceSchema = z.enum(["ai_preferred", "manual"]);
 export const DisclosureProposalOriginSchema = z.enum([

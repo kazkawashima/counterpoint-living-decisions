@@ -1,4 +1,18 @@
 export {
+  ARTIFACT_MAX_FILE_BYTES,
+  ARTIFACT_MAX_MEETING_BYTES,
+  ARTIFACT_MAX_OWNER_ITEMS,
+  getPrivateArtifact,
+  uploadPrivateArtifact,
+  type ArtifactByteHashFunction,
+  type ArtifactIngestionDependencies,
+  type ArtifactIngestionFailure,
+  type GetPrivateArtifactResult,
+  type PrivateArtifactView,
+  type UploadPrivateArtifactInput,
+  type UploadPrivateArtifactResult,
+} from "./artifacts.js";
+export {
   authorize,
   capabilities,
   type AuthorizationContext,

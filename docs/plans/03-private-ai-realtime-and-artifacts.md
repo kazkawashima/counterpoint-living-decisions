@@ -18,12 +18,12 @@ text/manual degraded path.
 
 ### A1 — Artifact ingestion
 
-- [ ] Implement PDF, Markdown, plain-text, and selected supported-file
+- [x] Implement PDF, Markdown, plain-text, and selected supported-file
       validation.
-- [ ] Enforce per-file, per-owner, and per-meeting limits.
-- [ ] Store source and derived artifacts separately with hashes.
-- [ ] Implement authorized upload/download.
-- [ ] Add processing states and safe error UI.
+- [x] Enforce per-file, per-owner, and per-meeting limits.
+- [x] Store source and derived artifacts separately with hashes.
+- [x] Implement authorized upload/download.
+- [x] Add processing states and safe error UI.
 
 ### A2 — SSRF-safe URL adapter
 
