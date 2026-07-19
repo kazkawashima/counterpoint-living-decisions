@@ -12,6 +12,7 @@ import type {
   SessionRecord,
   UsageLimiter,
 } from "@counterpoint/ports";
+import { CreateManagedRealtimeCallResponseSchema } from "@counterpoint/protocol";
 
 import {
   handleJudgeManagedRealtimeHttp,
@@ -96,66 +97,74 @@ function fixture(): Fixture {
     claimStart() {
       return Promise.resolve("claimed");
     },
-    async create(ownership) {
+    create(ownership) {
       ownerships.created = ownership;
-      return "created";
+      return Promise.resolve("created");
     },
-    async findActiveOwned(owner) {
+    findActiveOwned(owner) {
       const created = ownerships.created;
-      return created !== undefined && sameOwner(created, owner)
-        ? created
-        : undefined;
+      return Promise.resolve(
+        created !== undefined && sameOwner(created, owner)
+          ? created
+          : undefined,
+      );
     },
-    async terminateOwned() {
-      return "terminated";
+    terminateOwned() {
+      return Promise.resolve("terminated");
     },
   };
   const usage = {
-    finalize: vi.fn(async () => undefined),
-    release: vi.fn(async () => undefined),
-    reserve: vi.fn(async () => ({
-      kind: "allowed" as const,
-      reservationId: RESERVATION_ID,
-    })),
+    finalize: vi.fn(() => Promise.resolve(undefined)),
+    release: vi.fn(() => Promise.resolve(undefined)),
+    reserve: vi.fn(() =>
+      Promise.resolve({
+        kind: "allowed" as const,
+        reservationId: RESERVATION_ID,
+      }),
+    ),
   } as unknown as UsageLimiter & { readonly reserve: ReturnType<typeof vi.fn> };
   const meetings: MeetingRepository = {
-    createWithAssignments: vi.fn(async () => undefined),
-    findAssignment: vi.fn(async () => ({
-      active: true,
-      meetingId: MEETING_ID,
-      participantId: PARTICIPANT_ID,
-      role: "participant" as const,
-      userId: USER_ID,
-    })),
-    findByCode: vi.fn(async () => undefined),
-    findById: vi.fn(async () => ({
-      active: true,
-      code: "WORKER-MANAGED-HTTP",
-      createdByUserId: "facilitator",
-      facilitatorParticipantId: "participant-facilitator",
-      meetingId: MEETING_ID,
-      purpose: "managed http fixture",
-    })),
-    listAssigned: vi.fn(async () => []),
-    listAssignments: vi.fn(async () => []),
+    createWithAssignments: vi.fn(() => Promise.resolve(undefined)),
+    findAssignment: vi.fn(() =>
+      Promise.resolve({
+        active: true,
+        meetingId: MEETING_ID,
+        participantId: PARTICIPANT_ID,
+        role: "participant" as const,
+        userId: USER_ID,
+      }),
+    ),
+    findByCode: vi.fn(() => Promise.resolve(undefined)),
+    findById: vi.fn(() =>
+      Promise.resolve({
+        active: true,
+        code: "WORKER-MANAGED-HTTP",
+        createdByUserId: "facilitator",
+        facilitatorParticipantId: "participant-facilitator",
+        meetingId: MEETING_ID,
+        purpose: "managed http fixture",
+      }),
+    ),
+    listAssigned: vi.fn(() => Promise.resolve([])),
+    listAssignments: vi.fn(() => Promise.resolve([])),
   };
   const dependencies = {
     authorizationPolicy: { judgeManagedAiUserIds: new Set([USER_ID]) },
     clock: { now: () => NOW },
     controllers: () => controller,
     ipReservation: {
-      hashIp: async () => `hmac-sha256:${"0".repeat(64)}`,
+      hashIp: () => Promise.resolve(`hmac-sha256:${"0".repeat(64)}`),
       ipAddress: "203.0.113.9",
     },
     meetings,
     ownerships,
     sessions: {
-      findById: async () => storedSession,
+      findById: () => Promise.resolve(storedSession),
       findByTokenHash: async (tokenHash: string) =>
         tokenHash === (await tokens.digest(BEARER)) ? storedSession : undefined,
-      put: vi.fn(async () => undefined),
-      revoke: vi.fn(async () => undefined),
-      touch: vi.fn(async () => undefined),
+      put: vi.fn(() => Promise.resolve(undefined)),
+      revoke: vi.fn(() => Promise.resolve(undefined)),
+      touch: vi.fn(() => Promise.resolve(undefined)),
     },
     tokens,
     usage,
@@ -174,6 +183,10 @@ function sameOwner(
     ownership.sessionId === owner.sessionId &&
     ownership.userId === owner.userId
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function request(body: unknown): Request {
@@ -204,10 +217,13 @@ describe("Worker managed Realtime HTTP boundary", () => {
     });
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({
+    const responseBody = CreateManagedRealtimeCallResponseSchema.parse(
+      await response.json(),
+    );
+    expect(responseBody).toEqual({
       channel: "private",
       correlationId: "correlation-worker-managed-create",
-      managedCallId: expect.any(String),
+      managedCallId: responseBody.managedCallId,
       meetingId: MEETING_ID,
       model: "gpt-realtime-2.1",
       sdpAnswer: "v=0\r\ns=server-answer\r\n",
@@ -221,10 +237,13 @@ describe("Worker managed Realtime HTTP boundary", () => {
     });
     const internalStart = fixtureValue.controllerRequests[0];
     expect(internalStart).toBeDefined();
-    const internalBody = (await internalStart?.clone().json()) as Record<
-      string,
-      unknown
-    >;
+    if (internalStart === undefined) {
+      throw new Error("Expected the controller start request");
+    }
+    const internalBody: unknown = await internalStart.clone().json();
+    if (!isRecord(internalBody)) {
+      throw new Error("Expected a JSON object");
+    }
     expect(internalBody.reservationId).toBe(RESERVATION_ID);
     expect(internalBody.safetyIdentifier).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(internalBody).not.toHaveProperty("meetingId");
@@ -245,7 +264,9 @@ describe("Worker managed Realtime HTTP boundary", () => {
         sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
       }),
     });
-    const started = (await start.json()) as { managedCallId: string };
+    const started = CreateManagedRealtimeCallResponseSchema.parse(
+      await start.json(),
+    );
     const response = await handleJudgeManagedRealtimeHttp({
       correlationId: "correlation-worker-managed-turn",
       dependencies: fixtureValue.dependencies,

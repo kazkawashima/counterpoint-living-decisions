@@ -686,16 +686,16 @@ The canonical implementation-facing artifacts are:
 - The current regular baseline is 648 Vitest tests and the contract project
   passes 117 tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
-  Cloudflare configuration checks passing. The changed files pass targeted
-  ESLint; repository-wide lint still reports 20 pre-existing errors in the
-  managed-realtime unit fixture and is not claimed as green here. The full
-  Cloudflare pool passes 10 files and 93 tests. The Worker-specific browser E2E
-  passes against Wrangler, and the changed Realtime browser file passes all
-  four cases. After fixing one strict locator and assigning the
-  evidence-heavy Decision case a 120-second capture budget, the complete
-  browser suite passes all 16 cases in one run. Reel shooting and reel-material
-  organization remain deferred from the active goal; product visibility stays
-  the priority.
+  Cloudflare configuration checks passing. Repository-wide ESLint is now green;
+  the final 20 fixture-only findings were removed with explicit Promise mocks,
+  strict response parsing, and safe unknown-JSON narrowing without changing
+  behavior. The full Cloudflare pool passes 10 files and 93 tests. The
+  Worker-specific browser E2E passes against Wrangler, and the changed Realtime
+  browser file passes all four cases. After fixing one strict locator and
+  assigning the evidence-heavy Decision case a 120-second capture budget, the
+  complete browser suite passes all 16 cases in one run. Reel shooting and
+  reel-material organization remain deferred from the active goal; product
+  visibility stays the priority.
 
 ## Not started
 
