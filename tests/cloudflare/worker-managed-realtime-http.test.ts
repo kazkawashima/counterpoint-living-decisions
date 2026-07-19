@@ -341,7 +341,12 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       await managed.json(),
     );
     expect(managedBody.mode).toBe("judgeManaged");
-    expect(Object.keys(managedBody).sort()).toEqual(["correlationId", "mode"]);
+    expect(managedBody.usageSummary).toBe("available");
+    expect(Object.keys(managedBody).sort()).toEqual([
+      "correlationId",
+      "mode",
+      "usageSummary",
+    ]);
     expect(JSON.stringify(managedBody)).not.toMatch(
       /api.?key|capability|lease|participant|session|user/iu,
     );
@@ -373,7 +378,10 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       expect(degraded.status).toBe(200);
       expect(
         RealtimeAccessResponseSchema.parse(await degraded.json()),
-      ).toMatchObject({ mode: "unavailable" });
+      ).toMatchObject({
+        mode: "unavailable",
+        usageSummary: "available",
+      });
     }
 
     const ordinary = await handler.fetch!(
@@ -384,7 +392,7 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     expect(ordinary.status).toBe(200);
     expect(
       RealtimeAccessResponseSchema.parse(await ordinary.json()),
-    ).toMatchObject({ mode: "unavailable" });
+    ).toMatchObject({ mode: "unavailable", usageSummary: "hidden" });
 
     const unauthenticated = await handler.fetch!(
       getRequest(path, "unknown-access-bearer"),

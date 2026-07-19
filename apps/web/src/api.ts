@@ -22,6 +22,7 @@ import {
   InjectDemoRegulatoryChangeResponseSchema,
   IssueDisplayTokenResponseSchema,
   IssueRealtimeClientSecretResponseSchema,
+  JudgeUsageSummaryResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -76,6 +77,7 @@ import {
   type InjectDemoRegulatoryChangeResponse,
   type IssueDisplayTokenResponse,
   type IssueRealtimeClientSecretResponse,
+  type JudgeUsageSummaryResponse,
   type ListSharedDecisionsResponse,
   type ListSharedExternalEventsResponse,
   type ListSharedEvidenceResponse,
@@ -127,6 +129,7 @@ export type {
   InjectDemoRegulatoryChangeResponse,
   IssueDisplayTokenResponse,
   IssueRealtimeClientSecretResponse,
+  JudgeUsageSummaryResponse,
   RealtimeAccessResponse,
   ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
@@ -683,6 +686,18 @@ export async function getRealtimeAccess(
     session,
   );
   return RealtimeAccessResponseSchema.parse(body);
+}
+
+export async function getJudgeUsage(
+  session: StoredSession,
+  meetingId: string,
+): Promise<JudgeUsageSummaryResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/judge/usage`,
+    { method: "GET" },
+    session,
+  );
+  return JudgeUsageSummaryResponseSchema.parse(body);
 }
 
 export async function createManagedRealtimeCall(

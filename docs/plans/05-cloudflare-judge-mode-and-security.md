@@ -252,8 +252,17 @@ C4 foundation notes:
   derive the existing keyed scope, and returns no account, IP, meeting,
   reservation, provider, credential, or content fields. It remains readable
   when provider access and the managed-call route are disabled, preserving
-  degraded-mode diagnostics without widening billable access. No public usage
-  UI is currently exposed.
+  degraded-mode diagnostics without widening billable access.
+- The server-owned Realtime access descriptor now adds only an
+  identifier-free `usageSummary` visibility flag. Worker judge sessions receive
+  `available` even while the provider route is disabled; ordinary sessions and
+  all Node sessions receive `hidden`. The browser uses that flag to fetch and
+  render the strict summary without inferring judge identity.
+- The judge workspace now shows the USD 25 rolling-24-hour budget and all eight
+  enforced dimensions, including available, exhausted, loading, and retryable
+  unavailable states. Refresh is explicit rather than polling. Reaching or
+  failing to read the limit preserves the meeting and manual text path, and
+  screenshots cover desktop, mobile, and reduced motion.
 - Cloudflare-pool integration now exercises the enabled route with a synthetic
   controller: judge authentication, cross-meeting rejection, turn/transcript
   forwarding, duplicate-start reservation suppression, termination settlement,

@@ -669,7 +669,21 @@ The canonical implementation-facing artifacts are:
   resolution, and responsive mobile rendering. Two current synthetic
   screenshots record the managed connected/transcript state; no reel
   production was performed.
-- The current regular baseline is 643 Vitest tests and the contract project
+- Judge usage visibility is now product-facing without widening authorization.
+  The strict Realtime descriptor carries only `usageSummary=available|hidden`:
+  a freshly authorized Worker judge can inspect the content-free rolling
+  24-hour summary even while managed provider work is disabled, while ordinary
+  and Node sessions remain hidden. The browser fetches the authoritative
+  same-origin route, renders the USD 25 budget and all eight dimensions, and
+  exposes explicit available, exhausted, loading, and retryable unavailable
+  states without polling or identifiers.
+- Browser evidence covers explicit refresh, same-origin external-style host
+  resolution, synthetic limit exhaustion, responsive mobile layout, reduced
+  motion, and meter failure while durable text remains available. Four
+  dedicated screenshots are recorded under
+  `docs/media/screenshots/judge-usage/`; reel production remains outside the
+  active product-visibility goal.
+- The current regular baseline is 648 Vitest tests and the contract project
   passes 117 tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted

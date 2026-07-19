@@ -458,6 +458,7 @@ export function createWorkerHandler(): ExportedHandler<Env> {
             realtimeAccess: {
               clock,
               judgeManagedAvailable: judgeManagedRealtimeRouteEnabled(env),
+              judgeUsageSummaryAvailable: true,
               leases: unavailableLeases,
             },
             sessions: new D1SessionRepository(env.DB),

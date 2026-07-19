@@ -227,18 +227,24 @@ describe("meeting-scoped realtime BYOK leases", () => {
         {
           clock: dependencies.clock,
           judgeManagedAvailable: false,
+          judgeUsageSummaryAvailable: true,
           leases: dependencies.leases,
         },
         participantContext(),
         { meetingId: "meeting-a" },
       ),
-    ).resolves.toEqual({ kind: "resolved", mode: "unavailable" });
+    ).resolves.toEqual({
+      kind: "resolved",
+      mode: "unavailable",
+      usageSummary: "hidden",
+    });
 
     await configure(dependencies);
     const result = await resolveRealtimeAccess(
       {
         clock: dependencies.clock,
         judgeManagedAvailable: false,
+        judgeUsageSummaryAvailable: true,
         leases: dependencies.leases,
       },
       participantContext(),
@@ -247,6 +253,7 @@ describe("meeting-scoped realtime BYOK leases", () => {
     expect(result).toEqual({
       kind: "resolved",
       mode: "facilitatorProvided",
+      usageSummary: "hidden",
     });
     expect(JSON.stringify(result)).not.toContain(STANDARD_API_KEY);
   });
@@ -261,23 +268,33 @@ describe("meeting-scoped realtime BYOK leases", () => {
         {
           clock: dependencies.clock,
           judgeManagedAvailable: true,
+          judgeUsageSummaryAvailable: true,
           leases,
         },
         judgeContext(),
         { meetingId: "meeting-a" },
       ),
-    ).resolves.toEqual({ kind: "resolved", mode: "judgeManaged" });
+    ).resolves.toEqual({
+      kind: "resolved",
+      mode: "judgeManaged",
+      usageSummary: "available",
+    });
     await expect(
       resolveRealtimeAccess(
         {
           clock: dependencies.clock,
           judgeManagedAvailable: false,
+          judgeUsageSummaryAvailable: true,
           leases,
         },
         judgeContext(),
         { meetingId: "meeting-a" },
       ),
-    ).resolves.toEqual({ kind: "resolved", mode: "unavailable" });
+    ).resolves.toEqual({
+      kind: "resolved",
+      mode: "unavailable",
+      usageSummary: "available",
+    });
   });
 
   it("fails closed for unauthorized scope and lease storage failure", async () => {
@@ -287,6 +304,7 @@ describe("meeting-scoped realtime BYOK leases", () => {
         {
           clock: dependencies.clock,
           judgeManagedAvailable: false,
+          judgeUsageSummaryAvailable: false,
           leases,
         },
         participantContext(),
@@ -300,6 +318,7 @@ describe("meeting-scoped realtime BYOK leases", () => {
         {
           clock: dependencies.clock,
           judgeManagedAvailable: false,
+          judgeUsageSummaryAvailable: false,
           leases,
         },
         participantContext(),

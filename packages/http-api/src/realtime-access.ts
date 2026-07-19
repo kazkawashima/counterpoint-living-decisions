@@ -72,6 +72,7 @@ export async function handleRealtimeAccessHttp(input: {
       RealtimeAccessResponseSchema.parse({
         correlationId: input.correlationId,
         mode: access.mode,
+        usageSummary: access.usageSummary,
       }),
       200,
       input.correlationId,

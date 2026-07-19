@@ -6,7 +6,10 @@ import type {
   RealtimeChannel,
   RealtimeSecretIssuer,
 } from "@counterpoint/ports";
-import type { RealtimeAccessMode } from "@counterpoint/protocol";
+import type {
+  RealtimeAccessMode,
+  RealtimeAccessResponse,
+} from "@counterpoint/protocol";
 
 import { authorize, type UserAuthorizationContext } from "./authorization.js";
 
@@ -43,6 +46,7 @@ export interface IssueRealtimeClientSecretInput {
 export interface ResolveRealtimeAccessDependencies {
   readonly clock: Clock;
   readonly judgeManagedAvailable: boolean;
+  readonly judgeUsageSummaryAvailable: boolean;
   readonly leases: MeetingApiKeyLeaseStore;
 }
 
@@ -54,6 +58,7 @@ export type ResolveRealtimeAccessResult =
   | {
       readonly kind: "resolved";
       readonly mode: RealtimeAccessMode;
+      readonly usageSummary: RealtimeAccessResponse["usageSummary"];
     }
   | {
       readonly code: "FORBIDDEN" | "REALTIME_UNAVAILABLE";
@@ -343,6 +348,9 @@ export async function resolveRealtimeAccess(
     return {
       kind: "resolved",
       mode: dependencies.judgeManagedAvailable ? "judgeManaged" : "unavailable",
+      usageSummary: dependencies.judgeUsageSummaryAvailable
+        ? "available"
+        : "hidden",
     };
   }
 
@@ -353,6 +361,7 @@ export async function resolveRealtimeAccess(
         (await activeLease(dependencies, input.meetingId)) === undefined
           ? "unavailable"
           : "facilitatorProvided",
+      usageSummary: "hidden",
     };
   } catch {
     return { code: "REALTIME_UNAVAILABLE", kind: "failed" };

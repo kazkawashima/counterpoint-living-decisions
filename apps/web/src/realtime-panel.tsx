@@ -18,6 +18,7 @@ import {
   clearStoredMeetingByok,
   configureMeetingByok,
   createManagedRealtimeCall,
+  getJudgeUsage,
   getRealtimeAccess,
   getRoleProjection,
   heartbeatMeetingByok,
@@ -27,6 +28,7 @@ import {
   storeMeetingByok,
   type CaptureUtteranceResponse,
   type GetRoleProjectionResponse,
+  type JudgeUsageSummaryResponse,
   type RealtimeAccessResponse,
   type StoredSession,
   terminateManagedRealtimeCall,
@@ -51,6 +53,7 @@ interface RealtimePanelProps {
 }
 
 type KeyState = "active" | "configuring" | "error" | "missing";
+type JudgeUsageState = "hidden" | "loading" | "ready" | "unavailable";
 type RealtimeAccessState = "checking" | RealtimeAccessResponse["mode"];
 type ProjectionState = "checking" | "offline" | "online";
 type SpeechState =
@@ -109,6 +112,175 @@ function statusLabel(state: OpenAiRealtimeState): string {
     case "degraded":
       return "Text fallback";
   }
+}
+
+function formatMicroUsd(microUsd: number): string {
+  return `$${(microUsd / 1_000_000).toFixed(2)}`;
+}
+
+function JudgeUsagePanel({
+  onRefresh,
+  state,
+  summary,
+}: {
+  readonly onRefresh: () => void;
+  readonly state: JudgeUsageState;
+  readonly summary: JudgeUsageSummaryResponse | undefined;
+}) {
+  if (state === "hidden") {
+    return null;
+  }
+  if (state === "loading" && summary === undefined) {
+    return (
+      <section
+        aria-busy="true"
+        aria-label="Judge usage limits"
+        className="judge-usage-panel"
+      >
+        <div>
+          <span className="source-type">Judge safety budget · rolling 24h</span>
+          <strong>Checking bounded usage…</strong>
+        </div>
+        <p>Content-free counters only. Meeting state and text do not wait.</p>
+      </section>
+    );
+  }
+  if (state === "unavailable" || summary === undefined) {
+    return (
+      <section
+        aria-label="Judge usage limits"
+        className="judge-usage-panel unavailable"
+      >
+        <div>
+          <span className="source-type">Judge safety budget · rolling 24h</span>
+          <strong>Usage meter unavailable</strong>
+        </div>
+        <p>New paid work remains fail-closed; durable text stays available.</p>
+        <button onClick={onRefresh} type="button">
+          Retry usage check
+        </button>
+      </section>
+    );
+  }
+
+  const { dimensions } = summary;
+  const costRatio =
+    dimensions.costMicroUsd.limit === 0
+      ? 1
+      : Math.min(
+          1,
+          dimensions.costMicroUsd.used / dimensions.costMicroUsd.limit,
+        );
+  const dailyAllowanceReached = [
+    dimensions.account,
+    dimensions.costMicroUsd,
+    dimensions.generation,
+    dimensions.ip,
+    dimensions.meeting,
+    dimensions.realtimeSeconds,
+    dimensions.tokens,
+  ].some(({ limit, remaining }) => limit > 0 && remaining === 0);
+  const callSlotInUse =
+    dimensions.concurrency.limit > 0 && dimensions.concurrency.remaining === 0;
+
+  return (
+    <section
+      aria-busy={state === "loading"}
+      aria-label="Judge usage limits"
+      className={`judge-usage-panel ${
+        dailyAllowanceReached ? "exhausted" : "available"
+      }`}
+    >
+      <div className="judge-usage-heading">
+        <div>
+          <span className="source-type">Judge safety budget · rolling 24h</span>
+          <strong aria-live="polite">
+            {dailyAllowanceReached
+              ? "Daily allowance reached"
+              : callSlotInUse
+                ? "Bounded call slot in use"
+                : "Budget available"}
+          </strong>
+        </div>
+        <button
+          disabled={state === "loading"}
+          onClick={onRefresh}
+          type="button"
+        >
+          {state === "loading" ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      <div className="judge-cost-meter">
+        <div>
+          <small>Counted toward enforced cost limit</small>
+          <strong>
+            {formatMicroUsd(dimensions.costMicroUsd.used)}
+            <span>
+              {" / "}
+              {formatMicroUsd(dimensions.costMicroUsd.limit)}
+            </span>
+          </strong>
+        </div>
+        <progress aria-label="Judge cost usage" max={1} value={costRatio} />
+      </div>
+      <dl className="judge-usage-dimensions">
+        <div>
+          <dt>Account requests</dt>
+          <dd>
+            {dimensions.account.used} / {dimensions.account.limit}
+            <em> · {dimensions.account.remaining} left</em>
+          </dd>
+        </div>
+        <div>
+          <dt>Network requests</dt>
+          <dd>
+            {dimensions.ip.used} / {dimensions.ip.limit}
+            <em> · {dimensions.ip.remaining} left</em>
+          </dd>
+        </div>
+        <div>
+          <dt>Meeting requests</dt>
+          <dd>
+            {dimensions.meeting.used} / {dimensions.meeting.limit}
+            <em> · {dimensions.meeting.remaining} left</em>
+          </dd>
+        </div>
+        <div>
+          <dt>Active calls</dt>
+          <dd>
+            {dimensions.concurrency.used} / {dimensions.concurrency.limit}
+            <em> · {dimensions.concurrency.remaining} free</em>
+          </dd>
+        </div>
+        <div>
+          <dt>Realtime</dt>
+          <dd>
+            {dimensions.realtimeSeconds.used}s
+            <em> / {dimensions.realtimeSeconds.limit}s</em>
+          </dd>
+        </div>
+        <div>
+          <dt>Generations</dt>
+          <dd>
+            {dimensions.generation.used}
+            <em> / {dimensions.generation.limit}</em>
+          </dd>
+        </div>
+        <div>
+          <dt>Tokens</dt>
+          <dd>
+            {dimensions.tokens.used.toLocaleString("en-US")}
+            <em> / {dimensions.tokens.limit.toLocaleString("en-US")}</em>
+          </dd>
+        </div>
+      </dl>
+      <p>
+        Reserved or completed work counts toward these limits. The server checks
+        every managed start before provider work; reaching a limit preserves the
+        meeting and manual text path.
+      </p>
+    </section>
+  );
 }
 
 function RealtimeChannelCard({
@@ -198,6 +370,9 @@ export function RealtimePanel({
   const [projection, setProjection] = useState<GetRoleProjectionResponse>();
   const [projectionState, setProjectionState] =
     useState<ProjectionState>("checking");
+  const [judgeUsage, setJudgeUsage] = useState<JudgeUsageSummaryResponse>();
+  const [judgeUsageState, setJudgeUsageState] =
+    useState<JudgeUsageState>("hidden");
   const [realtimeAccess, setRealtimeAccess] =
     useState<RealtimeAccessState>("checking");
   const [speechState, setSpeechState] = useState<SpeechState>("idle");
@@ -219,6 +394,17 @@ export function RealtimePanel({
     | undefined
   >(undefined);
 
+  const refreshJudgeUsage = useCallback(async () => {
+    setJudgeUsageState("loading");
+    try {
+      const summary = await getJudgeUsage(session, meetingId);
+      setJudgeUsage(summary);
+      setJudgeUsageState("ready");
+    } catch {
+      setJudgeUsageState("unavailable");
+    }
+  }, [meetingId, session]);
+
   if (controllers.current === undefined) {
     const connect = async (
       selectedChannel: OpenAiRealtimeChannel,
@@ -227,6 +413,12 @@ export function RealtimePanel({
       try {
         const access = await getRealtimeAccess(session, meetingId);
         setRealtimeAccess(access.mode);
+        if (access.usageSummary === "available") {
+          void refreshJudgeUsage();
+        } else {
+          setJudgeUsage(undefined);
+          setJudgeUsageState("hidden");
+        }
         if (access.mode === "facilitatorProvided") {
           const issued = await issueRealtimeClientSecret(
             session,
@@ -244,11 +436,16 @@ export function RealtimePanel({
             awaitTranscript: async ({ managedCallId, utteranceId }) => {
               for (let attempt = 0; attempt < 40; attempt += 1) {
                 try {
-                  return await awaitManagedRealtimeTranscript(session, {
-                    managedCallId,
-                    meetingId,
-                    utteranceId,
-                  });
+                  const completed = await awaitManagedRealtimeTranscript(
+                    session,
+                    {
+                      managedCallId,
+                      meetingId,
+                      utteranceId,
+                    },
+                  );
+                  void refreshJudgeUsage();
+                  return completed;
                 } catch (cause) {
                   if (
                     !(cause instanceof ApiError) ||
@@ -273,12 +470,14 @@ export function RealtimePanel({
             },
             channel: selectedChannel,
             createCall: async ({ channel, idempotencyKey: key, sdpOffer }) => {
-              return createManagedRealtimeCall(session, {
+              const created = await createManagedRealtimeCall(session, {
                 channel,
                 idempotencyKey: key,
                 meetingId,
                 sdpOffer,
               });
+              void refreshJudgeUsage();
+              return created;
             },
             idempotencyKey,
             onTranscript: (transcript) =>
@@ -288,6 +487,7 @@ export function RealtimePanel({
                 managedCallId,
                 meetingId,
               });
+              void refreshJudgeUsage();
             },
           });
         }
@@ -600,6 +800,12 @@ export function RealtimePanel({
       .then((access) => {
         if (!cancelled) {
           setRealtimeAccess(access.mode);
+          if (access.usageSummary === "available") {
+            void refreshJudgeUsage();
+          } else {
+            setJudgeUsage(undefined);
+            setJudgeUsageState("hidden");
+          }
         }
       })
       .catch(() => {
@@ -610,7 +816,7 @@ export function RealtimePanel({
     return () => {
       cancelled = true;
     };
-  }, [meetingId, session]);
+  }, [meetingId, refreshJudgeUsage, session]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -892,6 +1098,11 @@ export function RealtimePanel({
           controller={controllers.current.shared}
           onConnect={() => connectChannel("shared")}
           state={sharedState}
+        />
+        <JudgeUsagePanel
+          onRefresh={() => void refreshJudgeUsage()}
+          state={judgeUsageState}
+          summary={judgeUsage}
         />
         {error === undefined ? null : (
           <p className="realtime-error" role="alert">

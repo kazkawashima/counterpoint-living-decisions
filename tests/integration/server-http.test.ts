@@ -1153,7 +1153,7 @@ describe("Node HTTP flagship shell", () => {
     expect(unavailable.status).toBe(200);
     expect(
       RealtimeAccessResponseSchema.parse(await unavailable.json()),
-    ).toMatchObject({ mode: "unavailable" });
+    ).toMatchObject({ mode: "unavailable", usageSummary: "hidden" });
 
     const standardApiKey = "sk-synthetic-access-resolution-never-returned";
     const configured = await createServerApp(runtime).request(
@@ -1181,6 +1181,7 @@ describe("Node HTTP flagship shell", () => {
     expect(Object.keys(facilitatorBody).sort()).toEqual([
       "correlationId",
       "mode",
+      "usageSummary",
     ]);
     expect(JSON.stringify(facilitatorBody)).not.toContain(standardApiKey);
 
@@ -1201,7 +1202,7 @@ describe("Node HTTP flagship shell", () => {
     expect(judgeUnavailable.status).toBe(200);
     expect(
       RealtimeAccessResponseSchema.parse(await judgeUnavailable.json()),
-    ).toMatchObject({ mode: "unavailable" });
+    ).toMatchObject({ mode: "unavailable", usageSummary: "hidden" });
 
     const managedRuntime = {
       ...judgeRuntime,
@@ -1225,7 +1226,7 @@ describe("Node HTTP flagship shell", () => {
     expect(judgeManaged.status).toBe(200);
     expect(
       RealtimeAccessResponseSchema.parse(await judgeManaged.json()),
-    ).toMatchObject({ mode: "judgeManaged" });
+    ).toMatchObject({ mode: "judgeManaged", usageSummary: "hidden" });
 
     const unauthenticated = await createServerApp(runtime).request(accessPath);
     expect(unauthenticated.status).toBe(401);

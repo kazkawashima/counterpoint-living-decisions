@@ -13,6 +13,9 @@ const degradedScreenshotDirectory = resolve(
   "docs/media/screenshots/degraded-mode",
 );
 const degradedClipDirectory = resolve("docs/media/clips/degraded-mode");
+const judgeUsageScreenshotDirectory = resolve(
+  "docs/media/screenshots/judge-usage",
+);
 const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
 async function installSyntheticWebRtc(context: BrowserContext) {
@@ -144,6 +147,7 @@ test.beforeAll(async () => {
   await mkdir(voiceClipDirectory, { recursive: true });
   await mkdir(degradedScreenshotDirectory, { recursive: true });
   await mkdir(degradedClipDirectory, { recursive: true });
+  await mkdir(judgeUsageScreenshotDirectory, { recursive: true });
 });
 
 test("facilitator secures BYOK and connects isolated private/shared WebRTC channels", async ({
@@ -334,6 +338,7 @@ test("server-owned access switches the browser to a credential-free managed call
   browser,
 }) => {
   const context = await browser.newContext({
+    reducedMotion: "reduce",
     viewport: { height: 900, width: 1440 },
   });
   await installSyntheticWebRtc(context);
@@ -344,12 +349,17 @@ test("server-owned access switches the browser to a credential-free managed call
   let managedHost = "";
   let managedIdempotencyKey = "";
   let managedTurnUtteranceId = "";
+  let usageExhausted = false;
+  let usageHost = "";
+  let usageRequests = 0;
+  let usageUnavailable = false;
 
   await context.route("**/api/v1/meetings/*/realtime/access", async (route) => {
     await route.fulfill({
       body: JSON.stringify({
         correlationId: "correlation-managed-access",
         mode: "judgeManaged",
+        usageSummary: "available",
       }),
       contentType: "application/json",
       status: 200,
@@ -369,6 +379,48 @@ test("server-owned access switches the browser to a credential-free managed call
       await route.fulfill({ body: "", status: 500 });
     },
   );
+  await context.route("**/api/v1/meetings/*/judge/usage", async (route) => {
+    usageHost = new URL(route.request().url()).hostname;
+    usageRequests += 1;
+    if (usageUnavailable) {
+      await route.fulfill({
+        body: JSON.stringify({
+          code: "REALTIME_UNAVAILABLE",
+          correlationId: `correlation-judge-usage-${String(usageRequests)}`,
+          message: "Realtime is unavailable.",
+        }),
+        contentType: "application/json",
+        status: 503,
+      });
+      return;
+    }
+    await route.fulfill({
+      body: JSON.stringify({
+        correlationId: `correlation-judge-usage-${String(usageRequests)}`,
+        dimensions: {
+          account: { limit: 10, remaining: 9, used: 1 },
+          concurrency: { limit: 1, remaining: 1, used: 0 },
+          costMicroUsd: usageExhausted
+            ? { limit: 25_000_000, remaining: 0, used: 25_000_000 }
+            : { limit: 25_000_000, remaining: 6_600_000, used: 18_400_000 },
+          generation: usageExhausted
+            ? { limit: 3, remaining: 0, used: 3 }
+            : { limit: 3, remaining: 1, used: 2 },
+          ip: { limit: 10, remaining: 9, used: 1 },
+          meeting: { limit: 10, remaining: 9, used: 1 },
+          realtimeSeconds: usageExhausted
+            ? { limit: 30, remaining: 0, used: 30 }
+            : { limit: 30, remaining: 6, used: 24 },
+          tokens: usageExhausted
+            ? { limit: 1_200_000, remaining: 0, used: 1_200_000 }
+            : { limit: 1_200_000, remaining: 400_000, used: 800_000 },
+        },
+        rollingWindowSeconds: 86_400,
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
   await context.route(
     "**/api/v1/meetings/*/realtime/calls**",
     async (route) => {
@@ -463,6 +515,26 @@ test("server-owned access switches the browser to a credential-free managed call
     ),
   ).toBeVisible();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  const usagePanel = page.getByRole("region", {
+    name: "Judge usage limits",
+  });
+  await expect(usagePanel.getByText("Budget available")).toBeVisible();
+  await expect(usagePanel.getByText("$18.40 / $25.00")).toBeVisible();
+  await expect(usagePanel.getByText("24s / 30s")).toBeVisible();
+  await expect(usagePanel.getByText("800,000 / 1,200,000")).toBeVisible();
+  expect(usageHost).not.toBe("localhost");
+  await expect(
+    usagePanel.getByText(
+      /accountId|ipHash|reservationId|meeting-global-ai-rollout/iu,
+    ),
+  ).toHaveCount(0);
+  const requestsBeforeRefresh = usageRequests;
+  await usagePanel.getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(() => usageRequests).toBeGreaterThan(requestsBeforeRefresh);
+  await usagePanel.screenshot({
+    animations: "disabled",
+    path: `${judgeUsageScreenshotDirectory}/2026-07-20-judge-usage-available-desktop-reduced-motion.png`,
+  });
 
   const privateCard = page
     .getByRole("article")
@@ -490,6 +562,7 @@ test("server-owned access switches the browser to a credential-free managed call
   await expect(
     speech.getByRole("button", { name: /Listening privately/u }),
   ).toBeVisible();
+  usageExhausted = true;
   await page.mouse.up();
   await expect(
     speech.getByText("Captured privately · Synthetic managed judge statement."),
@@ -497,15 +570,38 @@ test("server-owned access switches the browser to a credential-free managed call
   expect(managedTurnUtteranceId).toMatch(/^[0-9a-f-]{36}$/u);
   expect(clientSecretRequests).toBe(0);
   expect(directProviderRequests).toBe(0);
+  await expect(usagePanel.getByText("Daily allowance reached")).toBeVisible();
+  await expect(usagePanel.getByText("$25.00 / $25.00")).toBeVisible();
+  await expect.poll(() => usageRequests).toBeGreaterThanOrEqual(3);
+  await usagePanel.screenshot({
+    animations: "disabled",
+    path: `${judgeUsageScreenshotDirectory}/2026-07-20-judge-usage-exhausted-desktop-reduced-motion.png`,
+  });
 
   await dock.screenshot({
     animations: "disabled",
     path: `${screenshotDirectory}/2026-07-20-judge-managed-connected-desktop.png`,
   });
   await page.setViewportSize({ height: 844, width: 390 });
+  await usagePanel.screenshot({
+    animations: "disabled",
+    path: `${judgeUsageScreenshotDirectory}/2026-07-20-judge-usage-exhausted-mobile-reduced-motion.png`,
+  });
   await dock.screenshot({
     animations: "disabled",
     path: `${screenshotDirectory}/2026-07-20-judge-managed-connected-mobile.png`,
+  });
+  usageUnavailable = true;
+  await usagePanel.getByRole("button", { name: "Refresh" }).click();
+  await expect(usagePanel.getByText("Usage meter unavailable")).toBeVisible();
+  await expect(
+    usagePanel.getByText(
+      "New paid work remains fail-closed; durable text stays available.",
+    ),
+  ).toBeVisible();
+  await usagePanel.screenshot({
+    animations: "disabled",
+    path: `${judgeUsageScreenshotDirectory}/2026-07-20-judge-usage-unavailable-mobile-reduced-motion.png`,
   });
   await privateCard.getByRole("button", { name: "Disconnect" }).click();
   await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
@@ -692,6 +788,11 @@ test("participant mobile view receives no standard-key control", async ({
     viewport: { height: 844, width: 390 },
   });
   await installSyntheticWebRtc(context);
+  let judgeUsageRequests = 0;
+  await context.route("**/api/v1/meetings/*/judge/usage", async (route) => {
+    judgeUsageRequests += 1;
+    await route.fulfill({ body: "", status: 403 });
+  });
   const page = await context.newPage();
   await page.goto(baseURL ?? "/");
   await signIn(page, "Legal", "counterpoint-legal");
@@ -699,6 +800,10 @@ test("participant mobile view receives no standard-key control", async ({
   await expect(page.getByText("Realtime access unavailable")).toBeVisible();
   await expect(page.getByLabel("Facilitator BYOK · tab only")).toHaveCount(0);
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Judge usage limits" }),
+  ).toHaveCount(0);
+  expect(judgeUsageRequests).toBe(0);
   await page
     .getByRole("region", {
       name: "Live channels, explicit boundaries",

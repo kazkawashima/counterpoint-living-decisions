@@ -1,12 +1,14 @@
 import {
   acquireSharedFloor,
   captureUtterance,
+  getJudgeUsage,
   getRoleProjection,
   registerPrivateUrlArtifact,
   releaseSharedFloor,
+  type JudgeUsageSummaryResponse,
   type StoredSession,
 } from "../../../apps/web/src/api.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 const session: StoredSession = {
   bearerToken: "synthetic-bearer-token",
@@ -48,11 +50,77 @@ function expectAuthenticatedJsonRequest(
   expect(headers.get("content-type")).toBe("application/json");
 }
 
+function judgeUsageResponse() {
+  return {
+    correlationId: "correlation-judge-usage",
+    dimensions: {
+      account: { limit: 10, remaining: 9, used: 1 },
+      concurrency: { limit: 1, remaining: 0, used: 1 },
+      costMicroUsd: { limit: 25_000_000, remaining: 0, used: 25_000_000 },
+      generation: { limit: 3, remaining: 0, used: 3 },
+      ip: { limit: 10, remaining: 9, used: 1 },
+      meeting: { limit: 10, remaining: 9, used: 1 },
+      realtimeSeconds: { limit: 30, remaining: 0, used: 30 },
+      tokens: { limit: 1_200_000, remaining: 0, used: 1_200_000 },
+    },
+    rollingWindowSeconds: 86_400,
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("A7 browser API helpers", () => {
+  it("gets the strict judge usage summary from the authenticated same-origin route", async () => {
+    const response = judgeUsageResponse();
+    const fetchMock = fetchMockFor(response);
+
+    const result = await getJudgeUsage(session, "meeting/synthetic");
+
+    expect(result).toEqual(response);
+    expectTypeOf(result).toEqualTypeOf<JudgeUsageSummaryResponse>();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/meetings/meeting%2Fsynthetic/judge/usage",
+      expect.any(Object),
+    );
+    const options = fetchMock.mock.calls[0]?.[1];
+    expect(options?.method).toBe("GET");
+    expect(new Headers(options?.headers).get("authorization")).toBe(
+      `Bearer ${session.bearerToken}`,
+    );
+  });
+
+  it.each([
+    [
+      "a malformed dimension",
+      {
+        ...judgeUsageResponse(),
+        dimensions: {
+          ...judgeUsageResponse().dimensions,
+          tokens: { limit: 1_200_000, remaining: 0, used: -1 },
+        },
+      },
+    ],
+    [
+      "an account identifier",
+      { ...judgeUsageResponse(), accountId: "private-account" },
+    ],
+    [
+      "an IP hash",
+      { ...judgeUsageResponse(), ipHash: `hmac-sha256:${"a".repeat(64)}` },
+    ],
+    [
+      "a reservation identifier",
+      { ...judgeUsageResponse(), reservationId: "private-reservation" },
+    ],
+  ])("rejects judge usage containing %s", async (_label, response) => {
+    fetchMockFor(response);
+
+    await expect(getJudgeUsage(session, "meeting-1")).rejects.toThrow();
+  });
+
   it("gets the caller-specific role projection for an encoded meeting scope", async () => {
     const response = {
       capabilities: ["meeting:read"],

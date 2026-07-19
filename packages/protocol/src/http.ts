@@ -507,6 +507,7 @@ export const RealtimeAccessModeSchema = z.enum([
 export const RealtimeAccessResponseSchema = z.strictObject({
   ...RequiredCorrelationShape,
   mode: RealtimeAccessModeSchema,
+  usageSummary: z.enum(["available", "hidden"]),
 });
 
 export const ConfigureMeetingByokRequestSchema = z.strictObject({

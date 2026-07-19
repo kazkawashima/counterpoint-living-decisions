@@ -1333,6 +1333,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
           clock: runtime.clock,
           judgeManagedAvailable:
             runtime.realtimeSecrets.judgeManagedIssuer !== undefined,
+          judgeUsageSummaryAvailable: false,
           leases: runtime.realtimeSecrets.leases,
         },
         sessions: runtime.sessions,

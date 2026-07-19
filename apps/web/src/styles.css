@@ -964,6 +964,138 @@ button:disabled {
   background: transparent;
 }
 
+.judge-usage-panel {
+  display: grid;
+  padding: 0.85rem;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(18rem, 1.2fr);
+  align-items: center;
+  gap: 0.9rem;
+  border: 1px solid rgba(197, 164, 255, 0.28);
+  background:
+    linear-gradient(90deg, rgba(197, 164, 255, 0.08), transparent 30%),
+    rgba(5, 10, 8, 0.8);
+}
+
+.judge-usage-panel.exhausted,
+.judge-usage-panel.unavailable {
+  border-color: rgba(255, 173, 152, 0.3);
+  background:
+    linear-gradient(90deg, rgba(255, 173, 152, 0.08), transparent 30%),
+    rgba(10, 7, 6, 0.82);
+}
+
+.judge-usage-heading,
+.judge-usage-heading > div,
+.judge-usage-panel > div:first-child,
+.judge-cost-meter,
+.judge-cost-meter > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.judge-usage-heading > button,
+.judge-usage-panel > button,
+.judge-cost-meter small,
+.judge-usage-dimensions dt {
+  color: #7f8b84;
+  font-family: ui-monospace, monospace;
+  font-size: 0.48rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.judge-usage-heading > button,
+.judge-usage-panel > button {
+  width: fit-content;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(197, 164, 255, 0.25);
+  color: #c7afff;
+  background: rgba(197, 164, 255, 0.05);
+}
+
+.judge-usage-heading > button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.judge-usage-heading > div > strong {
+  color: #dce5df;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.92rem;
+  font-weight: 400;
+}
+
+.judge-cost-meter strong {
+  color: var(--acid);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.judge-cost-meter strong span,
+.judge-usage-dimensions em {
+  color: #78847d;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.judge-cost-meter progress {
+  width: 100%;
+  height: 0.34rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.08);
+  accent-color: var(--violet);
+}
+
+.judge-cost-meter progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.judge-cost-meter progress::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--violet), var(--acid));
+}
+
+.judge-cost-meter progress::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--violet), var(--acid));
+}
+
+.judge-usage-dimensions {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.judge-usage-dimensions > div {
+  display: grid;
+  min-height: 2.8rem;
+  padding: 0.48rem;
+  align-content: center;
+  gap: 0.12rem;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.024);
+}
+
+.judge-usage-dimensions dd {
+  margin: 0;
+  color: #d6dfda;
+  font-family: ui-monospace, monospace;
+  font-size: 0.55rem;
+  font-weight: 500;
+}
+
+.judge-usage-panel > p {
+  margin: 0;
+  grid-column: 1 / -1;
+  color: #859189;
+  font-size: 0.54rem;
+  line-height: 1.45;
+}
+
 .realtime-channel-card {
   display: grid;
   align-content: space-between;
@@ -4336,6 +4468,19 @@ button:disabled {
 
   .realtime-controls {
     grid-template-columns: 1fr;
+  }
+
+  .judge-usage-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .judge-usage-panel > p {
+    grid-column: auto;
+  }
+
+  .judge-usage-dimensions {
+    grid-column: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .artifact-vault > header,

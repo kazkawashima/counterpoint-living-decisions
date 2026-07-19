@@ -1284,18 +1284,23 @@ describe("strict v1 HTTP protocol", () => {
     const response = {
       correlationId: "correlation-1",
       mode: "judgeManaged",
+      usageSummary: "available",
     } as const;
     const parsed = RealtimeAccessResponseSchema.parse(response);
     expectTypeOf(parsed).toEqualTypeOf<RealtimeAccessResponse>();
     for (const forbiddenField of [
       "apiKey",
+      "accountId",
       "capability",
+      "ipAddress",
       "judgeManagedAvailable",
       "keySource",
       "lease",
       "meetingId",
       "participantId",
+      "reservationId",
       "sessionId",
+      "unknownField",
       "userId",
     ]) {
       expect(
@@ -1309,6 +1314,12 @@ describe("strict v1 HTTP protocol", () => {
       RealtimeAccessResponseSchema.safeParse({
         ...response,
         mode: "byok",
+      }).success,
+    ).toBe(false);
+    expect(
+      RealtimeAccessResponseSchema.safeParse({
+        ...response,
+        usageSummary: "enabled",
       }).success,
     ).toBe(false);
   });
