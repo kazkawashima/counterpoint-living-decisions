@@ -8,8 +8,8 @@ Updated: 2026-07-19
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
 The revocable read-only shared display and A6 transient BYOK/client-secret
-backend are also complete; direct browser WebRTC and hosted judge mode are
-next.**
+backend are also complete. Direct browser WebRTC is connected with an explicit
+no-microphone lifecycle; A7 voice controls and hosted judge mode are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -242,11 +242,30 @@ The canonical implementation-facing artifacts are:
 - The current official `gpt-realtime-2.1` client-secret path was rechecked and
   exercised successfully with the local standard key. The live smoke reports
   only channel, model, expiry, and status; it does not print either credential.
+- The browser now follows the direct OpenAI WebRTC SDP path with an
+  `oai-events` data channel and ephemeral Bearer credential. A6 creates no
+  microphone or audio track; both private and shared sessions visibly begin
+  `Mic off` and remain separate controllers.
+- Each channel exposes off, connecting, connected, reconnecting, and degraded
+  states. Connections close after 60 idle seconds, activity renews the
+  deadline, retries are capped at 250/500/1000 ms, and manual disconnect
+  suppresses reconnect.
+- Facilitator BYOK is stored only in meeting-scoped tab `sessionStorage`,
+  renewed by a one-minute heartbeat, removed from browser/server on explicit
+  clear or logout, and never rendered after entry. Participants receive no
+  standard-key control.
+- Browser proof covers BYOK-required, both-channel connected, private-only
+  degraded while shared remains connected, and participant mobile
+  reduced-motion states. Four screenshots and a nine-second synthetic
+  connect-to-degraded clip accompany the E2E.
+- The complete verification surface now passes 279 unit/contract/integration
+  tests and all 11 browser E2E scenarios, in addition to build, lint,
+  typecheck, formatting, and architecture checks.
 
 ## In progress
 
-- Connect the completed A6 client-secret boundary to direct browser WebRTC with
-  idle close, capped reconnect, explicit status UI, and text-safe degradation.
+- Continue with A7 explicit push-to-talk and shared-floor interaction without
+  changing the completed text fallback or A6 channel isolation.
 
 ## Not started
 
@@ -254,10 +273,10 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue A6 in
-[`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md):
-add facilitator tab-scoped BYOK controls and direct browser WebRTC lifecycle,
-then capture status, reconnect, mobile, reduced-motion, and degraded evidence.
+Continue Plan 03 in
+[`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md)
+at A7: add explicit push-to-talk, immutable utterance channel selection,
+shared-floor exclusion, transcript idempotency, and text-equivalent commands.
 Keep the allowlisted judge-managed source and USD 25 product spend gate in Plan
 05.
 

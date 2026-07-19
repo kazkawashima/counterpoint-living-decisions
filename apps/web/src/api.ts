@@ -1,14 +1,18 @@
 import {
   ApproveDisclosureResponseSchema,
+  ClearMeetingByokResponseSchema,
   CommitDecisionResponseSchema,
+  ConfigureMeetingByokResponseSchema,
   DecisionAuditResponseSchema,
   DecisionHistoryResponseSchema,
   DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   FacilitatorDemoResetResponseSchema,
+  HeartbeatMeetingByokResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
   IssueDisplayTokenResponseSchema,
+  IssueRealtimeClientSecretResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -31,8 +35,10 @@ import {
   SynthesizeSharedDecisionResponseSchema,
   type AssignedMeeting,
   type ApproveDisclosureResponse,
+  type ClearMeetingByokResponse,
   type CommitDecisionRequest,
   type CommitDecisionResponse,
+  type ConfigureMeetingByokResponse,
   type DecisionAuditQuery,
   type DecisionAuditResponse,
   type DecisionHistoryQuery,
@@ -41,9 +47,11 @@ import {
   type DispositionSharedDecisionCandidateRequest,
   type DispositionSharedDecisionCandidateResponse,
   type FacilitatorDemoResetResponse,
+  type HeartbeatMeetingByokResponse,
   type LoginResponse,
   type InjectDemoRegulatoryChangeResponse,
   type IssueDisplayTokenResponse,
+  type IssueRealtimeClientSecretResponse,
   type ListSharedDecisionsResponse,
   type ListSharedExternalEventsResponse,
   type ListSharedEvidenceResponse,
@@ -68,16 +76,20 @@ import {
 } from "@counterpoint/protocol";
 
 export type {
+  ClearMeetingByokResponse,
   CommitDecisionRequest,
   CommitDecisionResponse,
+  ConfigureMeetingByokResponse,
   DecisionAuditQuery,
   DecisionAuditResponse,
   DecisionHistoryQuery,
   DecisionHistoryResponse,
   DecisionJsonExportResponse,
   FacilitatorDemoResetResponse,
+  HeartbeatMeetingByokResponse,
   InjectDemoRegulatoryChangeResponse,
   IssueDisplayTokenResponse,
+  IssueRealtimeClientSecretResponse,
   ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
   DispositionSharedDecisionCandidateResponse,
@@ -224,6 +236,7 @@ export interface DecisionAuditClientQuery {
 }
 
 const SESSION_KEY = "counterpoint.session";
+const MEETING_BYOK_KEY_PREFIX = "counterpoint.byok.";
 
 export interface StoredSession {
   readonly bearerToken: string;
@@ -278,6 +291,36 @@ export function storeSession(session: LoginResponse): StoredSession {
 
 export function clearStoredSession(): void {
   window.sessionStorage.removeItem(SESSION_KEY);
+}
+
+export function loadStoredMeetingByok(meetingId: string): string | undefined {
+  const apiKey = window.sessionStorage.getItem(
+    `${MEETING_BYOK_KEY_PREFIX}${meetingId}`,
+  );
+  return apiKey === null || apiKey.length === 0 ? undefined : apiKey;
+}
+
+export function storeMeetingByok(meetingId: string, apiKey: string): void {
+  window.sessionStorage.setItem(
+    `${MEETING_BYOK_KEY_PREFIX}${meetingId}`,
+    apiKey,
+  );
+}
+
+export function clearStoredMeetingByok(meetingId: string): void {
+  window.sessionStorage.removeItem(`${MEETING_BYOK_KEY_PREFIX}${meetingId}`);
+}
+
+export function clearAllStoredMeetingByok(): void {
+  const keys = Array.from(
+    { length: window.sessionStorage.length },
+    (_, index) => window.sessionStorage.key(index),
+  );
+  for (const key of keys) {
+    if (key?.startsWith(MEETING_BYOK_KEY_PREFIX) === true) {
+      window.sessionStorage.removeItem(key);
+    }
+  }
 }
 
 async function responseJson(response: Response): Promise<unknown> {
@@ -421,6 +464,68 @@ export async function logout(session: StoredSession): Promise<void> {
     session,
   );
   LogoutResponseSchema.parse(body);
+}
+
+export async function configureMeetingByok(
+  session: StoredSession,
+  meetingId: string,
+  apiKey: string,
+): Promise<ConfigureMeetingByokResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/byok`,
+    {
+      body: JSON.stringify({ apiKey, meetingId }),
+      method: "PUT",
+    },
+    session,
+  );
+  return ConfigureMeetingByokResponseSchema.parse(body);
+}
+
+export async function heartbeatMeetingByok(
+  session: StoredSession,
+  meetingId: string,
+): Promise<HeartbeatMeetingByokResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/byok/heartbeat`,
+    {
+      body: JSON.stringify({ meetingId }),
+      method: "POST",
+    },
+    session,
+  );
+  return HeartbeatMeetingByokResponseSchema.parse(body);
+}
+
+export async function clearMeetingByok(
+  session: StoredSession,
+  meetingId: string,
+): Promise<ClearMeetingByokResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/byok`,
+    {
+      body: JSON.stringify({ meetingId }),
+      method: "DELETE",
+    },
+    session,
+  );
+  return ClearMeetingByokResponseSchema.parse(body);
+}
+
+export async function issueRealtimeClientSecret(
+  session: StoredSession,
+  meetingId: string,
+  channel: "private" | "shared",
+): Promise<IssueRealtimeClientSecretResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/realtime/client-secrets`,
+    {
+      body: JSON.stringify({ channel, meetingId }),
+      method: "POST",
+    },
+    session,
+  );
+  return IssueRealtimeClientSecretResponseSchema.parse(body);
 }
 
 export async function registerPrivateTextSource(

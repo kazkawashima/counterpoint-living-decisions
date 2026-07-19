@@ -65,8 +65,8 @@ text/manual degraded path.
       BYOK source is complete; the allowlisted Worker Secret judge source and
       spend gate remain in Plan 05.
 - [x] Issue channel-scoped short-lived secrets without exposing standard key.
-- [ ] Build direct browser WebRTC connection.
-- [ ] Implement lifecycle, idle close, capped reconnect, and status UI.
+- [x] Build direct browser WebRTC connection.
+- [x] Implement lifecycle, idle close, capped reconnect, and status UI.
 - [x] Validate session identity for app realtime traffic.
 
 ### A7 — Voice channel interaction

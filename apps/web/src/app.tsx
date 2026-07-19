@@ -18,6 +18,7 @@ import type {
 import {
   ApiError,
   approveDisclosure,
+  clearAllStoredMeetingByok,
   clearStoredSession,
   commitDecision,
   dispositionSharedDecisionCandidate,
@@ -51,6 +52,7 @@ import {
   synthesizeSharedDecisionCandidate,
   type StoredSession,
 } from "./api.js";
+import { RealtimePanel } from "./realtime-panel.js";
 
 const DEMO_IDENTITIES = [
   { label: "Product", role: "Facilitator", userId: "product" },
@@ -2712,6 +2714,12 @@ function WorkspaceShell({
         ) : null}
       </div>
 
+      <RealtimePanel
+        facilitator={meeting.role === "facilitator"}
+        meetingId={meeting.meetingId}
+        session={session}
+      />
+
       <section className="workspace-grid">
         <article className="private-zone">
           <header>
@@ -3040,6 +3048,7 @@ export function App() {
             (cause.code === "AUTHENTICATION_REQUIRED" ||
               cause.code === "SESSION_EXPIRED")
           ) {
+            clearAllStoredMeetingByok();
             clearStoredSession();
             setSession(undefined);
           }
@@ -3058,6 +3067,7 @@ export function App() {
       try {
         await logout(session);
       } finally {
+        clearAllStoredMeetingByok();
         clearStoredSession();
         setSession(undefined);
         setMeetings([]);

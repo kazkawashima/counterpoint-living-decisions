@@ -805,6 +805,265 @@ button:disabled {
   font-size: 0.52rem;
 }
 
+.realtime-dock {
+  display: grid;
+  padding: 1rem 5vw;
+  grid-template-columns: minmax(14rem, 0.7fr) minmax(28rem, 1.3fr);
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(90deg, rgba(197, 164, 255, 0.035), transparent 45%),
+    rgba(7, 14, 12, 0.92);
+}
+
+.realtime-intro {
+  display: grid;
+  align-content: center;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+}
+
+.realtime-signal {
+  position: relative;
+  display: grid;
+  width: 3.2rem;
+  height: 3.2rem;
+  place-items: center;
+}
+
+.realtime-signal span {
+  position: absolute;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  animation: realtime-signal-pulse 2.2s ease-out infinite;
+  background: var(--acid);
+  box-shadow: 0 0 1rem rgba(217, 255, 112, 0.55);
+}
+
+.realtime-signal span:nth-child(2) {
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid rgba(217, 255, 112, 0.34);
+  animation-delay: 0.7s;
+  background: transparent;
+  box-shadow: none;
+}
+
+.realtime-signal span:nth-child(3) {
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgba(197, 164, 255, 0.18);
+  animation-delay: 1.4s;
+  background: transparent;
+  box-shadow: none;
+}
+
+.realtime-intro h2 {
+  margin: 0.12rem 0 0.28rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2rem;
+  font-weight: 400;
+}
+
+.realtime-intro p,
+.realtime-byok p,
+.realtime-channel-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.5;
+}
+
+.realtime-controls {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.9fr) repeat(2, minmax(11rem, 1fr));
+  gap: 0.7rem;
+}
+
+.realtime-byok,
+.realtime-channel-card {
+  position: relative;
+  min-height: 7.2rem;
+  padding: 0.85rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.realtime-byok {
+  display: grid;
+  align-content: space-between;
+  gap: 0.6rem;
+}
+
+.realtime-byok label,
+.realtime-channel-heading > span,
+.realtime-key-state {
+  color: #8d9992;
+  font-family: ui-monospace, monospace;
+  font-size: 0.54rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.realtime-key-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+}
+
+.realtime-key-entry input {
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(217, 255, 112, 0.24);
+  color: #dce3de;
+  background: #0a120f;
+  font-family: ui-monospace, monospace;
+  font-size: 0.62rem;
+}
+
+.realtime-key-entry button,
+.realtime-key-actions button,
+.realtime-channel-card button {
+  padding: 0.55rem 0.68rem;
+  border: 1px solid rgba(217, 255, 112, 0.34);
+  color: var(--acid);
+  background: rgba(217, 255, 112, 0.05);
+  font-family: ui-monospace, monospace;
+  font-size: 0.56rem;
+}
+
+.realtime-key-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.realtime-key-actions button {
+  border-color: rgba(255, 144, 114, 0.3);
+  color: #ffad98;
+  background: transparent;
+}
+
+.realtime-channel-card {
+  display: grid;
+  align-content: space-between;
+  gap: 0.7rem;
+}
+
+.realtime-channel-card.private {
+  border-color: rgba(197, 164, 255, 0.25);
+  background:
+    radial-gradient(
+      circle at 90% 0,
+      rgba(197, 164, 255, 0.12),
+      transparent 55%
+    ),
+    rgba(255, 255, 255, 0.018);
+}
+
+.realtime-channel-card.shared {
+  border-color: rgba(131, 230, 189, 0.22);
+  background:
+    radial-gradient(circle at 90% 0, rgba(131, 230, 189, 0.1), transparent 55%),
+    rgba(255, 255, 255, 0.018);
+}
+
+.realtime-channel-card.connected {
+  animation: realtime-card-arrival 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: inset 0 -2px 0 rgba(217, 255, 112, 0.36);
+}
+
+.realtime-channel-heading,
+.realtime-channel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.realtime-channel-heading strong {
+  font-size: 0.75rem;
+}
+
+.realtime-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  color: #79837e;
+  font-family: ui-monospace, monospace;
+  font-size: 0.53rem;
+  text-transform: uppercase;
+}
+
+.realtime-state::before {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.realtime-state.connecting,
+.realtime-state.reconnecting {
+  color: #ffd59b;
+}
+
+.realtime-state.connected {
+  color: var(--acid);
+}
+
+.realtime-state.degraded {
+  color: #ffad98;
+}
+
+.realtime-channel-actions small {
+  color: #89958e;
+  font-family: ui-monospace, monospace;
+  font-size: 0.5rem;
+  text-transform: uppercase;
+}
+
+.realtime-channel-card button.disconnect {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #aab4ae;
+  background: transparent;
+}
+
+.realtime-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #ffb49f;
+  font-size: 0.58rem;
+}
+
+@keyframes realtime-signal-pulse {
+  0% {
+    opacity: 0.25;
+    transform: scale(0.65);
+  }
+  55% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.14);
+  }
+}
+
+@keyframes realtime-card-arrival {
+  from {
+    opacity: 0.55;
+    transform: translateY(0.45rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .workspace-grid {
   display: grid;
   min-height: calc(100vh - 11.5rem);
@@ -3175,6 +3434,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .realtime-dock {
+    grid-template-columns: 1fr;
+  }
+
   .permission-divider {
     min-height: 4rem;
     flex-direction: row;
@@ -3220,6 +3483,14 @@ button:disabled {
   .scope-path,
   .identity-grid,
   .channel-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .realtime-dock {
+    padding: 1rem;
+  }
+
+  .realtime-controls {
     grid-template-columns: 1fr;
   }
 
