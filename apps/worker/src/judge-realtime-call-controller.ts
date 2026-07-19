@@ -31,6 +31,7 @@ import {
   JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
   JUDGE_REALTIME_RETRY_DELAY_SECONDS,
 } from "./judge-realtime-constants.js";
+import { JUDGE_GLOBAL_USAGE_LIMITS } from "./judge-structured-ai.js";
 
 export {
   JUDGE_REALTIME_MAX_DURATION_SECONDS,
@@ -844,17 +845,8 @@ export function createJudgeRealtimeUsageLimiter(
     hashIp: options.hashIp,
     ids: options.ids,
     limits: {
-      accountRequestsPerWindow: 10,
-      concurrentReservations: 1,
-      costMicroUsdPerWindow: JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
-      generationsPerWindow: JUDGE_REALTIME_RESERVED_USAGE.generationCount,
-      ipRequestsPerWindow: 10,
-      meetingRequestsPerWindow: 10,
-      realtimeSecondsPerWindow: JUDGE_REALTIME_RESERVED_USAGE.realtimeSeconds,
+      ...JUDGE_GLOBAL_USAGE_LIMITS,
       reservationTtlSeconds: JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
-      tokensPerWindow:
-        JUDGE_REALTIME_RESERVED_USAGE.estimatedInputTokens +
-        JUDGE_REALTIME_RESERVED_USAGE.estimatedOutputTokens,
     },
     model: DEFAULT_OPENAI_REALTIME_MODEL,
     operation: "judge_realtime",

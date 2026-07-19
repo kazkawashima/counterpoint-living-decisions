@@ -13,9 +13,9 @@ export const DEFAULT_OPENAI_MODEL = "gpt-5.6";
 export const PRIVATE_DISCLOSURE_OPERATION = "private_evidence_disclosure";
 export const PRIVATE_DISCLOSURE_SCHEMA_VERSION = "1";
 export const PRIVATE_DISCLOSURE_PROMPT_VERSION = "private-evidence-v1";
+export const PRIVATE_DISCLOSURE_MAX_ATTEMPTS = 2;
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const DEFAULT_MAX_ATTEMPTS = 2;
 const DEFAULT_MAX_OUTPUT_TOKENS = 700;
 
 const SourceRangeSchema = z
@@ -97,8 +97,19 @@ export interface PrivateDisclosureAiEnvelope {
   readonly schemaVersion: typeof PRIVATE_DISCLOSURE_SCHEMA_VERSION;
 }
 
+export interface PrivateDisclosureBilling {
+  readonly attemptCount: number;
+  readonly attempts: readonly {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+  }[];
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+}
+
 export interface PrivateDisclosureProposal {
   readonly ai: PrivateDisclosureAiEnvelope;
+  readonly billing?: PrivateDisclosureBilling;
   readonly exactSnippet: string;
   readonly sourceRange: {
     readonly end: number;
@@ -271,9 +282,13 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
   readonly #modelAdapter: PrivateDisclosureModel;
 
   constructor(options: OpenAiPrivateDisclosureProposerOptions) {
-    const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
-      throw new RangeError("maxAttempts must be an integer from 1 to 3.");
+    const maxAttempts = options.maxAttempts ?? PRIVATE_DISCLOSURE_MAX_ATTEMPTS;
+    if (
+      !Number.isInteger(maxAttempts) ||
+      maxAttempts < 1 ||
+      maxAttempts > PRIVATE_DISCLOSURE_MAX_ATTEMPTS
+    ) {
+      throw new RangeError("maxAttempts must be an integer from 1 to 2.");
     }
 
     this.#clock = options.clock ?? (() => new Date());
@@ -292,18 +307,38 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
   }): Promise<PrivateDisclosureProposal> {
     const startedAt = performance.now();
     let accumulatedUsage: TokenUsage | undefined;
+    const billingAttempts: {
+      inputTokens: number;
+      outputTokens: number;
+    }[] = [];
     let attemptsMade = 0;
+    let billingComplete = true;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= this.#maxAttempts; attempt += 1) {
       attemptsMade = attempt;
+      let usageObservedForAttempt = false;
       try {
         const response = await this.#modelAdapter.generate({
           model: this.#model,
           sourceReferenceId: input.sourceArtifactId,
           sourceText: input.text,
         });
-        accumulatedUsage = addUsage(accumulatedUsage, response.usage);
+        if (!isTrustworthyTokenUsage(response.usage)) {
+          billingComplete = false;
+        } else {
+          const nextUsage = addUsage(accumulatedUsage, response.usage);
+          if (nextUsage === undefined) {
+            billingComplete = false;
+          } else {
+            usageObservedForAttempt = true;
+            accumulatedUsage = nextUsage;
+            billingAttempts.push({
+              inputTokens: response.usage.inputTokens,
+              outputTokens: response.usage.outputTokens,
+            });
+          }
+        }
 
         const output = validatePrivateDisclosureOutput(
           response.output,
@@ -336,10 +371,23 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
 
         return {
           ai: envelope,
+          ...(billingComplete && accumulatedUsage !== undefined
+            ? {
+                billing: {
+                  attemptCount: attempt,
+                  attempts: billingAttempts,
+                  inputTokens: accumulatedUsage.inputTokens,
+                  outputTokens: accumulatedUsage.outputTokens,
+                },
+              }
+            : {}),
           exactSnippet: candidate.exactSnippet,
           sourceRange: candidate.sourceRange,
         };
       } catch (error) {
+        if (!usageObservedForAttempt) {
+          billingComplete = false;
+        }
         lastError = error;
         const canRetry =
           attempt < this.#maxAttempts && isRetryableGenerationError(error);
@@ -478,16 +526,28 @@ function firstCandidate(
 
 function addUsage(
   current: TokenUsage | undefined,
-  next: TokenUsage | undefined,
+  next: TokenUsage,
 ): TokenUsage | undefined {
-  if (next === undefined) {
-    return current;
-  }
-  return {
+  const combined = {
     inputTokens: (current?.inputTokens ?? 0) + next.inputTokens,
     outputTokens: (current?.outputTokens ?? 0) + next.outputTokens,
     totalTokens: (current?.totalTokens ?? 0) + next.totalTokens,
   };
+  return isTrustworthyTokenUsage(combined) ? combined : undefined;
+}
+
+function isTrustworthyTokenUsage(
+  usage: TokenUsage | undefined,
+): usage is TokenUsage {
+  return (
+    usage !== undefined &&
+    Number.isSafeInteger(usage.inputTokens) &&
+    usage.inputTokens >= 0 &&
+    Number.isSafeInteger(usage.outputTokens) &&
+    usage.outputTokens >= 0 &&
+    Number.isSafeInteger(usage.totalTokens) &&
+    usage.totalTokens === usage.inputTokens + usage.outputTokens
+  );
 }
 
 function isRetryableGenerationError(error: unknown): boolean {

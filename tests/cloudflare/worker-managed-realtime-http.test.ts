@@ -581,11 +581,11 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
           remaining: 0,
           used: 25_000_000,
         },
-        generation: { limit: 3, remaining: 0, used: 3 },
+        generation: { limit: 8, remaining: 5, used: 3 },
         ip: { limit: 10, remaining: 9, used: 1 },
         meeting: { limit: 10, remaining: 9, used: 1 },
         realtimeSeconds: { limit: 30, remaining: 0, used: 30 },
-        tokens: { limit: 1_200_000, remaining: 0, used: 1_200_000 },
+        tokens: { limit: 2_165_600, remaining: 965_600, used: 1_200_000 },
       },
       rollingWindowSeconds: 86_400,
     });

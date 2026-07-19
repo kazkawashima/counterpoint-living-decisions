@@ -1,6 +1,7 @@
 export {
   DEFAULT_OPENAI_MODEL,
   PRIVATE_DISCLOSURE_OPERATION,
+  PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
   PRIVATE_DISCLOSURE_PROMPT_VERSION,
   PRIVATE_DISCLOSURE_SCHEMA_VERSION,
   DeterministicPrivateDisclosureModel,
@@ -12,6 +13,7 @@ export {
   type OpenAiPrivateDisclosureModelOptions,
   type OpenAiPrivateDisclosureProposerOptions,
   type PrivateDisclosureAiEnvelope,
+  type PrivateDisclosureBilling,
   type PrivateDisclosureModel,
   type PrivateDisclosureModelRequest,
   type PrivateDisclosureModelResult,
