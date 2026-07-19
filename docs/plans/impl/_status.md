@@ -444,17 +444,34 @@ The canonical implementation-facing artifacts are:
   protocol envelopes, repository files, and generated output. C5 remains open
   only for rerunning those contracts against hosted Worker routes after C3 API
   parity.
+- Plan 05 C6 now has no-mutation preview/production plan commands, a
+  dispatch-only `main` workflow protected by target-specific GitHub
+  Environments, and a fail-closed deployment driver. Generated remote configs
+  and raw Wrangler output remain in ignored `0600` runner state; local `.env`
+  loading and every OpenAI/Webhook secret are explicitly disabled or unset.
+- C6 preflight validates the HTTPS origin, runs the complete security suite,
+  renders exact D1/R2/Worker bindings, and performs a strict target-config dry
+  run before any remote phase. Approved apply mode then orders forward-only D1
+  migration, strict deployment, bounded health/readiness/SPA/authentication
+  smoke, and credential-free commit/configuration hash recording.
+- The current remote smoke deliberately rejects the parity-pending Worker API.
+  Full authenticated flagship smoke, an approved remote migration/deployment,
+  and a real deployment record remain open. The rollback and judge-secret
+  shutdown runbook forbids schema down migration and secret-value inspection.
+  No remote resource, secret, migration, deployment, or repository visibility
+  changed during this preparation.
 - C4 is not complete: safe public route wiring, sideband usage enforcement,
   measured flagship limits, the web managed-call switch, structured judge AI
   routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
   broader content-free operator visibility remain.
-- The current verification baseline is 483 regular Vitest tests and 47
+- The current verification baseline is 505 regular Vitest tests and 47
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 
 ## Not started
 
-- Deployment and remaining submission assets.
+- Approved hosted deployment, hosted flagship smoke, and remaining submission
+  assets.
 
 ## Next executable slice
 

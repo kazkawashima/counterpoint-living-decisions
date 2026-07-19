@@ -191,12 +191,37 @@ against hosted Worker routes after API parity.
 
 ### C6 — Hosted deployment path
 
-- [ ] Add preview and production deployment commands.
-- [ ] Add manually approved main deployment workflow.
+- [x] Add preview and production deployment commands.
+- [x] Add manually approved main deployment workflow.
 - [ ] Run D1/DO migrations safely.
 - [ ] Add health/readiness and post-deploy flagship smoke.
 - [ ] Record deployed commit/configuration.
-- [ ] Write rollback and judge-secret shutdown runbooks.
+- [x] Write rollback and judge-secret shutdown runbooks.
+
+C6 preparation notes:
+
+- Preview and production use separate, protected GitHub Environments. The
+  dispatch-only workflow skips non-`main` refs and exposes only target-scoped
+  Cloudflare credentials after Environment approval.
+- The local plan commands perform no remote operation. The apply driver refuses
+  a dirty or mismatched commit, requires an exact target approval, renders the
+  remote D1 ID only into an ignored `0600` config, disables Wrangler `.env`
+  loading, and keeps raw Wrangler output in ignored runner state.
+- The driver runs the full security verification before forward-only D1
+  migration and strict Worker deployment. It does not register or receive
+  `OPENAI_API_KEY_JUDGE`; that remains a separate C3/C4 production gate.
+- A bounded remote smoke now verifies health, migration readiness, the SPA, and
+  unauthenticated API parity. It intentionally blocks the current
+  parity-pending Worker. A complete authenticated flagship smoke still must be
+  added and run before this row can close.
+- Credential-free deployment records contain the commit, target, Worker name,
+  origin host, and hashes of the generated config and private deployment
+  status. No real deployment record exists until an approved deployment runs.
+- Rollback is binary-only and forward-schema-compatible; no D1 or Durable
+  Object down migration is permitted. Judge shutdown revokes provider access
+  and deletes the Worker Secret without reading or logging its value.
+- No remote resource, migration, deployment, secret, or repository visibility
+  was changed while preparing C6.
 
 ## Browser verification
 
