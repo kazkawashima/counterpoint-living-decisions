@@ -83,6 +83,7 @@ async function expectJson(path, expectedStatus, options, check) {
   }
   const body = await response.json();
   check(body);
+  return body;
 }
 
 function expectValue(condition, message) {
@@ -127,6 +128,26 @@ try {
   );
   const authorization = { authorization: `Bearer ${bearerToken}` };
   await expectJson(
+    "/api/v1/meetings/meeting-global-ai-rollout/demo/reset",
+    200,
+    {
+      body: JSON.stringify({
+        expectedPosition: 0,
+        idempotencyKey: "cloudflare-local-smoke-reset",
+        meetingId: "meeting-global-ai-rollout",
+      }),
+      headers: { ...authorization, "content-type": "application/json" },
+      method: "POST",
+    },
+    (body) => {
+      expectValue(
+        body.resetStatus === "completed" &&
+          typeof body.resetRequestId === "string",
+        "Hosted Worker did not complete the facilitator demo reset",
+      );
+    },
+  );
+  await expectJson(
     "/api/v1/meetings",
     200,
     { headers: authorization },
@@ -160,7 +181,7 @@ try {
     {
       body: JSON.stringify({
         expectedPosition: projectedPosition,
-        idempotencyKey: "cloudflare-local-smoke-text-source",
+        idempotencyKey: `cloudflare-local-smoke-text-source-${String(Date.now())}`,
         meetingId: "meeting-global-ai-rollout",
         text: "The local smoke path confirms private text can be staged.",
         title: "Local smoke source",
