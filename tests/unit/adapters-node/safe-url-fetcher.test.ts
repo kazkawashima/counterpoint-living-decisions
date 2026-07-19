@@ -135,6 +135,25 @@ describe("NodeSafeUrlFetcher", () => {
     expect(transport.requests).toHaveLength(0);
   });
 
+  it.each([
+    ["single-integer IPv4", "http://2130706433/document"],
+    ["hexadecimal IPv4", "http://0x7f000001/document"],
+    ["octal IPv4 component", "http://0177.0.0.1/document"],
+    ["short dotted IPv4", "http://127.1/document"],
+    ["trailing-dot IPv4", "http://127.0.0.1./document"],
+    ["IPv4-embedded IPv6", "http://[::ffff:7f00:1]/document"],
+  ])("rejects parser-normalized %s notation", async (_label, url) => {
+    const resolver = vi.fn<UrlAddressResolver>();
+    const transport = queueTransport();
+
+    await expect(fetchWith(url, { resolver, transport })).resolves.toEqual({
+      kind: "failed",
+      reason: "unsafe_destination",
+    });
+    expect(resolver).not.toHaveBeenCalled();
+    expect(transport.requests).toHaveLength(0);
+  });
+
   it("rejects a hostname when any DNS answer is non-global", async () => {
     const transport = queueTransport();
     const resolver = resolverFor({

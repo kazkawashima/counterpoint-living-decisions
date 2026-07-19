@@ -61,6 +61,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const temporaryDirectories: string[] = [];
 const runtimes: LocalServerRuntime[] = [];
 const WEBHOOK_SECRET = "synthetic-regulatory-webhook-secret";
+const WEBHOOK_MAX_AGE_SECONDS = 300;
 
 function webhookSignature(timestamp: string, rawBody: string): string {
   return `v1=${createHmac("sha256", WEBHOOK_SECRET)
@@ -361,6 +362,197 @@ describe("Node HTTP flagship shell", () => {
       origin: "human_selected",
     });
   });
+
+  it.each([
+    {
+      content: "synthetic fake PDF private canary",
+      contentType: "application/pdf",
+      filename: "spoofed-private.pdf",
+      label: "fake PDF",
+      outcome: "processing_failure",
+    },
+    {
+      content: '{"private":"invalid JSON canary",}',
+      contentType: "application/json",
+      filename: "spoofed-private.json",
+      label: "invalid JSON",
+      outcome: "processing_failure",
+    },
+    {
+      content: '{"private":"MIME mismatch canary"}',
+      contentType: "application/json",
+      filename: "spoofed-private.pdf",
+      label: "extension/MIME mismatch",
+      outcome: "safe_rejection",
+    },
+  ] as const)(
+    "keeps a multipart $label upload private on failure or rejection",
+    async ({ content, contentType, filename, label, outcome }) => {
+      const { app, runtime } = await fixture();
+      const meetingId = "meeting-global-ai-rollout";
+      const safety = await login(app, "safety", "counterpoint-safety");
+      const legal = await login(app, "legal", "counterpoint-legal");
+      const safetyAuthorization = {
+        authorization: `Bearer ${safety.bearerToken}`,
+      };
+      const legalAuthorization = {
+        authorization: `Bearer ${legal.bearerToken}`,
+      };
+      const sourceBytes = new TextEncoder().encode(content);
+      const uploadBody = new FormData();
+      uploadBody.set(
+        "idempotencyKey",
+        `multipart-spoof-${label.replaceAll(/[^a-z]+/giu, "-")}`,
+      );
+      uploadBody.set("meetingId", meetingId);
+      uploadBody.set(
+        "file",
+        new File([sourceBytes], filename, { type: contentType }),
+      );
+      const recordsBefore =
+        await runtime.artifactIngestion.events.load(meetingId);
+      const put = vi.spyOn(runtime.artifactIngestion.artifacts, "put");
+
+      const response = await app.request("/api/v1/artifacts", {
+        body: uploadBody,
+        headers: {
+          ...safetyAuthorization,
+          host: "100.96.14.8:8787",
+        },
+        method: "POST",
+      });
+
+      if (outcome === "safe_rejection") {
+        expect(response.status).toBe(400);
+        expect(ErrorEnvelopeSchema.parse(await response.json())).toMatchObject({
+          code: "ARTIFACT_TYPE_UNSUPPORTED",
+        });
+        expect(await runtime.artifactIngestion.events.load(meetingId)).toEqual(
+          recordsBefore,
+        );
+        expect(put).not.toHaveBeenCalled();
+      } else {
+        expect(response.status).toBe(201);
+        const uploaded = UploadPrivateArtifactResponseSchema.parse(
+          await response.json(),
+        );
+        expect(uploaded.artifact).toMatchObject({
+          contentType,
+          failureCode: "ARTIFACT_PROCESSING_FAILED",
+          filename,
+          processingState: "failed",
+          sizeBytes: sourceBytes.byteLength,
+        });
+        expect(uploaded.artifact.derivedArtifactId).toBeUndefined();
+        expect(uploaded.artifact.derivedContentHash).toBeUndefined();
+        expect(uploaded.artifact.derivedSizeBytes).toBeUndefined();
+
+        const recordsAfter =
+          await runtime.artifactIngestion.events.load(meetingId);
+        const appendedRecords = recordsAfter.slice(recordsBefore.length);
+        expect(appendedRecords.map(({ event }) => event.eventType)).toEqual([
+          "ArtifactRegistered",
+          "ArtifactProcessed",
+        ]);
+        expect(appendedRecords[0]?.event).toMatchObject({
+          eventType: "ArtifactRegistered",
+          ownerParticipantId: "participant-safety",
+          payload: {
+            artifact: {
+              id: uploaded.artifact.sourceArtifactId,
+              ownerParticipantId: "participant-safety",
+              processingState: "processing",
+              visibility: "private",
+            },
+          },
+          visibility: "private",
+        });
+        expect(appendedRecords[1]?.event).toMatchObject({
+          eventType: "ArtifactProcessed",
+          ownerParticipantId: "participant-safety",
+          payload: {
+            artifactId: uploaded.artifact.sourceArtifactId,
+            failureCode: "ARTIFACT_PROCESSING_FAILED",
+            processingState: "failed",
+          },
+          visibility: "private",
+        });
+        expect(JSON.stringify(appendedRecords)).not.toContain(content);
+        expect(put).toHaveBeenCalledOnce();
+        await expect(
+          runtime.artifactIngestion.artifacts.get({
+            artifactId: uploaded.artifact.sourceArtifactId,
+            meetingId,
+            ownerParticipantId: "participant-safety",
+            visibility: "private",
+          }),
+        ).resolves.toEqual(sourceBytes);
+        await expect(
+          runtime.artifactIngestion.artifacts.get({
+            artifactId: uploaded.artifact.sourceArtifactId,
+            meetingId,
+            visibility: "shared",
+          }),
+        ).resolves.toBeUndefined();
+
+        const ownerSource = await app.request(
+          `/api/v1/meetings/${meetingId}/artifacts/${uploaded.artifact.sourceArtifactId}?representation=source`,
+          { headers: safetyAuthorization },
+        );
+        expect(ownerSource.status).toBe(200);
+        expect(new Uint8Array(await ownerSource.arrayBuffer())).toEqual(
+          sourceBytes,
+        );
+
+        const ownerDerived = await app.request(
+          `/api/v1/meetings/${meetingId}/artifacts/${uploaded.artifact.sourceArtifactId}?representation=derived`,
+          { headers: safetyAuthorization },
+        );
+        expect(ownerDerived.status).toBe(403);
+        expect(
+          ErrorEnvelopeSchema.parse(await ownerDerived.json()),
+        ).toMatchObject({ code: "FORBIDDEN" });
+
+        const otherOwnerSource = await app.request(
+          `/api/v1/meetings/${meetingId}/artifacts/${uploaded.artifact.sourceArtifactId}?representation=source`,
+          { headers: legalAuthorization },
+        );
+        expect(otherOwnerSource.status).toBe(403);
+        expect(
+          ErrorEnvelopeSchema.parse(await otherOwnerSource.json()),
+        ).toMatchObject({ code: "FORBIDDEN" });
+      }
+
+      const ownerProjectionResponse = await app.request(
+        `/api/v1/meetings/${meetingId}/projection`,
+        { headers: safetyAuthorization },
+      );
+      expect(ownerProjectionResponse.status).toBe(200);
+      const ownerProjection = RoleProjectionResponseSchema.parse(
+        await ownerProjectionResponse.json(),
+      );
+      expect(ownerProjection.shared.evidence).toEqual([]);
+      expect(ownerProjection.privateWorkspace.artifacts).toHaveLength(
+        outcome === "processing_failure" ? 1 : 0,
+      );
+
+      const participantProjectionResponse = await app.request(
+        `/api/v1/meetings/${meetingId}/projection`,
+        { headers: legalAuthorization },
+      );
+      expect(participantProjectionResponse.status).toBe(200);
+      const participantProjection = RoleProjectionResponseSchema.parse(
+        await participantProjectionResponse.json(),
+      );
+      expect(participantProjection.shared.evidence).toEqual([]);
+      expect(participantProjection.privateWorkspace.artifacts).toEqual([]);
+      const serializedParticipantProjection = JSON.stringify(
+        participantProjection,
+      );
+      expect(serializedParticipantProjection).not.toContain(filename);
+      expect(serializedParticipantProjection).not.toContain(content);
+    },
+  );
 
   it("registers a safely fetched URL without persisting the locator or auto-sharing fetched instructions", async () => {
     const { runtime } = await fixture();
@@ -1792,6 +1984,7 @@ describe("Node HTTP flagship shell", () => {
     const { app, runtime } = await fixture({
       NODE_ENV: "test",
       OPENAI_FAKE_MODE: "deterministic",
+      REGULATORY_WEBHOOK_MAX_AGE_SECONDS: String(WEBHOOK_MAX_AGE_SECONDS),
       REGULATORY_WEBHOOK_SECRET: WEBHOOK_SECRET,
     });
     const receiptOnlyApp = createServerApp({
@@ -2259,6 +2452,33 @@ describe("Node HTTP flagship shell", () => {
     const webhookUrl =
       `/api/v1/webhooks/regulatory-changes/${meetingId}/` +
       monitoring.monitorRegistrationId;
+    const eventsBeforeExpiredWebhook =
+      await runtime.externalEvents.events.load(meetingId);
+    const expiredWebhookTimestamp = String(
+      Number(webhookTimestamp) - WEBHOOK_MAX_AGE_SECONDS - 1,
+    );
+    const expiredWebhook = await receiptOnlyApp.request(webhookUrl, {
+      body: regulatoryRawBody,
+      headers: {
+        "content-type": "application/json",
+        "x-counterpoint-webhook-signature": webhookSignature(
+          expiredWebhookTimestamp,
+          regulatoryRawBody,
+        ),
+        "x-counterpoint-webhook-timestamp": expiredWebhookTimestamp,
+      },
+      method: "POST",
+    });
+    expect(expiredWebhook.status).toBe(403);
+    expect(
+      ErrorEnvelopeSchema.parse(await expiredWebhook.json()),
+    ).toMatchObject({
+      code: "WEBHOOK_SIGNATURE_INVALID",
+    });
+    expect(await runtime.externalEvents.events.load(meetingId)).toEqual(
+      eventsBeforeExpiredWebhook,
+    );
+
     const invalidWebhook = await receiptOnlyApp.request(webhookUrl, {
       body: regulatoryRawBody,
       headers: {

@@ -150,7 +150,30 @@ C4 foundation notes:
 - [ ] Run session/display-token expiry and revocation.
 - [ ] Run webhook signature/replay/idempotency matrix.
 - [ ] Scan API responses, realtime payloads, logs, and repository for secrets.
-- [ ] Verify disclosure preview-hash and prompt-injection boundaries.
+- [x] Verify disclosure preview-hash and prompt-injection boundaries.
+
+The C5 foundation is reproducible through `npm run security:verify`. The
+current matrix exercises 246 authorization, owner isolation, session/display
+expiry, SSRF/DNS pinning, redirect, artifact parser/size, webhook, disclosure,
+Realtime payload, API response, and structured-log cases. Parser-normalized
+decimal, hexadecimal, octal, short dotted, trailing-dot, and IPv4-embedded
+IPv6 loopback forms have an additional fail-closed matrix. The D1-backed
+application lifecycle also proves exact inactivity expiry, absolute expiry,
+durable revocation, logout, and no post-revocation authentication. The
+HTTP multipart matrix proves that fake PDF and invalid JSON payloads remain
+owner-private failed sources, while an extension/MIME mismatch is rejected
+before persistence; none becomes shared or visible to another owner. A
+correctly signed webhook one second outside the allowed window is also rejected
+without appending an event. The repository scan checks tracked and non-ignored
+untracked files plus
+`apps/*/dist` and `packages/*/dist`, rejects tracked secret-bearing filenames,
+recognizes common provider credentials and private keys, skips ignored local
+secret files, and reports only the path and rule name rather than the detected
+value. C5 remains open for authorized-cross-meeting resource-ID substitution,
+HTTP session and display-token expiry wiring, hosted safe-fetch parity, HTTP
+multipart spoofing/size cases, expired and concurrent webhook delivery at the
+HTTP/store boundary, and one synthetic canary scan across responses, payloads,
+and logs.
 
 ### C6 — Hosted deployment path
 

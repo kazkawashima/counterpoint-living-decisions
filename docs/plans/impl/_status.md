@@ -411,11 +411,29 @@ The canonical implementation-facing artifacts are:
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
+- Plan 05 C5 now has a reproducible `npm run security:verify` foundation. Its
+  246-case matrix, including parser-normalized loopback notation, gives strong
+  IDOR/meeting/owner, session/display expiry, DNS-pinned SSRF/redirect,
+  disclosure preview/prompt-injection, artifact, webhook, API/Realtime, and
+  content-free log regression coverage. Its repository scan includes tracked
+  and non-ignored untracked files plus built workspace output, rejects
+  secret-bearing filenames, and never prints matched values. D1-backed
+  application authentication now proves exact inactivity and absolute expiry,
+  durable revocation, logout, and post-revocation rejection.
+- HTTP multipart security now covers fake PDF, invalid JSON, and
+  extension/MIME mismatch payloads. Malformed supported types remain
+  owner-private failed sources with no derived/shared representation; mismatched
+  types are rejected before persistence. A correctly signed webhook one second
+  beyond its replay window is rejected without changing the event stream.
+- C5 is not complete: authorized-cross-meeting resource substitution,
+  HTTP expiry wiring, hosted safe-fetch parity, HTTP multipart spoofing/size,
+  expired/concurrent webhook delivery, and a single synthetic canary scan
+  across responses, payloads, logs, and generated output remain.
 - C4 is not complete: safe public route wiring, sideband usage enforcement,
   measured flagship limits, the web managed-call switch, structured judge AI
   routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
   broader content-free operator visibility remain.
-- The current verification baseline is 467 regular Vitest tests and 46
+- The current verification baseline is 480 regular Vitest tests and 47
   Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
   configuration checks. No UI changed, so no browser capture was required.
 

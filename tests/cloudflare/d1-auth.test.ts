@@ -7,7 +7,14 @@ import {
   D1IdentityRepository,
   D1MeetingRepository,
   D1SessionRepository,
+  WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
+import {
+  SESSION_ABSOLUTE_MS,
+  SESSION_INACTIVITY_MS,
+  authenticateSession,
+  logout,
+} from "@counterpoint/application";
 import type {
   MeetingRecord,
   ParticipantAssignment,
@@ -15,6 +22,7 @@ import type {
 } from "@counterpoint/ports";
 
 import { sessionRepositoryContract } from "../contract/session-repository-contract.js";
+import { MutableClock } from "../helpers/application-adapters.js";
 
 async function seedUsers(
   users: readonly {
@@ -152,6 +160,85 @@ describe("Cloudflare D1 authentication repositories", () => {
     ).resolves.toMatchObject({
       lastActivityAt: "2026-07-19T01:00:00.000Z",
       revokedAt: "2026-07-19T02:00:00.000Z",
+    });
+  });
+
+  it("persists exact inactivity, absolute-expiry, and logout lifecycle decisions", async () => {
+    await seedUsers([{ userId: "user-a" }]);
+    const sessions = new D1SessionRepository(env.DB);
+    const tokens = new WebCryptoSessionTokenIssuer();
+    const initial = "2026-07-19T00:00:00.000Z";
+    const clock = new MutableClock(initial);
+
+    const inactivityToken = await tokens.issue();
+    await sessions.put({
+      absoluteExpiresAt: new Date(
+        Date.parse(initial) + SESSION_ABSOLUTE_MS,
+      ).toISOString(),
+      createdAt: initial,
+      lastActivityAt: initial,
+      sessionId: "session-inactivity",
+      tokenHash: inactivityToken.hash,
+      userId: "user-a",
+    });
+    clock.advance(SESSION_INACTIVITY_MS);
+    await expect(
+      authenticateSession({ clock, sessions, tokens }, inactivityToken.value),
+    ).resolves.toEqual({
+      code: "SESSION_EXPIRED",
+      kind: "rejected",
+    });
+    await expect(
+      sessions.findById("session-inactivity"),
+    ).resolves.toMatchObject({
+      revokedAt: clock.now(),
+    });
+
+    const absoluteToken = await tokens.issue();
+    await sessions.put({
+      absoluteExpiresAt: new Date(
+        Date.parse(initial) + SESSION_ABSOLUTE_MS,
+      ).toISOString(),
+      createdAt: initial,
+      lastActivityAt: new Date(
+        Date.parse(initial) + SESSION_ABSOLUTE_MS - 1,
+      ).toISOString(),
+      sessionId: "session-absolute",
+      tokenHash: absoluteToken.hash,
+      userId: "user-a",
+    });
+    clock.advance(SESSION_ABSOLUTE_MS - SESSION_INACTIVITY_MS);
+    await expect(
+      authenticateSession({ clock, sessions, tokens }, absoluteToken.value),
+    ).resolves.toEqual({
+      code: "SESSION_EXPIRED",
+      kind: "rejected",
+    });
+    await expect(sessions.findById("session-absolute")).resolves.toMatchObject({
+      revokedAt: clock.now(),
+    });
+
+    const logoutToken = await tokens.issue();
+    await sessions.put({
+      absoluteExpiresAt: new Date(
+        Date.parse(clock.now()) + SESSION_ABSOLUTE_MS,
+      ).toISOString(),
+      createdAt: clock.now(),
+      lastActivityAt: clock.now(),
+      sessionId: "session-logout",
+      tokenHash: logoutToken.hash,
+      userId: "user-a",
+    });
+    await logout({ clock, sessions, tokens }, logoutToken.value);
+    await expect(
+      authenticateSession({ clock, sessions, tokens }, logoutToken.value),
+    ).resolves.toEqual({
+      code: "AUTHENTICATION_REQUIRED",
+      kind: "rejected",
+    });
+    await expect(sessions.findById("session-logout")).resolves.toMatchObject({
+      lastActivityAt: clock.now(),
+      revokedAt: clock.now(),
     });
   });
 
