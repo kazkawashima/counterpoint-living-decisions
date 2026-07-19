@@ -29,6 +29,7 @@
     "apps/**/*.tsx",
     "packages/**/*.ts",
     "playwright.config.ts",
+    "playwright.cloudflare.config.ts",
     "scripts/**/*.mjs",
     "tests/**/*.ts",
     "vitest.cloudflare.config.ts",

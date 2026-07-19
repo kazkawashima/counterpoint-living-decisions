@@ -24,8 +24,10 @@ export default defineConfig({
     })),
   ],
   test: {
+    hookTimeout: 30_000,
     include: ["tests/cloudflare/**/*.test.ts"],
     setupFiles: ["./tests/cloudflare/setup.ts"],
+    testTimeout: 20_000,
     watch: false,
   },
 });

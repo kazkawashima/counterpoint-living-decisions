@@ -762,4 +762,323 @@ describe("Cloudflare Worker hosted flagship API", () => {
       code: "FORBIDDEN",
     });
   }, 15_000);
+
+  it("connects deterministic AI-preferred disclosure and Decision paths", async () => {
+    const handler = createWorkerHandler();
+    const loginResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.20/api/v1/login", {
+          body: JSON.stringify({
+            password: "counterpoint-product",
+            userId: "product",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    const loginBody = await json(loginResponse);
+    const authorization = {
+      authorization: `Bearer ${String(loginBody.bearerToken)}`,
+    };
+    const resetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://192.0.2.20/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: 0,
+              idempotencyKey: "worker-ai-preferred-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(resetResponse.status).toBe(200);
+
+    const sourceText = "The approval gate is required before launch.";
+    const sourceResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.20/api/v1/disclosures/sources/text", {
+          body: JSON.stringify({
+            expectedPosition: 0,
+            idempotencyKey: "worker-ai-preferred-source",
+            meetingId: FLAGSHIP_MEETING_ID,
+            text: sourceText,
+            title: "AI preferred smoke source",
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    const sourceBody = RegisterPrivateTextSourceFixtureResponseSchema.parse(
+      await json(sourceResponse),
+    );
+    const proposalResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.20/api/v1/disclosures/proposals", {
+          body: JSON.stringify({
+            assistance: "ai_preferred",
+            exactSnippet: "placeholder",
+            expectedPosition: sourceBody.position,
+            idempotencyKey: "worker-ai-preferred-proposal",
+            meetingId: FLAGSHIP_MEETING_ID,
+            sourceArtifactId: sourceBody.source.sourceArtifactId,
+            sourceRange: { end: 11, start: 0 },
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(proposalResponse.status).toBe(201);
+    const proposalBody = ProposeDisclosureResponseSchema.parse(
+      await json(proposalResponse),
+    );
+    expect(proposalBody.origin).toBe("ai_assisted");
+    expect(proposalBody.candidate.outgoingPayload.exactSnippet).toBe(
+      sourceText,
+    );
+
+    const previewResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.20/api/v1/disclosures/preview", {
+          body: JSON.stringify({
+            candidateId: proposalBody.candidate.candidateId,
+            exactSnippet: sourceText,
+            expectedPosition: proposalBody.position,
+            idempotencyKey: "worker-ai-preferred-preview",
+            meetingId: FLAGSHIP_MEETING_ID,
+            sourceRange: proposalBody.candidate.outgoingPayload.sourceRange,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    const previewBody = PreviewDisclosureResponseSchema.parse(
+      await json(previewResponse),
+    );
+    const approvalResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.20/api/v1/disclosures/approve", {
+          body: JSON.stringify({
+            candidateId: proposalBody.candidate.candidateId,
+            expectedPosition: previewBody.position,
+            idempotencyKey: "worker-ai-preferred-approval",
+            meetingId: FLAGSHIP_MEETING_ID,
+            previewHash: previewBody.previewHash,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(approvalResponse.status).toBe(200);
+    const approvalBody = ApproveDisclosureResponseSchema.parse(
+      await json(approvalResponse),
+    );
+
+    const candidateResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.20/api/v1/decisions/candidates", {
+          body: JSON.stringify({
+            assistance: "ai_preferred",
+            expectedPosition: approvalBody.position,
+            idempotencyKey: "worker-ai-preferred-candidate",
+            meetingId: FLAGSHIP_MEETING_ID,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(candidateResponse.status).toBe(201);
+    const candidateBody = SynthesizeSharedDecisionResponseSchema.parse(
+      await json(candidateResponse),
+    );
+    expect(candidateBody.candidate.provenance.origin).toBe("ai_assisted");
+    expect(candidateBody.candidate.draft.premiseCandidates[0]).toBeDefined();
+
+    const finalResetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://192.0.2.20/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: candidateBody.position,
+              idempotencyKey: "worker-ai-preferred-final-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(finalResetResponse.status).toBe(200);
+  }, 15_000);
+
+  it("keeps hosted private sources and facilitator mutations owner-scoped", async () => {
+    const handler = createWorkerHandler();
+    async function login(userId: string, password: string): Promise<string> {
+      const response = await handler.fetch!(
+        workerRequest(
+          new Request("https://198.51.100.20/api/v1/login", {
+            body: JSON.stringify({ password, userId }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }),
+        ),
+        workerEnv(),
+        {} as ExecutionContext,
+      );
+      expect(response.status).toBe(200);
+      const body = await json(response);
+      return String(body.bearerToken);
+    }
+
+    const facilitatorToken = await login("product", "counterpoint-product");
+    const participantToken = await login("safety", "counterpoint-safety");
+    const facilitatorAuthorization = {
+      authorization: `Bearer ${facilitatorToken}`,
+    };
+    const participantAuthorization = {
+      authorization: `Bearer ${participantToken}`,
+    };
+
+    const resetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.20/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: 0,
+              idempotencyKey: "worker-hosted-c5-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: {
+              ...facilitatorAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(resetResponse.status).toBe(200);
+
+    const sourceResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://198.51.100.20/api/v1/disclosures/sources/text", {
+          body: JSON.stringify({
+            expectedPosition: 0,
+            idempotencyKey: "worker-hosted-c5-private-source",
+            meetingId: FLAGSHIP_MEETING_ID,
+            text: "Facilitator-private C5 source.",
+            title: "Hosted C5 private source",
+          }),
+          headers: {
+            ...facilitatorAuthorization,
+            "content-type": "application/json",
+          },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(sourceResponse.status).toBe(201);
+    const sourceBody = RegisterPrivateTextSourceFixtureResponseSchema.parse(
+      await json(sourceResponse),
+    );
+
+    const participantProjectionResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.20/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+          { headers: participantAuthorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(participantProjectionResponse.status).toBe(200);
+    await expect(json(participantProjectionResponse)).resolves.toMatchObject({
+      privateWorkspace: { sources: [] },
+    });
+
+    const participantProposalResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://198.51.100.20/api/v1/disclosures/proposals", {
+          body: JSON.stringify({
+            assistance: "manual",
+            exactSnippet: "Facilitator-private C5 source.",
+            expectedPosition: sourceBody.position,
+            idempotencyKey: "worker-hosted-c5-cross-owner-proposal",
+            meetingId: FLAGSHIP_MEETING_ID,
+            sourceArtifactId: sourceBody.source.sourceArtifactId,
+            sourceRange: { end: 30, start: 0 },
+          }),
+          headers: {
+            ...participantAuthorization,
+            "content-type": "application/json",
+          },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(participantProposalResponse.status).toBe(403);
+    await expect(json(participantProposalResponse)).resolves.toMatchObject({
+      code: "FORBIDDEN",
+    });
+
+    const participantEventResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.20/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/regulatory-changes`,
+          {
+            body: JSON.stringify({
+              idempotencyKey: "worker-hosted-c5-participant-event",
+            }),
+            headers: {
+              ...participantAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(participantEventResponse.status).toBe(403);
+    await expect(json(participantEventResponse)).resolves.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  }, 15_000);
 });

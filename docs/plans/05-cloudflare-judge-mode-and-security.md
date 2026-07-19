@@ -56,6 +56,10 @@ C2 runtime notes:
   seeded, and Worker login, assigned meetings, and role projection reuse the
   application session and authorization boundaries. Full hosted mutation and
   realtime parity remains in the later C3/C4 work.
+- A Worker-specific Playwright project now runs against Wrangler on
+  `0.0.0.0`, not the Node API webServer. It proves the external-style browser
+  path can load the SPA, authenticate Product, open the Work & Productivity
+  meeting, render the workspace, and keep API requests on the same host.
 
 ### C3 — Judge-managed key path
 

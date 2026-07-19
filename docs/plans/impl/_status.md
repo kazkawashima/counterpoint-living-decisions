@@ -585,6 +585,10 @@ The canonical implementation-facing artifacts are:
   task. The live provider evaluator remains a separate, explicitly gated
   deployment concern, while rendered remote deployment configs remain
   provider-disabled until the judge gate is approved.
+- Worker deterministic mode now wires both AI-preferred private disclosure and
+  shared Decision synthesis in addition to invalidation evaluation. Manual
+  disclosure requests explicitly remove the proposer dependency, preserving
+  the manual fallback and truthful `human_selected`/`ai_assisted` origin.
 - Hosted demo reset is now wired through the same authorization, event, and
   projection boundaries. It clears private/shared read models without rewinding
   the event cursor, supports exact idempotent replay, and rejects participant
@@ -598,6 +602,14 @@ The canonical implementation-facing artifacts are:
   runs it with deterministic invalidation enabled; the approved deployment
   driver runs the same product lifecycle with invalidation opt-in only, keeping
   remote provider access disabled by default.
+- A Worker-specific Playwright browser project now runs against Wrangler's
+  `0.0.0.0` server and passed the external-style Product journey: SPA load,
+  login, assigned Work & Productivity meeting, workspace render, and same-host
+  API request verification. It does not use the Node API webServer used by the
+  general E2E project.
+- Hosted C5 coverage now includes a separate participant session proving that a
+  facilitator's private source is absent from the participant projection and
+  that cross-owner disclosure proposal and demo regulatory mutation are denied.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call
@@ -620,12 +632,14 @@ The canonical implementation-facing artifacts are:
   reauthorization cases were added; rerunning those two was blocked by the
   execution environment's escalated usage limit. The focused security rerun
   passed 279 cases; its four WebSocket cases were blocked only because the
-  sandbox denied their required `0.0.0.0` listen. The managed Worker route
-  integration suite passes in the Cloudflare pool; the full Cloudflare pool
-  is now 10 files and 84 tests, all passing after the hosted invalidation/reset
-  additions. No visible UI
-  changed, so no browser capture was required. Reel shooting and reel-material
-  organization are deferred from the active goal; product visibility remains
+  sandbox denied their required `0.0.0.0` listen. The hosted flagship Worker
+  target now passes four integration cases, and the Worker-specific browser
+  E2E passes the SPA/login/workspace/AI-preview journey against Wrangler.
+  The full Cloudflare pool now passes 10 files and 86 tests after giving its
+  migration hooks and integration cases explicit cold-start timeouts. No
+  visible UI changed, so no new screenshot was required. Reel
+  shooting and reel-material organization are deferred from the active goal;
+  product visibility remains
   the priority, while the AGENTS.md capture rule stays available for later UI
   changes.
 

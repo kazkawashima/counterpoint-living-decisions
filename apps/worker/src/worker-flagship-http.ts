@@ -55,8 +55,12 @@ import {
   createJsonCodec,
 } from "@counterpoint/adapters-cloudflare";
 import {
+  DeterministicPrivateDisclosureModel,
   DeterministicAssumptionInvalidationModel,
+  DeterministicSharedDecisionModel,
   OpenAiAssumptionInvalidationEvaluator,
+  OpenAiPrivateDisclosureProposer,
+  OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
 import {
   apiErrorResponse,
@@ -268,6 +272,14 @@ export function createWorkerFlagshipDependencies(
       (await meetings.listAssignments(meetingId))
         .filter(({ active }) => active)
         .map(({ participantId }) => participantId),
+    ...(bindings.OPENAI_MODE === "deterministic"
+      ? {
+          synthesizer: new OpenAiSharedDecisionSynthesizer({
+            model: bindings.OPENAI_MODEL ?? "gpt-5.6",
+            modelAdapter: new DeterministicSharedDecisionModel(),
+          }),
+        }
+      : {}),
   };
   const disclosures: DisclosureDependencies = {
     artifacts: new R2ArtifactStore(bindings.ARTIFACTS),
@@ -276,6 +288,14 @@ export function createWorkerFlagshipDependencies(
     hash,
     ids,
     projections,
+    ...(bindings.OPENAI_MODE === "deterministic"
+      ? {
+          candidateProposer: new OpenAiPrivateDisclosureProposer({
+            model: bindings.OPENAI_MODEL ?? "gpt-5.6",
+            modelAdapter: new DeterministicPrivateDisclosureModel(),
+          }),
+        }
+      : {}),
   };
   const externalEvents: ExternalEventDependencies = {
     clock,
@@ -1153,8 +1173,16 @@ export async function handleWorkerFlagshipHttp(input: {
     if (proposeDisclosureRequest === undefined) {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
+    const disclosureDependencies: DisclosureDependencies =
+      proposeDisclosureRequest.assistance === "ai_preferred"
+        ? dependencies.disclosures
+        : (() => {
+            const { artifacts, clock, events, hash, ids, projections } =
+              dependencies.disclosures;
+            return { artifacts, clock, events, hash, ids, projections };
+          })();
     const result = await proposeDisclosure(
-      dependencies.disclosures,
+      disclosureDependencies,
       resolved.authorization,
       {
         ...proposeDisclosureRequest,
@@ -1180,7 +1208,10 @@ export async function handleWorkerFlagshipHttp(input: {
         candidate: result.candidate,
         correlationId: result.correlationId,
         meetingId,
-        origin: "human_selected",
+        origin:
+          proposeDisclosureRequest.assistance === "ai_preferred"
+            ? "ai_assisted"
+            : "human_selected",
         position: visiblePosition(
           events,
           resolved.authorization.participantId,
