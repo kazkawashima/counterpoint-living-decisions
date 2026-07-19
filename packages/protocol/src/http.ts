@@ -490,6 +490,10 @@ const RealtimeClientSecretSchema = z.string().min(1).max(4096);
 const RealtimeModelSchema = z.string().trim().min(1).max(256);
 
 export const RealtimeChannelSchema = z.enum(["private", "shared"]);
+export const RealtimeKeySourceSchema = z.enum([
+  "facilitatorProvided",
+  "judgeManaged",
+]);
 
 export const ConfigureMeetingByokRequestSchema = z.strictObject({
   meetingId: MeetingIdSchema,
@@ -530,11 +534,13 @@ export const IssueRealtimeClientSecretResponseSchema = z.strictObject({
   channel: RealtimeChannelSchema,
   clientSecret: RealtimeClientSecretSchema,
   expiresAt: UtcIsoTimestampSchema,
+  keySource: RealtimeKeySourceSchema,
   model: RealtimeModelSchema,
   ...RequiredCorrelationShape,
 });
 
 export type RealtimeChannel = z.infer<typeof RealtimeChannelSchema>;
+export type RealtimeKeySource = z.infer<typeof RealtimeKeySourceSchema>;
 export type ConfigureMeetingByokRequest = z.infer<
   typeof ConfigureMeetingByokRequestSchema
 >;

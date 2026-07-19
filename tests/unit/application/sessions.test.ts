@@ -7,6 +7,7 @@ import {
   authenticateSessionById,
   login,
   logout,
+  userAuthorizationContext,
 } from "../../../packages/application/src/index.js";
 import {
   DeterministicSessionTokenIssuer,
@@ -57,6 +58,31 @@ async function loginFixture(ports: ReturnType<typeof dependencies>) {
 }
 
 describe("fixed-user session lifecycle", () => {
+  it("grants managed-AI capability only from the server-side judge allowlist", () => {
+    const base = {
+      meetingId: "meeting-a",
+      participantId: "participant-facilitator",
+      role: "facilitator" as const,
+      sessionId: "session-facilitator",
+    };
+    const policy = {
+      judgeManagedAiUserIds: new Set(["user-judge"]),
+    };
+
+    const judge = userAuthorizationContext(
+      { ...base, userId: "user-judge" },
+      policy,
+    );
+    const ordinary = userAuthorizationContext(
+      { ...base, userId: "user-ordinary" },
+      policy,
+    );
+
+    expect(judge.capabilities.has("judge:managed-ai")).toBe(true);
+    expect(ordinary.capabilities.has("judge:managed-ai")).toBe(false);
+    expect(ordinary.capabilities.has("byok:configure")).toBe(true);
+  });
+
   it("issues a hashed, non-exclusive Bearer session for valid credentials", async () => {
     const ports = dependencies();
     const first = await login(ports, {

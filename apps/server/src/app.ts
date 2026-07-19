@@ -23,7 +23,6 @@ import {
   injectDemoRegulatoryChange,
   heartbeatMeetingByok,
   issueDisplayToken,
-  issueRealtimeClientSecret,
   joinMeetingByCode,
   listAssignedMeetings,
   listAssumptionInvalidationEvaluations,
@@ -69,6 +68,7 @@ import {
   type DomainEvent,
   type ExternalEvent as DomainExternalEvent,
 } from "@counterpoint/domain";
+import { handleIssueRealtimeClientSecretHttp } from "@counterpoint/http-api";
 import type {
   EventRecord,
   IdGenerator,
@@ -111,8 +111,6 @@ import {
   InjectDemoRegulatoryChangeResponseSchema,
   IssueDisplayTokenRequestSchema,
   IssueDisplayTokenResponseSchema,
-  IssueRealtimeClientSecretRequestSchema,
-  IssueRealtimeClientSecretResponseSchema,
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
@@ -165,6 +163,7 @@ import {
 } from "@counterpoint/protocol";
 
 import type { RealtimeTicketRecord } from "./realtime.js";
+import { publicCapabilities } from "./public-capabilities.js";
 import type { ServerRuntime } from "./runtime.js";
 import {
   realtimeRoleProjectionFor,
@@ -378,6 +377,19 @@ async function authenticatedSession(
     : result;
 }
 
+function resolveRuntimeMeetingAuthorization(
+  runtime: ServerRuntime,
+  session: Pick<SessionRecord, "sessionId" | "userId">,
+  meetingId: string,
+) {
+  return resolveMeetingAuthorization(
+    runtime.meetings,
+    session,
+    meetingId,
+    runtime.authorizationPolicy,
+  );
+}
+
 async function assignedMeeting(
   runtime: ServerRuntime,
   meetingId: string,
@@ -442,8 +454,8 @@ async function realtimeAuthorization(
   ) {
     return undefined;
   }
-  const resolved = await resolveMeetingAuthorization(
-    runtime.meetings,
+  const resolved = await resolveRuntimeMeetingAuthorization(
+    runtime,
     authenticated.session,
     ticket.meetingId,
   );
@@ -766,8 +778,8 @@ async function resolvedDecisionMutation(
   if (authenticated.kind === "rejected") {
     return authenticated;
   }
-  const resolved = await resolveMeetingAuthorization(
-    runtime.meetings,
+  const resolved = await resolveRuntimeMeetingAuthorization(
+    runtime,
     authenticated.session,
     input.meetingId,
   );
@@ -1080,7 +1092,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     );
     return context.json(
       JoinMeetingByCodeResponseSchema.parse({
-        capabilities: [...result.authorization.capabilities],
+        capabilities: publicCapabilities(result.authorization.capabilities),
         correlationId: context.get("correlationId"),
         meeting: {
           meetingId: result.meeting.meetingId,
@@ -1106,8 +1118,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       query.data.meetingId,
     );
@@ -1136,8 +1148,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1187,8 +1199,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1226,8 +1238,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1263,8 +1275,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1291,47 +1303,19 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
   app.post(
     "/api/v1/meetings/:meetingId/realtime/client-secrets",
     async (context) => {
-      const request = await parseJson(
-        context,
-        IssueRealtimeClientSecretRequestSchema,
-      );
-      if (
-        request.kind === "rejected" ||
-        request.value.meetingId !== context.req.param("meetingId")
-      ) {
-        return errorResponse(context, "VALIDATION_FAILED");
-      }
-      const authenticated = await authenticatedSession(context, runtime);
-      if (authenticated.kind === "rejected") {
-        return errorResponse(context, authenticated.code);
-      }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
-        authenticated.session,
-        request.value.meetingId,
-      );
-      if (resolved.kind === "rejected") {
-        return errorResponse(context, resolved.code);
-      }
-      const result = await issueRealtimeClientSecret(
-        runtime.realtimeSecrets,
-        resolved.authorization,
-        request.value,
-      );
-      if (result.kind === "failed") {
-        return errorResponse(context, result.code);
-      }
-      return context.json(
-        IssueRealtimeClientSecretResponseSchema.parse({
-          channel: result.channel,
-          clientSecret: result.clientSecret,
-          correlationId: context.get("correlationId"),
-          expiresAt: result.expiresAt,
-          meetingId: result.meetingId,
-          model: result.model,
-        }),
-        201,
-      );
+      return handleIssueRealtimeClientSecretHttp({
+        correlationId: context.get("correlationId"),
+        dependencies: {
+          authorizationPolicy: runtime.authorizationPolicy,
+          clock: runtime.clock,
+          meetings: runtime.meetings,
+          realtimeSecrets: runtime.realtimeSecrets,
+          sessions: runtime.sessions,
+          tokens: runtime.tokens,
+        },
+        meetingId: context.req.param("meetingId"),
+        request: context.req.raw,
+      });
     },
   );
 
@@ -1349,8 +1333,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         request.value.meetingId,
       );
@@ -1396,8 +1380,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         request.value.meetingId,
       );
@@ -1435,8 +1419,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1480,8 +1464,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1550,8 +1534,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         request.value.meetingId,
       );
@@ -1646,8 +1630,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       query.data.meetingId,
     );
@@ -1693,8 +1677,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       query.data.meetingId,
     );
@@ -1742,8 +1726,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       query.data.meetingId,
     );
@@ -1787,8 +1771,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         query.data.meetingId,
       );
@@ -1827,8 +1811,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -1893,8 +1877,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       fields.data.meetingId,
     );
@@ -1953,8 +1937,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -2008,8 +1992,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         query.data.meetingId,
       );
@@ -2044,8 +2028,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -2105,8 +2089,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -2153,8 +2137,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -2201,8 +2185,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       request.value.meetingId,
     );
@@ -2912,8 +2896,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         return errorResponse(context, authenticated.code);
       }
       const meetingScope = context.req.param("meetingId");
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         meetingScope,
       );
@@ -3052,8 +3036,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         query.data.meetingId,
       );
@@ -3105,8 +3089,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       if (authenticated.kind === "rejected") {
         return errorResponse(context, authenticated.code);
       }
-      const resolved = await resolveMeetingAuthorization(
-        runtime.meetings,
+      const resolved = await resolveRuntimeMeetingAuthorization(
+        runtime,
         authenticated.session,
         query.data.meetingId,
       );
@@ -3160,8 +3144,8 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (authenticated.kind === "rejected") {
       return errorResponse(context, authenticated.code);
     }
-    const resolved = await resolveMeetingAuthorization(
-      runtime.meetings,
+    const resolved = await resolveRuntimeMeetingAuthorization(
+      runtime,
       authenticated.session,
       query.data.meetingId,
     );

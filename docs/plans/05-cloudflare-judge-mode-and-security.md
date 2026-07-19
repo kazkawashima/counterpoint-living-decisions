@@ -55,11 +55,41 @@ C2 runtime notes:
 ### C3 — Judge-managed key path
 
 - [ ] Register `OPENAI_API_KEY_JUDGE` via secret workflow without echoing value.
-- [ ] Allow only the judge user capability.
-- [ ] Keep standard key out of browser, DO state, D1, R2, logs, and events.
-- [ ] Reissue short-lived Realtime secrets after DO eviction without exposing
+- [x] Allow only the judge user capability.
+- [x] Keep standard key out of browser, DO state, D1, R2, logs, and events.
+- [x] Reissue short-lived Realtime secrets after DO eviction without exposing
       the standard key.
-- [ ] Keep ordinary BYOK behavior unchanged.
+- [x] Keep ordinary BYOK behavior unchanged.
+
+The local C3 implementation uses an internal, server-derived
+`judge:managed-ai` capability that is granted only by an exact user-ID
+allowlist and is filtered from public role projections. Clients cannot request
+judge mode or select a key source. Node and Worker delegate Realtime
+client-secret issuance to the same Web-standard HTTP handler, while the Worker
+constructs the managed OpenAI adapter directly from its request-local Secret
+binding. The adapter never accepts the standard key as application input.
+
+Cloudflare-native proof covers exact D1 authentication and meeting scope,
+ordinary-user denial, missing-Secret fail-closed behavior, and fresh
+short-lived-secret issuance after recreating the Worker handler. Assertions
+scan the response, D1 rows, R2 listing, and meeting Durable Object health
+surface for the synthetic standard key. The Worker still has no hosted BYOK
+configure/heartbeat/clear route; ordinary Node BYOK behavior and its shared
+HTTP contract remain unchanged, and the hosted transient-DO BYOK adapter stays
+in A6 parity work.
+
+Realtime client-secret creation explicitly requests a 30-second TTL instead of
+the provider's longer default. Provider client secrets may create multiple
+sessions until expiry, and attached session configuration can be overridden by
+the client, so the ephemeral token and its channel label are bootstrap data,
+not an application authorization boundary. Authentication, meeting scope,
+private/shared publication rules, and C4 usage limits remain server-owned.
+
+No remote Secret was registered in this local implementation boundary.
+`OPENAI_API_KEY_JUDGE` and the exact judge identity must remain absent from
+`wrangler.jsonc`, generated bindings, source control, logs, and captured media.
+Their registration and shutdown are deployment operations, not build-time
+defaults.
 
 ### C4 — Usage limits
 

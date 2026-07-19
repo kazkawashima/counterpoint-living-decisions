@@ -20,6 +20,9 @@ export default defineConfig({
       "@counterpoint/domain": fileURLToPath(
         new URL("./packages/domain/src/index.ts", import.meta.url),
       ),
+      "@counterpoint/http-api": fileURLToPath(
+        new URL("./packages/http-api/src/index.ts", import.meta.url),
+      ),
       "@counterpoint/ports": fileURLToPath(
         new URL("./packages/ports/src/index.ts", import.meta.url),
       ),

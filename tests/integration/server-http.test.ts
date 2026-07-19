@@ -10,7 +10,11 @@ import {
   type LocalServerRuntime,
 } from "../../apps/server/src/index.js";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
-import type { RealtimeSecretIssuer, UrlFetcher } from "@counterpoint/ports";
+import type {
+  ManagedRealtimeSecretIssuer,
+  RealtimeSecretIssuer,
+  UrlFetcher,
+} from "@counterpoint/ports";
 import {
   AcquireSharedFloorResponseSchema,
   ApproveDisclosureResponseSchema,
@@ -589,6 +593,7 @@ describe("Node HTTP flagship shell", () => {
     expect(secret).toMatchObject({
       channel: "private",
       clientSecret: "ek_ephemeral_browser_only",
+      keySource: "facilitatorProvided",
       meetingId,
       model: "gpt-realtime-2.1",
     });
@@ -643,6 +648,112 @@ describe("Node HTTP flagship shell", () => {
       code: "API_KEY_REQUIRED",
     });
     expect(issuerInputs).toHaveLength(1);
+  });
+
+  it("uses judge-managed Realtime issuance only for the server-allowlisted account", async () => {
+    const { runtime } = await fixture();
+    const managedInputs: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0][] =
+      [];
+    const judgeRuntime = {
+      ...runtime,
+      authorizationPolicy: {
+        judgeManagedAiUserIds: new Set(["product"]),
+      },
+      realtimeSecrets: {
+        ...runtime.realtimeSecrets,
+        judgeManagedIssuer: {
+          issue(input: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0]) {
+            managedInputs.push(input);
+            return Promise.resolve({
+              channel: input.channel,
+              expiresAt: "2026-07-19T12:01:00.000Z",
+              model: "gpt-realtime-2.1",
+              value: "ek_judge_browser_ephemeral_only",
+            });
+          },
+        },
+      },
+    } satisfies LocalServerRuntime;
+    const app = createServerApp(judgeRuntime);
+    const meetingId = "meeting-global-ai-rollout";
+    const judge = await login(app, "product", "counterpoint-product");
+    const ordinary = await login(app, "legal", "counterpoint-legal");
+    const judgeHeaders = {
+      authorization: `Bearer ${judge.bearerToken}`,
+      "content-type": "application/json",
+    };
+
+    const issuedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "private", meetingId }),
+        headers: judgeHeaders,
+        method: "POST",
+      },
+    );
+    expect(issuedResponse.status).toBe(201);
+    expect(
+      IssueRealtimeClientSecretResponseSchema.parse(
+        await issuedResponse.json(),
+      ),
+    ).toMatchObject({
+      clientSecret: "ek_judge_browser_ephemeral_only",
+      keySource: "judgeManaged",
+    });
+    expect(managedInputs).toHaveLength(1);
+    expect("apiKey" in managedInputs[0]!).toBe(false);
+
+    const judgeByok = await app.request(`/api/v1/meetings/${meetingId}/byok`, {
+      body: JSON.stringify({
+        apiKey: "sk-synthetic-judge-must-not-enter-byok",
+        meetingId,
+      }),
+      headers: judgeHeaders,
+      method: "PUT",
+    });
+    expect(judgeByok.status).toBe(403);
+    await expect(judgeByok.json()).resolves.toMatchObject({
+      code: "JUDGE_MODE_FORBIDDEN",
+    });
+
+    const ordinaryResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "private", meetingId }),
+        headers: {
+          authorization: `Bearer ${ordinary.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(ordinaryResponse.status).toBe(400);
+    await expect(ordinaryResponse.json()).resolves.toMatchObject({
+      code: "API_KEY_REQUIRED",
+    });
+    expect(managedInputs).toHaveLength(1);
+
+    const projectionResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers: judgeHeaders },
+    );
+    expect(projectionResponse.status).toBe(200);
+    const projection = RoleProjectionResponseSchema.parse(
+      await projectionResponse.json(),
+    );
+    expect(projection.capabilities).not.toContain("judge:managed-ai");
+
+    const freshApp = createServerApp(judgeRuntime);
+    const reissued = await freshApp.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "shared", meetingId }),
+        headers: judgeHeaders,
+        method: "POST",
+      },
+    );
+    expect(reissued.status).toBe(201);
+    expect(managedInputs).toHaveLength(2);
   });
 
   it("clears BYOK explicitly and maps Realtime provider failure without leaking keys", async () => {

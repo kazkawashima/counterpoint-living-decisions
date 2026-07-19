@@ -57,8 +57,11 @@ export {
 } from "./invalidation-evaluation.js";
 export {
   DEFAULT_OPENAI_REALTIME_MODEL,
+  OPENAI_REALTIME_CLIENT_SECRET_TTL_SECONDS,
   OPENAI_REALTIME_CLIENT_SECRETS_URL,
+  OpenAiManagedRealtimeClientSecretIssuer,
   OpenAiRealtimeClientSecretError,
   OpenAiRealtimeClientSecretIssuer,
+  type OpenAiManagedRealtimeClientSecretIssuerOptions,
   type OpenAiRealtimeClientSecretIssuerOptions,
 } from "./realtime-client-secrets.js";

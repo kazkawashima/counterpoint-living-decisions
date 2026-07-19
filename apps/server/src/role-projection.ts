@@ -17,6 +17,7 @@ import {
 } from "@counterpoint/protocol";
 
 import type { ServerRuntime } from "./runtime.js";
+import { publicCapabilities } from "./public-capabilities.js";
 
 function decisionReadiness(decision: DomainDecision) {
   return {
@@ -328,7 +329,7 @@ export async function roleProjectionFor(
       ownerParticipantId === authorization.participantId,
   );
   return RoleProjectionResponseSchema.parse({
-    capabilities: [...authorization.capabilities],
+    capabilities: publicCapabilities(authorization.capabilities),
     correlationId,
     meeting: {
       meetingId: meeting.meetingId,

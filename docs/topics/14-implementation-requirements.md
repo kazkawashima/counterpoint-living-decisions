@@ -156,6 +156,9 @@ Reactアプリ内に次の独立した表示面を持つ。
 - sharedとprivateは別OpenAI Realtime sessionにする。
 - サーバーは会議APIキーを使って短期client secretを発行する。
 - 各ブラウザは短期secretを使い、OpenAI RealtimeへWebRTCで直接接続する。
+- client secret作成時は`expires_after`を明示する。現行実装は30秒とし、
+  有効期限内は複数session作成に使えてsession設定もclient側で上書き可能
+  であるため、secretやchannelラベルをアプリ認可境界として扱わない。
 - 標準APIキーおよび他参加者のprivate contextをRealtime clientへ渡さない。
 - 人間同士の音声配送は行わない。
 - Zoom相当の遠隔音声会議はMVP外とする。

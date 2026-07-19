@@ -1189,12 +1189,25 @@ describe("strict v1 HTTP protocol", () => {
         participantId: "participant-1",
       }).success,
     ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretRequestSchema.safeParse({
+        ...request,
+        judgeMode: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretRequestSchema.safeParse({
+        ...request,
+        keySource: "judgeManaged",
+      }).success,
+    ).toBe(false);
 
     const response = {
       meetingId: "meeting-1",
       channel: "private",
       clientSecret: "ek_synthetic-short-lived-client-secret",
       expiresAt: "2026-07-19T12:01:00.000Z",
+      keySource: "facilitatorProvided",
       model: "gpt-realtime-2.1",
       correlationId: "correlation-1",
     } as const;
@@ -1213,6 +1226,12 @@ describe("strict v1 HTTP protocol", () => {
       IssueRealtimeClientSecretResponseSchema.safeParse({
         ...response,
         expiresAt: "2026-07-19 12:01:00",
+      }).success,
+    ).toBe(false);
+    expect(
+      IssueRealtimeClientSecretResponseSchema.safeParse({
+        ...response,
+        keySource: "byok",
       }).success,
     ).toBe(false);
     expect(

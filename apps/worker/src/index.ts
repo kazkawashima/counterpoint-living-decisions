@@ -1,4 +1,24 @@
 import {
+  D1MeetingRepository,
+  D1SessionRepository,
+  WebCryptoSessionTokenIssuer,
+} from "@counterpoint/adapters-cloudflare";
+import {
+  OpenAiManagedRealtimeClientSecretIssuer,
+  OpenAiRealtimeClientSecretIssuer,
+} from "@counterpoint/adapters-openai";
+import {
+  apiErrorResponse,
+  handleIssueRealtimeClientSecretHttp,
+} from "@counterpoint/http-api";
+import type {
+  ManagedRealtimeSecretIssuer,
+  MeetingApiKeyLease,
+  MeetingApiKeyLeaseConfigureResult,
+  MeetingApiKeyLeaseMutationResult,
+  MeetingApiKeyLeaseStore,
+} from "@counterpoint/ports";
+import {
   CURRENT_PROTOCOL_VERSION,
   HealthResponseSchema,
   ReadinessResponseSchema,
@@ -21,7 +41,18 @@ const EXPECTED_D1_MIGRATIONS = [
   "0005_d1_append_guards.sql",
 ] as const;
 
-export type Env = Readonly<WorkerBindings>;
+interface JudgeWorkerBindings {
+  readonly JUDGE_USER_ID?: string;
+  readonly OPENAI_API_KEY_JUDGE?: string;
+}
+
+export type Env = Readonly<WorkerBindings & JudgeWorkerBindings>;
+
+export interface WorkerHandlerOptions {
+  readonly managedIssuerFactory?: (
+    apiKey: string,
+  ) => ManagedRealtimeSecretIssuer;
+}
 
 interface DependencyProbe {
   readonly available: boolean;
@@ -32,11 +63,53 @@ interface MigrationRow {
   readonly name: string;
 }
 
+const unavailableLeases: MeetingApiKeyLeaseStore = {
+  clear(): Promise<MeetingApiKeyLeaseMutationResult> {
+    return Promise.resolve({ kind: "missing" });
+  },
+  clearBySession(): Promise<void> {
+    return Promise.resolve();
+  },
+  configure(): Promise<MeetingApiKeyLeaseConfigureResult> {
+    return Promise.reject(
+      new Error("Worker BYOK configuration route is not available"),
+    );
+  },
+  findByMeeting(): Promise<MeetingApiKeyLease | undefined> {
+    return Promise.resolve(undefined);
+  },
+  heartbeat(): Promise<MeetingApiKeyLeaseMutationResult> {
+    return Promise.resolve({ kind: "missing" });
+  },
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, {
     headers: JSON_HEADERS,
     status,
   });
+}
+
+function nonEmptyTrimmed(value: string | undefined): value is string {
+  return value !== undefined && value.length > 0 && value.trim() === value;
+}
+
+function judgeUserId(env: Env): string | undefined {
+  return nonEmptyTrimmed(env.JUDGE_USER_ID) ? env.JUDGE_USER_ID : undefined;
+}
+
+function managedIssuer(
+  env: Env,
+  factory: NonNullable<WorkerHandlerOptions["managedIssuerFactory"]>,
+): ManagedRealtimeSecretIssuer | undefined {
+  if (!nonEmptyTrimmed(env.OPENAI_API_KEY_JUDGE)) {
+    return undefined;
+  }
+  try {
+    return factory(env.OPENAI_API_KEY_JUDGE);
+  } catch {
+    return undefined;
+  }
 }
 
 async function probeDatabase(database: D1Database): Promise<DependencyProbe> {
@@ -95,6 +168,8 @@ async function readinessResponse(env: Env): Promise<Response> {
     probeArtifactStorage(env.ARTIFACTS),
   ]);
   const realtime = env.MEETINGS !== undefined;
+  const judgeOpenAiConfigured =
+    judgeUserId(env) !== undefined && nonEmptyTrimmed(env.OPENAI_API_KEY_JUDGE);
   const migrationsCurrent = database.migrationsCurrent === true;
   const ready =
     database.available && migrationsCurrent && artifactStorage && realtime;
@@ -113,7 +188,10 @@ async function readinessResponse(env: Env): Promise<Response> {
         name: "realtime",
         status: realtime ? "available" : "unavailable",
       },
-      { name: "openai", status: "not_configured" },
+      {
+        name: "openai",
+        status: judgeOpenAiConfigured ? "available" : "not_configured",
+      },
     ],
     migrationsCurrent,
     protocolVersion: CURRENT_PROTOCOL_VERSION,
@@ -139,7 +217,14 @@ function apiParityPendingResponse(): Response {
   );
 }
 
-export function createWorkerHandler(): ExportedHandler<Env> {
+export function createWorkerHandler(
+  options: WorkerHandlerOptions = {},
+): ExportedHandler<Env> {
+  const managedIssuerFactory =
+    options.managedIssuerFactory ??
+    ((apiKey: string) =>
+      new OpenAiManagedRealtimeClientSecretIssuer({ apiKey }));
+
   return {
     async fetch(request, env) {
       const url = new URL(request.url);
@@ -148,6 +233,49 @@ export function createWorkerHandler(): ExportedHandler<Env> {
       }
       if (url.pathname === "/ready") {
         return readinessResponse(env);
+      }
+      const realtimeClientSecretRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/realtime\/client-secrets$/u.exec(
+          url.pathname,
+        );
+      if (
+        request.method === "POST" &&
+        realtimeClientSecretRoute?.[1] !== undefined
+      ) {
+        const correlationId = crypto.randomUUID();
+        const tokens = new WebCryptoSessionTokenIssuer();
+        const allowlistedJudgeUserId = judgeUserId(env);
+        let meetingId: string;
+        try {
+          meetingId = decodeURIComponent(realtimeClientSecretRoute[1]);
+        } catch {
+          return apiErrorResponse("VALIDATION_FAILED", correlationId);
+        }
+        return handleIssueRealtimeClientSecretHttp({
+          correlationId,
+          dependencies: {
+            authorizationPolicy:
+              allowlistedJudgeUserId === undefined
+                ? {}
+                : {
+                    judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
+                  },
+            clock: { now: () => new Date().toISOString() },
+            judgeManagedIssuerFactory: () =>
+              managedIssuer(env, managedIssuerFactory),
+            meetings: new D1MeetingRepository(env.DB),
+            realtimeSecrets: {
+              clock: { now: () => new Date().toISOString() },
+              hashSafetyIdentifier: (value) => tokens.digest(value),
+              issuer: new OpenAiRealtimeClientSecretIssuer(),
+              leases: unavailableLeases,
+            },
+            sessions: new D1SessionRepository(env.DB),
+            tokens,
+          },
+          meetingId,
+          request,
+        });
       }
       if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
         return apiParityPendingResponse();

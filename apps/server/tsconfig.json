@@ -21,6 +21,9 @@
       "path": "../../packages/domain"
     },
     {
+      "path": "../../packages/http-api"
+    },
+    {
       "path": "../../packages/ports"
     },
     {

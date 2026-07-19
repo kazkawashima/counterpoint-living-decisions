@@ -42,6 +42,16 @@ export interface RealtimeSecretIssuer {
   }): Promise<RealtimeSecret>;
 }
 
+export interface ManagedRealtimeSecretIssuer {
+  issue(input: {
+    readonly channel: RealtimeChannel;
+    readonly meetingId: string;
+    readonly ownerParticipantId?: string | undefined;
+    readonly safetyIdentifier: string;
+    readonly sessionId: string;
+  }): Promise<RealtimeSecret>;
+}
+
 export interface MeetingApiKeyLease {
   readonly apiKey: string;
   readonly heartbeatAt: string;

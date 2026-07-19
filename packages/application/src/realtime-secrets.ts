@@ -1,5 +1,6 @@
 import type {
   Clock,
+  ManagedRealtimeSecretIssuer,
   MeetingApiKeyLease,
   MeetingApiKeyLeaseStore,
   RealtimeChannel,
@@ -20,6 +21,7 @@ export interface RealtimeSecretDependencies {
   readonly clock: Clock;
   readonly hashSafetyIdentifier: SafetyIdentifierHash;
   readonly issuer: RealtimeSecretIssuer;
+  readonly judgeManagedIssuer?: ManagedRealtimeSecretIssuer;
   readonly leases: MeetingApiKeyLeaseStore;
 }
 
@@ -38,7 +40,11 @@ export interface IssueRealtimeClientSecretInput {
 }
 
 export interface RealtimeSecretFailure {
-  readonly code: "API_KEY_REQUIRED" | "FORBIDDEN" | "REALTIME_UNAVAILABLE";
+  readonly code:
+    | "API_KEY_REQUIRED"
+    | "FORBIDDEN"
+    | "JUDGE_MODE_FORBIDDEN"
+    | "REALTIME_UNAVAILABLE";
   readonly kind: "failed";
 }
 
@@ -70,6 +76,7 @@ export type IssueRealtimeClientSecretResult =
       readonly channel: RealtimeChannel;
       readonly clientSecret: string;
       readonly expiresAt: string;
+      readonly keySource: "facilitatorProvided" | "judgeManaged";
       readonly kind: "issued";
       readonly meetingId: string;
       readonly model: string;
@@ -109,6 +116,10 @@ function facilitatorAuthorized(
       meetingId: meetingScope,
     }).kind === "authorized"
   );
+}
+
+function judgeManaged(context: UserAuthorizationContext): boolean {
+  return context.capabilities.has("judge:managed-ai");
 }
 
 function meetingReadAuthorized(
@@ -180,6 +191,9 @@ export async function configureMeetingByok(
   context: UserAuthorizationContext,
   input: ConfigureMeetingByokInput,
 ): Promise<ConfigureMeetingByokResult> {
+  if (judgeManaged(context)) {
+    return failed("JUDGE_MODE_FORBIDDEN");
+  }
   if (!facilitatorAuthorized(context, input.meetingId)) {
     return failed("FORBIDDEN");
   }
@@ -216,6 +230,9 @@ export async function heartbeatMeetingByok(
   context: UserAuthorizationContext,
   input: MeetingByokInput,
 ): Promise<HeartbeatMeetingByokResult> {
+  if (judgeManaged(context)) {
+    return failed("JUDGE_MODE_FORBIDDEN");
+  }
   if (!facilitatorAuthorized(context, input.meetingId)) {
     return failed("FORBIDDEN");
   }
@@ -254,6 +271,9 @@ export async function clearMeetingByok(
   context: UserAuthorizationContext,
   input: MeetingByokInput,
 ): Promise<ClearMeetingByokResult> {
+  if (judgeManaged(context)) {
+    return failed("JUDGE_MODE_FORBIDDEN");
+  }
   if (!facilitatorAuthorized(context, input.meetingId)) {
     return failed("FORBIDDEN");
   }
@@ -299,14 +319,20 @@ export async function issueRealtimeClientSecret(
     return failed("FORBIDDEN");
   }
 
-  const lease = await activeLease(dependencies, input.meetingId);
-  if (lease === undefined) {
+  const usesJudgeManaged = judgeManaged(context);
+  const judgeManagedIssuer = dependencies.judgeManagedIssuer;
+  const lease = usesJudgeManaged
+    ? undefined
+    : await activeLease(dependencies, input.meetingId);
+  if (!usesJudgeManaged && lease === undefined) {
     return failed("API_KEY_REQUIRED");
+  }
+  if (usesJudgeManaged && judgeManagedIssuer === undefined) {
+    return failed("REALTIME_UNAVAILABLE");
   }
 
   try {
-    const secret = await dependencies.issuer.issue({
-      apiKey: lease.apiKey,
+    const issuerInput = {
       channel: input.channel,
       meetingId: input.meetingId,
       ...(input.channel === "private"
@@ -317,13 +343,25 @@ export async function issueRealtimeClientSecret(
         context.userId,
       ),
       sessionId: context.sessionId,
-    });
+    };
+    const secret =
+      usesJudgeManaged && judgeManagedIssuer !== undefined
+        ? await judgeManagedIssuer.issue(issuerInput)
+        : lease === undefined
+          ? undefined
+          : await dependencies.issuer.issue({
+              ...issuerInput,
+              apiKey: lease.apiKey,
+            });
+    if (secret === undefined) {
+      return failed("REALTIME_UNAVAILABLE");
+    }
     const secretExpiresAt = Date.parse(secret.expiresAt);
     if (
       secret.channel !== input.channel ||
       secret.value.length === 0 ||
       secret.value.trim() !== secret.value ||
-      secret.value === lease.apiKey ||
+      secret.value === lease?.apiKey ||
       secret.model.length === 0 ||
       secret.model.trim() !== secret.model ||
       !Number.isFinite(secretExpiresAt) ||
@@ -335,6 +373,7 @@ export async function issueRealtimeClientSecret(
       channel: secret.channel,
       clientSecret: secret.value,
       expiresAt: secret.expiresAt,
+      keySource: usesJudgeManaged ? "judgeManaged" : "facilitatorProvided",
       kind: "issued",
       meetingId: input.meetingId,
       model: secret.model,

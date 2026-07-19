@@ -9,6 +9,7 @@ export const capabilities = [
   "demo:event-inject",
   "demo:reset",
   "byok:configure",
+  "judge:managed-ai",
 ] as const;
 
 export type Capability = (typeof capabilities)[number];

@@ -372,8 +372,25 @@ The canonical implementation-facing artifacts are:
 
 ## In progress
 
-- Begin Plan 05 C3 judge-managed key path without registering a remote secret
-  or exposing a second HTTP implementation.
+- Plan 05 C3 local code is complete except for the explicitly gated remote
+  Secret registration. The Worker now authenticates bearer sessions and
+  meeting assignments from D1, derives an internal exact-user judge capability,
+  and issues short-lived Realtime secrets through the same HTTP semantics as
+  Node. The standard key is captured only by a request-local OpenAI adapter and
+  never becomes application input, public capability data, meeting state, or a
+  persistence payload.
+- C3 security proof covers ordinary-user denial, missing-Secret fail-closed
+  behavior, standard-key non-disclosure across response/D1/R2/DO surfaces, and
+  reissuance after Worker-handler recreation. Existing ordinary Node BYOK
+  issuance remains green. Hosted BYOK configure/heartbeat/clear through
+  transient Durable Object memory remains the separate A6 parity residual.
+- Independent security review reduced the provider client-secret TTL from its
+  longer default to an explicit 30 seconds, moved Secret-backed adapter
+  construction after authentication and exact allowlist authorization, and
+  aligned encoded meeting-ID handling between Node and Worker.
+- The current verification baseline is 416 regular Vitest tests and 17
+  Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
+  configuration checks. No UI changed, so no browser capture was required.
 
 ## Not started
 
@@ -383,12 +400,12 @@ The canonical implementation-facing artifacts are:
 
 Continue with Plan 05 in
 [`05-cloudflare-judge-mode-and-security.md`](../05-cloudflare-judge-mode-and-security.md)
-at C3: extract shared HTTP transport semantics before wiring the Worker API,
-then add a capability-checked judge-managed provider source that is unavailable
-to ordinary users and never enters the browser, Durable Object, D1, R2, events,
-or logs. Keep secret registration and all remote resource/deployment mutation
-behind an explicit deployment boundary. Preserve ordinary BYOK behavior and
-the USD 25 rolling-24-hour product spend gate for C4.
+at C4: implement the durable, pre-billable judge usage limiter with the USD 25
+rolling-24-hour product boundary and explicit `USAGE_LIMIT_REACHED` denial.
+Keep C3 remote Secret registration and all deployment mutation behind an
+explicit deployment boundary. In parallel with later hosted API parity, add
+the transient Durable Object adapter for ordinary BYOK configure, heartbeat,
+clear, and loss recovery without changing the shared application semantics.
 
 ## Open gates
 

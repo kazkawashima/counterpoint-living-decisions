@@ -363,6 +363,7 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
             clientSecret: `ek_synthetic_a7_${input.channel}_${String(issued)}`,
             correlationId: `correlation-a7-${String(issued)}`,
             expiresAt: "2026-07-19T05:00:00.000Z",
+            keySource: "facilitatorProvided",
             meetingId: input.meetingId,
             model: "gpt-realtime-2.1",
           }),

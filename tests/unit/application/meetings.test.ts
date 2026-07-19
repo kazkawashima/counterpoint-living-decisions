@@ -143,4 +143,43 @@ describe("meeting participation", () => {
       ),
     ).resolves.toEqual({ code: "FORBIDDEN", kind: "rejected" });
   });
+
+  it("resolves judge capability from server policy, never from the assignment", async () => {
+    const meetings = new InMemoryMeetingRepository();
+    const created = await createMeeting(
+      { ids: new SequenceIdGenerator(), meetings },
+      facilitator,
+      { purpose: "Judge policy test", users: participants },
+    );
+    if (created.kind !== "created") {
+      throw new Error("Fixture meeting creation failed");
+    }
+
+    const judge = await resolveMeetingAuthorization(
+      meetings,
+      {
+        sessionId: "session-judge",
+        userId: "user-facilitator",
+      },
+      created.meeting.meetingId,
+      { judgeManagedAiUserIds: new Set(["user-facilitator"]) },
+    );
+    const ordinary = await resolveMeetingAuthorization(
+      meetings,
+      {
+        sessionId: "session-ordinary",
+        userId: "user-facilitator",
+      },
+      created.meeting.meetingId,
+    );
+
+    expect(
+      judge.kind === "authorized" &&
+        judge.authorization.capabilities.has("judge:managed-ai"),
+    ).toBe(true);
+    expect(
+      ordinary.kind === "authorized" &&
+        ordinary.authorization.capabilities.has("judge:managed-ai"),
+    ).toBe(false);
+  });
 });

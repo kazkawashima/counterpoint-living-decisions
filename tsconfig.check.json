@@ -18,6 +18,7 @@
       ],
       "@counterpoint/application": ["packages/application/src/index.ts"],
       "@counterpoint/domain": ["packages/domain/src/index.ts"],
+      "@counterpoint/http-api": ["packages/http-api/src/index.ts"],
       "@counterpoint/ports": ["packages/ports/src/index.ts"],
       "@counterpoint/protocol": ["packages/protocol/src/index.ts"]
     },

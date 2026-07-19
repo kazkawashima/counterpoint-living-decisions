@@ -9,6 +9,21 @@
   "include": ["src"],
   "references": [
     {
+      "path": "../../packages/adapters-cloudflare"
+    },
+    {
+      "path": "../../packages/adapters-openai"
+    },
+    {
+      "path": "../../packages/application"
+    },
+    {
+      "path": "../../packages/http-api"
+    },
+    {
+      "path": "../../packages/ports"
+    },
+    {
       "path": "../../packages/protocol"
     }
   ]

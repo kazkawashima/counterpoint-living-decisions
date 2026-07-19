@@ -185,6 +185,7 @@ export {
   type LoginResult,
   type SessionAuthenticationResult,
   type SessionDependencies,
+  type UserAuthorizationPolicy,
 } from "./sessions.js";
 export {
   MEETING_API_KEY_LEASE_TTL_MS,

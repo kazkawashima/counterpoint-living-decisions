@@ -34,6 +34,13 @@ const packageRules = new Map([
     },
   ],
   [
+    "http-api",
+    {
+      allowedInternal: new Set(["application", "ports", "protocol"]),
+      allowedExternal: new Set(),
+    },
+  ],
+  [
     "adapters-openai",
     {
       allowedInternal: new Set(["application", "ports"]),
@@ -52,8 +59,10 @@ const packageRules = new Map([
     {
       allowedInternal: new Set([
         "adapters-cloudflare",
+        "adapters-openai",
         "application",
         "domain",
+        "http-api",
         "ports",
         "protocol",
       ]),

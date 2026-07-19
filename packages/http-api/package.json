@@ -1,17 +1,20 @@
 {
-  "name": "@counterpoint/worker",
+  "name": "@counterpoint/http-api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "tsc -b"
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "dependencies": {
-    "@counterpoint/adapters-cloudflare": "0.0.0",
-    "@counterpoint/adapters-openai": "0.0.0",
     "@counterpoint/application": "0.0.0",
-    "@counterpoint/http-api": "0.0.0",
     "@counterpoint/ports": "0.0.0",
     "@counterpoint/protocol": "0.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b"
   }
 }

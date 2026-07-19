@@ -40,6 +40,7 @@ import type {
   ExternalEventDependencies,
   InvalidationEvaluationDependencies,
   RealtimeSecretDependencies,
+  UserAuthorizationPolicy,
   UrlArtifactIngestionDependencies,
 } from "@counterpoint/application";
 import {
@@ -65,6 +66,7 @@ import {
 } from "./realtime.js";
 
 export interface ServerRuntime {
+  readonly authorizationPolicy: UserAuthorizationPolicy;
   readonly artifactIngestion: UrlArtifactIngestionDependencies;
   readonly artifactStorageAvailable: boolean;
   readonly clock: Clock;
@@ -349,6 +351,7 @@ export async function createLocalServerRuntime(
     return {
       artifactIngestion,
       artifactStorageAvailable,
+      authorizationPolicy: {},
       clock,
       close: () => {
         realtime.close();

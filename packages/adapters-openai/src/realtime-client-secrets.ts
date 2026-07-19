@@ -1,7 +1,12 @@
-import type { RealtimeSecret, RealtimeSecretIssuer } from "@counterpoint/ports";
+import type {
+  ManagedRealtimeSecretIssuer,
+  RealtimeSecret,
+  RealtimeSecretIssuer,
+} from "@counterpoint/ports";
 import { z } from "zod";
 
 export const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1";
+export const OPENAI_REALTIME_CLIENT_SECRET_TTL_SECONDS = 30;
 export const OPENAI_REALTIME_CLIENT_SECRETS_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
 
@@ -23,6 +28,10 @@ export interface OpenAiRealtimeClientSecretIssuerOptions {
   readonly fetch?: FetchLike;
   readonly model?: string;
   readonly timeoutMs?: number;
+}
+
+export interface OpenAiManagedRealtimeClientSecretIssuerOptions extends OpenAiRealtimeClientSecretIssuerOptions {
+  readonly apiKey: string;
 }
 
 export class OpenAiRealtimeClientSecretError extends Error {
@@ -71,6 +80,10 @@ export class OpenAiRealtimeClientSecretIssuer implements RealtimeSecretIssuer {
     try {
       const response = await this.#fetch(OPENAI_REALTIME_CLIENT_SECRETS_URL, {
         body: JSON.stringify({
+          expires_after: {
+            anchor: "created_at",
+            seconds: OPENAI_REALTIME_CLIENT_SECRET_TTL_SECONDS,
+          },
           session: {
             instructions: instructionsFor(input.channel),
             model: this.#model,
@@ -111,6 +124,43 @@ export class OpenAiRealtimeClientSecretIssuer implements RealtimeSecretIssuer {
       throw new OpenAiRealtimeClientSecretError(
         "OpenAI Realtime client-secret issuance was unavailable",
         { cause: error },
+      );
+    }
+  }
+}
+
+export class OpenAiManagedRealtimeClientSecretIssuer implements ManagedRealtimeSecretIssuer {
+  readonly #apiKey: string;
+  readonly #issuer: RealtimeSecretIssuer;
+
+  constructor(options: OpenAiManagedRealtimeClientSecretIssuerOptions) {
+    const { apiKey, ...issuerOptions } = options;
+    if (apiKey.trim().length === 0 || apiKey.trim() !== apiKey) {
+      throw new TypeError(
+        "OpenAI managed Realtime API key must be nonempty and trimmed",
+      );
+    }
+    this.#apiKey = apiKey;
+    this.#issuer = new OpenAiRealtimeClientSecretIssuer(issuerOptions);
+  }
+
+  async issue(
+    input: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0],
+  ): Promise<RealtimeSecret> {
+    try {
+      const secret = await this.#issuer.issue({
+        ...input,
+        apiKey: this.#apiKey,
+      });
+      if (secret.value === this.#apiKey) {
+        throw new OpenAiRealtimeClientSecretError(
+          "OpenAI managed Realtime returned an invalid client secret",
+        );
+      }
+      return secret;
+    } catch {
+      throw new OpenAiRealtimeClientSecretError(
+        "OpenAI managed Realtime client-secret issuance was unavailable",
       );
     }
   }

@@ -14,6 +14,9 @@
       "path": "./packages/application"
     },
     {
+      "path": "./packages/http-api"
+    },
+    {
       "path": "./packages/adapters-node"
     },
     {

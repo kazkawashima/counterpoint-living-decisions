@@ -12,6 +12,7 @@ import {
   type UserAuthorizationContext,
 } from "../../../packages/application/src/index.js";
 import type {
+  ManagedRealtimeSecretIssuer,
   MeetingApiKeyLease,
   MeetingApiKeyLeaseConfigureResult,
   MeetingApiKeyLeaseMutationResult,
@@ -117,6 +118,22 @@ class CapturingRealtimeSecretIssuer implements RealtimeSecretIssuer {
   }
 }
 
+class CapturingManagedRealtimeSecretIssuer implements ManagedRealtimeSecretIssuer {
+  readonly inputs: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0][] = [];
+
+  issue(
+    input: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0],
+  ): Promise<RealtimeSecret> {
+    this.inputs.push(input);
+    return Promise.resolve({
+      channel: input.channel,
+      expiresAt: "2026-07-19T12:10:00.000Z",
+      model: "gpt-realtime-2.1",
+      value: "ek_judge_managed_ephemeral_secret",
+    });
+  }
+}
+
 function facilitatorContext(
   overrides: Partial<UserAuthorizationContext> = {},
 ): UserAuthorizationContext {
@@ -147,9 +164,23 @@ function participantContext(
   };
 }
 
+function judgeContext(): UserAuthorizationContext {
+  return userAuthorizationContext(
+    {
+      meetingId: "meeting-a",
+      participantId: "participant-judge",
+      role: "facilitator",
+      sessionId: "session-judge",
+      userId: "user-judge",
+    },
+    { judgeManagedAiUserIds: new Set(["user-judge"]) },
+  );
+}
+
 function fixture() {
   const clock = new MutableClock(NOW);
   const issuer = new CapturingRealtimeSecretIssuer();
+  const judgeManagedIssuer = new CapturingManagedRealtimeSecretIssuer();
   const leases = new InMemoryMeetingApiKeyLeaseStore();
   const hashSafetyIdentifier = vi.fn(
     (value: string) => `sha256:${Buffer.from(value).toString("hex")}`,
@@ -158,6 +189,7 @@ function fixture() {
     clock,
     hashSafetyIdentifier,
     issuer,
+    judgeManagedIssuer,
     leases,
   };
   return {
@@ -165,6 +197,7 @@ function fixture() {
     dependencies,
     hashSafetyIdentifier,
     issuer,
+    judgeManagedIssuer,
     leases,
   };
 }
@@ -324,6 +357,7 @@ describe("meeting-scoped realtime BYOK leases", () => {
       channel: "private",
       clientSecret: "ek_ephemeral_client_secret",
       expiresAt: "2026-07-19T12:10:00.000Z",
+      keySource: "facilitatorProvided",
       kind: "issued",
       meetingId: "meeting-a",
       model: "gpt-realtime-2.1",
@@ -344,6 +378,86 @@ describe("meeting-scoped realtime BYOK leases", () => {
       },
     ]);
     expect(issuer.inputs[0]?.safetyIdentifier).not.toBe("user-participant");
+  });
+
+  it("uses the managed issuer only for an allowlisted judge and never touches BYOK storage", async () => {
+    const { dependencies, issuer, judgeManagedIssuer, leases } = fixture();
+    const context = judgeContext();
+
+    await expect(
+      issueRealtimeClientSecret(dependencies, context, {
+        channel: "private",
+        meetingId: "meeting-a",
+      }),
+    ).resolves.toEqual({
+      channel: "private",
+      clientSecret: "ek_judge_managed_ephemeral_secret",
+      expiresAt: "2026-07-19T12:10:00.000Z",
+      keySource: "judgeManaged",
+      kind: "issued",
+      meetingId: "meeting-a",
+      model: "gpt-realtime-2.1",
+    });
+    expect(issuer.inputs).toEqual([]);
+    expect(judgeManagedIssuer.inputs).toEqual([
+      {
+        channel: "private",
+        meetingId: "meeting-a",
+        ownerParticipantId: "participant-judge",
+        safetyIdentifier:
+          "sha256:636f756e746572706f696e743a7265616c74696d652d7361666574793a76313a757365722d6a75646765",
+        sessionId: "session-judge",
+      },
+    ]);
+    await expect(leases.findByMeeting("meeting-a")).resolves.toBeUndefined();
+
+    await expect(
+      configureMeetingByok(dependencies, context, {
+        apiKey: STANDARD_API_KEY,
+        meetingId: "meeting-a",
+      }),
+    ).resolves.toEqual({
+      code: "JUDGE_MODE_FORBIDDEN",
+      kind: "failed",
+    });
+    await expect(
+      heartbeatMeetingByok(dependencies, context, {
+        meetingId: "meeting-a",
+      }),
+    ).resolves.toEqual({
+      code: "JUDGE_MODE_FORBIDDEN",
+      kind: "failed",
+    });
+    await expect(
+      clearMeetingByok(dependencies, context, {
+        meetingId: "meeting-a",
+      }),
+    ).resolves.toEqual({
+      code: "JUDGE_MODE_FORBIDDEN",
+      kind: "failed",
+    });
+  });
+
+  it("fails judge mode closed when its managed issuer is absent and never falls back to BYOK", async () => {
+    const { dependencies, issuer } = fixture();
+    const withoutJudgeIssuer: RealtimeSecretDependencies = {
+      clock: dependencies.clock,
+      hashSafetyIdentifier: dependencies.hashSafetyIdentifier,
+      issuer: dependencies.issuer,
+      leases: dependencies.leases,
+    };
+    await configure(withoutJudgeIssuer);
+
+    await expect(
+      issueRealtimeClientSecret(withoutJudgeIssuer, judgeContext(), {
+        channel: "shared",
+        meetingId: "meeting-a",
+      }),
+    ).resolves.toEqual({
+      code: "REALTIME_UNAVAILABLE",
+      kind: "failed",
+    });
+    expect(issuer.inputs).toEqual([]);
   });
 
   it("omits an owner binding for shared issuance and maps issuer failure", async () => {

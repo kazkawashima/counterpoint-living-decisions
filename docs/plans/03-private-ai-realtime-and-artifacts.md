@@ -62,8 +62,9 @@ text/manual degraded path.
 ### A6 — Realtime client-secret path
 
 - [ ] Implement BYOK/judge-managed key-source abstraction. The transient Node
-      BYOK source is complete; the allowlisted Worker Secret judge source and
-      spend gate remain in Plan 05.
+      BYOK source and allowlisted Worker Secret judge source now share the same
+      Realtime issuance contract; hosted transient-DO BYOK configure,
+      heartbeat, and clear parity plus the spend gate remain in Plan 05.
 - [x] Issue channel-scoped short-lived secrets without exposing standard key.
 - [x] Build direct browser WebRTC connection.
 - [x] Implement lifecycle, idle close, capped reconnect, and status UI.

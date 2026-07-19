@@ -2,6 +2,7 @@ export type {
   AiGateway,
   AiRequest,
   AiResult,
+  ManagedRealtimeSecretIssuer,
   MeetingApiKeyLease,
   MeetingApiKeyLeaseConfigureResult,
   MeetingApiKeyLeaseMutationResult,

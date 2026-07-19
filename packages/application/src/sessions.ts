@@ -197,6 +197,7 @@ export async function logout(
 
 export function capabilitiesForRole(
   role: "facilitator" | "participant",
+  options: { readonly judgeManagedAi?: boolean } = {},
 ): ReadonlySet<Capability> {
   const shared: readonly Capability[] = [
     "meeting:read",
@@ -206,7 +207,7 @@ export function capabilitiesForRole(
     "disclosure:approve-own",
   ];
 
-  return new Set(
+  const roleCapabilities: readonly Capability[] =
     role === "facilitator"
       ? [
           ...shared,
@@ -216,20 +217,32 @@ export function capabilitiesForRole(
           "demo:reset",
           "byok:configure",
         ]
-      : shared,
-  );
+      : shared;
+  return new Set<Capability>([
+    ...roleCapabilities,
+    ...(options.judgeManagedAi === true ? (["judge:managed-ai"] as const) : []),
+  ]);
 }
 
-export function userAuthorizationContext(input: {
-  readonly meetingId: string;
-  readonly participantId: string;
-  readonly role: "facilitator" | "participant";
-  readonly sessionId: string;
-  readonly userId: string;
-}): UserAuthorizationContext {
+export interface UserAuthorizationPolicy {
+  readonly judgeManagedAiUserIds?: ReadonlySet<string>;
+}
+
+export function userAuthorizationContext(
+  input: {
+    readonly meetingId: string;
+    readonly participantId: string;
+    readonly role: "facilitator" | "participant";
+    readonly sessionId: string;
+    readonly userId: string;
+  },
+  policy: UserAuthorizationPolicy = {},
+): UserAuthorizationContext {
   return {
     ...input,
-    capabilities: capabilitiesForRole(input.role),
+    capabilities: capabilitiesForRole(input.role, {
+      judgeManagedAi: policy.judgeManagedAiUserIds?.has(input.userId) === true,
+    }),
     kind: "user",
   };
 }

@@ -7,7 +7,10 @@ import type {
 } from "@counterpoint/ports";
 
 import type { UserAuthorizationContext } from "./authorization.js";
-import { userAuthorizationContext } from "./sessions.js";
+import {
+  userAuthorizationContext,
+  type UserAuthorizationPolicy,
+} from "./sessions.js";
 
 const MINIMUM_PARTICIPANTS = 3;
 const MAXIMUM_PARTICIPANTS = 8;
@@ -112,6 +115,7 @@ export async function resolveMeetingAuthorization(
   meetings: MeetingRepository,
   session: Pick<SessionRecord, "sessionId" | "userId">,
   meetingId: string,
+  policy: UserAuthorizationPolicy = {},
 ): Promise<
   | {
       readonly authorization: UserAuthorizationContext;
@@ -126,13 +130,16 @@ export async function resolveMeetingAuthorization(
   }
 
   return {
-    authorization: userAuthorizationContext({
-      meetingId,
-      participantId: assignment.participantId,
-      role: assignment.role,
-      sessionId: session.sessionId,
-      userId: session.userId,
-    }),
+    authorization: userAuthorizationContext(
+      {
+        meetingId,
+        participantId: assignment.participantId,
+        role: assignment.role,
+        sessionId: session.sessionId,
+        userId: session.userId,
+      },
+      policy,
+    ),
     kind: "authorized",
   };
 }

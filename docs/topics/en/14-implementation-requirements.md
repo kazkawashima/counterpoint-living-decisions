@@ -163,6 +163,11 @@ Text input is always available as a fallback.
 - Keep shared and private paths in separate OpenAI Realtime sessions.
 - The server issues a short-lived client secret using the meeting API key.
 - Each browser connects directly to OpenAI Realtime over WebRTC with that secret.
+- Set `expires_after` explicitly when creating a client secret. The current
+  implementation uses 30 seconds. Because a secret can create multiple
+  sessions until expiry and the client can override attached session settings,
+  neither the secret nor its channel label is an application authorization
+  boundary.
 - Never send the standard API key or another participant’s private context to the client.
 - Human-to-human voice delivery is out of scope; this is a meeting-state input system.
 - Aggregate shared transcripts and confirmed events at the application server.
