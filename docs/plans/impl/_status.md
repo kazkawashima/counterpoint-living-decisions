@@ -7,11 +7,12 @@ Updated: 2026-07-19
 **The complete local guided flagship is implemented from private evidence
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
-The revocable read-only shared display and A6 transient BYOK/client-secret
-path are also complete. Direct browser WebRTC is connected, and A7 now has the
-server-side shared-floor, immutable-channel, transcript-deduplication, and
-role-projection boundaries plus explicit private/shared push-to-talk and
-equivalent typed commands. A8 degraded mode and hosted judge mode are next.**
+The revocable read-only shared display, A6 transient BYOK/client-secret path,
+A7 shared-floor speech controls, and A8 durable degraded mode are also
+complete. OpenAI, Realtime, and BYOK loss now leave state reads, manual text,
+human-authored Decisions, audit, and export usable through explicit bounded
+recovery UI. Plan 03 artifact upload and SSRF-safe URL ingestion are the next
+remaining local slices before hosted Cloudflare parity and judge mode.**
 
 The canonical implementation-facing artifacts are:
 
@@ -284,14 +285,33 @@ The canonical implementation-facing artifacts are:
   transcript capture. Three dedicated desktop screenshots, the updated mobile
   reduced-motion screenshot, and a synthetic two-participant clip accompany
   the browser test.
+- A8 now gives the Realtime dock an explicit durable-continuity strip. It
+  independently reports meeting-state reads, always-available manual text, and
+  optional AI/voice status while documenting the three-attempt reconnect cap.
+- A missing BYOK lease maps to a safe `API key required` recovery message.
+  Clearing the lease disconnects both channels but does not clear the role
+  projection or meeting events; server integration compares the complete
+  projection before and after clear.
+- Synthetic Realtime/SDP failure exhausts 250/500/1000 ms retries and still
+  captures an immutable owner-private typed command. Synthetic OpenAI Decision
+  failure retains approved Evidence and reaches a human-authored committed
+  Decision through the same premise confirmation, draft, readiness, and commit
+  boundaries.
+- Every committed Decision now exposes its JSON export beside visible audit
+  lineage, not only after review resolution. The degraded browser scenario
+  validates the UI download plus strict audit/export APIs without provider
+  recovery.
+- A8 visual proof includes four screenshots and two clips spanning Realtime
+  fallback, BYOK loss, manual Decision editing, audit, and export. All content,
+  peers, credentials, and failures are synthetic.
 - The complete verification surface now passes 299 unit/contract/integration
-  tests and all 12 browser E2E scenarios, in addition to build, lint,
+  tests and all 13 browser E2E scenarios, in addition to build, lint,
   typecheck, formatting, and architecture checks.
 
 ## In progress
 
-- Continue with A8 explicit degraded-mode simulations and bounded recovery
-  while preserving the completed A6/A7 channel and fallback boundaries.
+- Continue Plan 03 A1 artifact ingestion while preserving the completed
+  disclosure, AI, Realtime, and degraded-mode boundaries.
 
 ## Not started
 
@@ -301,10 +321,11 @@ The canonical implementation-facing artifacts are:
 
 Continue Plan 03 in
 [`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md)
-at A8: simulate OpenAI and Realtime loss, prove manual text/candidate/Decision
-edit, export, audit, and meeting reads remain usable, and surface bounded
-retry/recovery without losing meeting state. Keep the allowlisted judge-managed
-source and USD 25 product spend gate in Plan 05.
+at A1: add validated PDF/Markdown/text upload, owner/meeting limits,
+source/derived hashes, authorized retrieval, processing states, browser E2E,
+and visual evidence. Follow with A2 SSRF-safe URL ingestion before moving to
+Plan 05; preserve the allowlisted judge-managed source and USD 25 rolling
+24-hour product spend gate for H3/H4.
 
 ## Open gates
 

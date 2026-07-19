@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -38,6 +39,7 @@ interface RealtimePanelProps {
 }
 
 type KeyState = "active" | "configuring" | "error" | "missing";
+type ProjectionState = "checking" | "offline" | "online";
 type SpeechState =
   | "acquiring"
   | "busy"
@@ -60,6 +62,9 @@ const MAX_VOICE_HOLD_MS = 8_000;
 const TRANSCRIPT_WAIT_MS = 5_000;
 
 function safeMessage(error: unknown): string {
+  if (error instanceof ApiError && error.code === "API_KEY_REQUIRED") {
+    return "API key required. Meeting state is preserved; add BYOK or continue in text.";
+  }
   return error instanceof ApiError
     ? error.message
     : "Live channels are unavailable. The text workspace remains active.";
@@ -92,9 +97,11 @@ function statusLabel(state: OpenAiRealtimeState): string {
 
 function RealtimeChannelCard({
   controller,
+  onConnect,
   state,
 }: {
   readonly controller: OpenAiRealtimeController;
+  readonly onConnect: () => Promise<void>;
   readonly state: OpenAiRealtimeState;
 }) {
   const busy = state.status === "connecting" || state.status === "reconnecting";
@@ -145,7 +152,7 @@ function RealtimeChannelCard({
               : "Release first"}
           </button>
         ) : (
-          <button onClick={() => void controller.connect()} type="button">
+          <button onClick={() => void onConnect()} type="button">
             {state.status === "degraded" ? "Try again" : "Connect"}
           </button>
         )}
@@ -172,6 +179,8 @@ export function RealtimePanel({
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState("");
   const [projection, setProjection] = useState<GetRoleProjectionResponse>();
+  const [projectionState, setProjectionState] =
+    useState<ProjectionState>("checking");
   const [speechState, setSpeechState] = useState<SpeechState>("idle");
   const [speechStatus, setSpeechStatus] = useState(
     "Choose a channel. Hold to speak, or type the same command below.",
@@ -230,11 +239,22 @@ export function RealtimePanel({
     }
   }
 
-  async function refreshProjection(signal?: AbortSignal) {
-    const next = await getRoleProjection(session, { meetingId }, signal);
-    setProjection(next);
-    return next;
-  }
+  const refreshProjection = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const next = await getRoleProjection(session, { meetingId }, signal);
+        setProjection(next);
+        setProjectionState("online");
+        return next;
+      } catch (cause) {
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) {
+          setProjectionState("offline");
+        }
+        throw cause;
+      }
+    },
+    [meetingId, session],
+  );
 
   async function releaseTurnFloor(turn: PendingVoiceTurn) {
     if (turn.channel !== "shared") {
@@ -487,17 +507,9 @@ export function RealtimePanel({
 
   useEffect(() => {
     const controller = new AbortController();
-    let active = true;
     const update = async () => {
       try {
-        const next = await getRoleProjection(
-          session,
-          { meetingId },
-          controller.signal,
-        );
-        if (active) {
-          setProjection(next);
-        }
+        await refreshProjection(controller.signal);
       } catch {
         // The action paths surface errors. Poll failures remain non-disruptive.
       }
@@ -505,11 +517,10 @@ export function RealtimePanel({
     void update();
     const interval = window.setInterval(() => void update(), 1_000);
     return () => {
-      active = false;
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [meetingId, session]);
+  }, [refreshProjection]);
 
   useEffect(() => {
     lifecycleGeneration.current += 1;
@@ -593,6 +604,11 @@ export function RealtimePanel({
     }
   }
 
+  async function connectChannel(nextChannel: OpenAiRealtimeChannel) {
+    setError(undefined);
+    await controllers.current?.[nextChannel].connect();
+  }
+
   async function removeKey() {
     const turn = pendingVoice.current;
     pendingVoice.current = undefined;
@@ -649,6 +665,17 @@ export function RealtimePanel({
           : channel === "private"
             ? "Hold to speak privately"
             : "Hold to speak to room";
+  const realtimeDegraded =
+    privateState.status === "degraded" || sharedState.status === "degraded";
+  const recoveryLabel =
+    keyState === "missing"
+      ? "API key required"
+      : realtimeDegraded
+        ? "Text fallback active"
+        : privateState.status === "connected" ||
+            sharedState.status === "connected"
+          ? "Realtime available"
+          : "Realtime optional";
 
   return (
     <section aria-labelledby="live-channels-title" className="realtime-dock">
@@ -720,10 +747,12 @@ export function RealtimePanel({
         </div>
         <RealtimeChannelCard
           controller={controllers.current.private}
+          onConnect={() => connectChannel("private")}
           state={privateState}
         />
         <RealtimeChannelCard
           controller={controllers.current.shared}
+          onConnect={() => connectChannel("shared")}
           state={sharedState}
         />
         {error === undefined ? null : (
@@ -732,6 +761,52 @@ export function RealtimePanel({
           </p>
         )}
       </div>
+      <aside
+        aria-label="Continuity status"
+        className={`continuity-strip ${
+          realtimeDegraded || keyState === "missing" ? "degraded" : "ready"
+        }`}
+      >
+        <div className="continuity-heading">
+          <span className="source-type">A8 · durable continuity</span>
+          <strong>
+            {projectionState === "online"
+              ? "Meeting state stays online"
+              : projectionState === "checking"
+                ? "Checking durable meeting state"
+                : "Meeting state needs reconnection"}
+          </strong>
+        </div>
+        <div className="continuity-capabilities">
+          <span data-state={projectionState}>
+            <small>State reads</small>
+            <strong>
+              {projectionState === "online"
+                ? "Live"
+                : projectionState === "checking"
+                  ? "Checking"
+                  : "Offline"}
+            </strong>
+          </span>
+          <span data-state="online">
+            <small>Manual text</small>
+            <strong>Available</strong>
+          </span>
+          <span
+            data-state={
+              keyState === "missing" || realtimeDegraded ? "degraded" : "online"
+            }
+          >
+            <small>AI + voice</small>
+            <strong>{recoveryLabel}</strong>
+          </span>
+        </div>
+        <p>
+          Realtime retries stop after 3 attempts. Text commands, manual Decision
+          editing, export, and audit use the durable workspace and do not wait
+          for AI.
+        </p>
+      </aside>
       <section
         aria-label="Explicit speech controls"
         className={`speech-console ${channel} ${speechState}`}

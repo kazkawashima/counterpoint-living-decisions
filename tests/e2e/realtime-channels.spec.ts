@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
@@ -9,6 +9,10 @@ const voiceScreenshotDirectory = resolve(
   "docs/media/screenshots/voice-channels",
 );
 const voiceClipDirectory = resolve("docs/media/clips/voice-channels");
+const degradedScreenshotDirectory = resolve(
+  "docs/media/screenshots/degraded-mode",
+);
+const degradedClipDirectory = resolve("docs/media/clips/degraded-mode");
 const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
 async function installSyntheticWebRtc(context: BrowserContext) {
@@ -138,6 +142,8 @@ test.beforeAll(async () => {
   await mkdir(clipDirectory, { recursive: true });
   await mkdir(voiceScreenshotDirectory, { recursive: true });
   await mkdir(voiceClipDirectory, { recursive: true });
+  await mkdir(degradedScreenshotDirectory, { recursive: true });
+  await mkdir(degradedClipDirectory, { recursive: true });
 });
 
 test("facilitator secures BYOK and connects isolated private/shared WebRTC channels", async ({
@@ -153,12 +159,17 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
   });
   await installSyntheticWebRtc(context);
   let failSdp = false;
+  let keyRemoved = false;
   const issuedSecrets: string[] = [];
   const sdpAuthorizations: string[] = [];
   let clientSecretHost = "";
   await context.route(
     "**/api/v1/meetings/*/realtime/client-secrets",
     async (route) => {
+      if (keyRemoved) {
+        await route.continue();
+        return;
+      }
       const request = route.request();
       clientSecretHost = new URL(request.url()).hostname;
       const input = request.postDataJSON() as {
@@ -261,19 +272,60 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
       "Realtime unavailable after capped reconnect. Continue in text.",
     ),
   ).toBeVisible();
+  const continuity = page.getByRole("complementary", {
+    name: "Continuity status",
+  });
+  await expect(
+    continuity.getByText("Meeting state stays online"),
+  ).toBeVisible();
+  await expect(continuity.getByText("Live", { exact: true })).toBeVisible();
+  await expect(continuity.getByText("Manual text")).toBeVisible();
+  await expect(continuity.getByText("Text fallback active")).toBeVisible();
   await dock.screenshot({
     animations: "disabled",
     path: `${screenshotDirectory}/2026-07-19-realtime-private-degraded-desktop.png`,
   });
+  await continuity.screenshot({
+    animations: "disabled",
+    path: `${degradedScreenshotDirectory}/2026-07-19-realtime-text-fallback-desktop.png`,
+  });
 
   const video = page.video();
-  const saveVideo = video?.saveAs(
-    `${clipDirectory}/2026-07-19-byok-connect-to-degraded.webm`,
-  );
+  const clipPath = `${clipDirectory}/2026-07-19-byok-connect-to-degraded.webm`;
+  const saveVideo = video?.saveAs(clipPath);
+  keyRemoved = true;
   await page.getByRole("button", { name: "Remove key" }).click();
   await expect(page.getByText("Facilitator BYOK · tab only")).toBeVisible();
+  await expect(continuity.getByText("API key required")).toBeVisible();
+
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(
+    page
+      .getByRole("alert")
+      .getByText(
+        "API key required. Meeting state is preserved; add BYOK or continue in text.",
+      ),
+  ).toBeVisible({ timeout: 8_000 });
+  const speech = page.getByRole("region", {
+    name: "Explicit speech controls",
+  });
+  const durableText = "Synthetic A8 text survives BYOK loss.";
+  await speech.getByLabel("Equivalent text command").fill(durableText);
+  await speech.getByRole("button", { name: "Send privately" }).click();
+  await expect(
+    speech.getByText(`Sent privately · ${durableText} · text-only`),
+  ).toBeVisible();
+  await expect(speech.getByText(durableText, { exact: true })).toBeVisible();
+  await dock.screenshot({
+    animations: "disabled",
+    path: `${degradedScreenshotDirectory}/2026-07-19-api-key-loss-state-preserved-desktop.png`,
+  });
   await context.close();
   await saveVideo;
+  await copyFile(
+    clipPath,
+    `${degradedClipDirectory}/2026-07-19-realtime-failure-to-durable-text.webm`,
+  );
 });
 
 test("private/shared text and push-to-talk use one immutable, floor-gated command path", async ({

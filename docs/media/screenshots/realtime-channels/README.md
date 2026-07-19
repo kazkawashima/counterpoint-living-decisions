@@ -21,6 +21,7 @@ the screenshots or clip.
 
 `../../clips/realtime-channels/2026-07-19-byok-connect-to-degraded.webm`
 records the key-secured → two-channel connected → private-only degraded
-sequence. The SDP transport and credentials in this E2E capture are synthetic.
-The updated clip also preserves the A7 controls in-frame while both channel
-controllers change state.
+→ BYOK removed → durable text sequence. The SDP transport and credentials in
+this E2E capture are synthetic. The updated clip also preserves the A7 speech
+controls and A8 continuity strip in-frame while both channel controllers
+change state.

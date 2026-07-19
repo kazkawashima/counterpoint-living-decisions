@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
+  createErrorEnvelope,
   CreateMeetingResponseSchema,
+  DecisionAuditResponseSchema,
+  DecisionJsonExportResponseSchema,
+  GetRoleProjectionResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
 
@@ -23,6 +27,10 @@ const resolutionScreenshotDirectory = resolve(
   "docs/media/screenshots/decision-resolution",
 );
 const resolutionClipDirectory = resolve("docs/media/clips/decision-resolution");
+const degradedScreenshotDirectory = resolve(
+  "docs/media/screenshots/degraded-mode",
+);
+const degradedClipDirectory = resolve("docs/media/clips/degraded-mode");
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -42,6 +50,195 @@ test.beforeAll(async () => {
   await mkdir(reviewClipDirectory, { recursive: true });
   await mkdir(resolutionScreenshotDirectory, { recursive: true });
   await mkdir(resolutionClipDirectory, { recursive: true });
+  await mkdir(degradedScreenshotDirectory, { recursive: true });
+  await mkdir(degradedClipDirectory, { recursive: true });
+});
+
+test("OpenAI failure preserves manual Decision, audit, and export paths", async ({
+  baseURL,
+  browser,
+}) => {
+  const context = await browser.newContext({
+    recordVideo: {
+      dir: "test-results/reel-video",
+      size: { height: 720, width: 1280 },
+    },
+    viewport: { height: 900, width: 1440 },
+  });
+  const page = await context.newPage();
+  await page.goto(baseURL ?? "/");
+
+  const loginResponse = await page.request.post("/api/v1/login", {
+    data: {
+      password: "counterpoint-product",
+      userId: "product",
+    },
+  });
+  const facilitator = LoginResponseSchema.parse(await loginResponse.json());
+  const meetingResponse = await page.request.post("/api/v1/meetings", {
+    data: {
+      idempotencyKey: "a8-manual-decision-e2e-meeting",
+      purpose: "A8 durable manual Decision check",
+      users: [
+        { role: "facilitator", userId: "product" },
+        { role: "participant", userId: "legal" },
+        { role: "participant", userId: "engineering" },
+      ],
+    },
+    headers: {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+    },
+  });
+  const meeting = CreateMeetingResponseSchema.parse(
+    await meetingResponse.json(),
+  );
+
+  await signIn(page, "Product", "counterpoint-product");
+  const meetingCard = page
+    .getByRole("article")
+    .filter({ hasText: meeting.purpose });
+  await meetingCard.getByRole("button", { name: "Open workspace" }).click();
+  await expect(
+    page
+      .getByRole("complementary", { name: "Continuity status" })
+      .getByText("Meeting state stays online"),
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
+    .click();
+  await page.getByRole("button", { name: "Approve exact excerpt" }).click();
+  await expect(page.getByText("Permission recorded")).toBeVisible();
+
+  await page.route("**/api/v1/decisions/candidates", async (route) => {
+    const request = route.request().postDataJSON() as {
+      assistance?: string;
+    };
+    if (request.assistance === "ai_preferred") {
+      await route.fulfill({
+        body: JSON.stringify(
+          createErrorEnvelope({
+            code: "OPENAI_UNAVAILABLE",
+            correlationId: "correlation_e2e_a8_openai_unavailable",
+          }),
+        ),
+        contentType: "application/json",
+        status: 503,
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page
+    .getByRole("button", { name: "Generate Decision candidate" })
+    .click();
+  await expect(
+    page.getByText("Decision synthesis is temporarily unavailable"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Approved Evidence remains intact"),
+  ).toBeVisible();
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${degradedScreenshotDirectory}/2026-07-19-openai-unavailable-manual-decision-desktop.png`,
+  });
+
+  await page.getByRole("button", { name: "Edit manual draft" }).click();
+  await page
+    .getByLabel("Decision title")
+    .fill("Human-authored continuity launch");
+  await page
+    .getByLabel("Outcome")
+    .fill("Continue with a bounded launch after the approval gate.");
+  await page
+    .getByLabel("Candidate premise")
+    .fill(
+      "Regional launch requires the documented approval gate retained by the facilitator.",
+    );
+  await page
+    .getByRole("button", { name: "Create human-authored candidate" })
+    .click();
+  await expect(page.getByText("Human authored")).toBeVisible();
+  await page.getByRole("button", { name: "Confirm edited premise" }).click();
+  await page.getByRole("button", { name: "Save Decision draft" }).click();
+  await page.getByRole("button", { name: "Validate and mark ready" }).click();
+  await page.getByRole("button", { name: "Commit Decision" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Human-authored continuity launch" }),
+  ).toBeVisible();
+  await expect(page.locator(".audit-line").getByText("Drafted")).toBeVisible();
+  await expect(
+    page.locator(".audit-line").getByText("MarkedReady"),
+  ).toBeVisible();
+  await expect(
+    page.locator(".audit-line").getByText("Committed"),
+  ).toBeVisible();
+  const committedDecision = page.locator(".committed-decision");
+  await committedDecision
+    .getByRole("button", { name: "Prepare Decision JSON export" })
+    .click();
+  await expect(
+    committedDecision.getByRole("link", { name: /Download JSON/u }),
+  ).toContainText("2 revisions");
+
+  const authorization = {
+    authorization: `Bearer ${facilitator.bearerToken}`,
+  };
+  const projectionResponse = await page.request.get(
+    `/api/v1/meetings/${meeting.meetingId}/projection`,
+    { headers: authorization },
+  );
+  expect(projectionResponse.status()).toBe(200);
+  const projection = GetRoleProjectionResponseSchema.parse(
+    await projectionResponse.json(),
+  );
+  const decision = projection.shared.decisions[0];
+  expect(decision?.snapshot.title).toBe("Human-authored continuity launch");
+  expect(decision?.status).toBe("COMMITTED");
+  expect(decision).toBeDefined();
+
+  const auditResponse = await page.request.get(
+    `/api/v1/meetings/${meeting.meetingId}/decisions/audit?decisionId=${decision?.decisionId ?? ""}`,
+    { headers: authorization },
+  );
+  expect(auditResponse.status()).toBe(200);
+  const audit = DecisionAuditResponseSchema.parse(await auditResponse.json());
+  expect(audit.entries.map(({ eventType }) => eventType)).toEqual(
+    expect.arrayContaining([
+      "DecisionDrafted",
+      "DecisionMarkedReady",
+      "DecisionCommitted",
+    ]),
+  );
+
+  const exportResponse = await page.request.get(
+    `/api/v1/meetings/${meeting.meetingId}/decisions/${decision?.decisionId ?? ""}/export`,
+    { headers: authorization },
+  );
+  expect(exportResponse.status()).toBe(200);
+  const exported = DecisionJsonExportResponseSchema.parse(
+    await exportResponse.json(),
+  );
+  expect(exported.decision.snapshot.title).toBe(
+    "Human-authored continuity launch",
+  );
+  expect(exported.revisions).toHaveLength(2);
+  expect(exported.auditEntries.length).toBeGreaterThanOrEqual(3);
+
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${degradedScreenshotDirectory}/2026-07-19-manual-decision-audit-export-desktop.png`,
+  });
+  const video = page.video();
+  const saveVideo = video?.saveAs(
+    `${degradedClipDirectory}/2026-07-19-openai-failure-to-manual-decision.webm`,
+  );
+  await context.close();
+  await saveVideo;
 });
 
 test("facilitator commits a grounded Decision that participants can revisit", async ({

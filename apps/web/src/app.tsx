@@ -1559,6 +1559,22 @@ function FacilitatorDecisionPanel({
               </span>
             ))}
           </div>
+          <div className="resolution-export committed-export">
+            <button onClick={() => void prepareDecisionExport()} type="button">
+              Prepare Decision JSON export
+            </button>
+            {decisionExport === undefined ? null : (
+              <a
+                download={`counterpoint-${decision.decisionId}.json`}
+                href={`data:application/json;charset=utf-8,${encodeURIComponent(
+                  JSON.stringify(decisionExport, null, 2),
+                )}`}
+              >
+                Download JSON · {decisionExport.revisions.length} revisions ·{" "}
+                {decisionExport.auditEntries.length} audit entries
+              </a>
+            )}
+          </div>
           {phase === "committed" ? (
             <button
               className="monitor-button"

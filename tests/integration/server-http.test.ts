@@ -367,12 +367,22 @@ describe("Node HTTP flagship shell", () => {
 
   it("clears BYOK explicitly and maps Realtime provider failure without leaking keys", async () => {
     const { runtime } = await fixture();
+    let issuerCallCount = 0;
     const app = createServerApp({
       ...runtime,
       realtimeSecrets: {
         ...runtime.realtimeSecrets,
         issuer: {
-          issue() {
+          issue(input) {
+            issuerCallCount += 1;
+            if (issuerCallCount === 1) {
+              return Promise.resolve({
+                channel: input.channel,
+                expiresAt: "2026-07-19T12:01:00.000Z",
+                model: "gpt-realtime-2.1",
+                value: "ek_ephemeral_before_byok_clear",
+              });
+            }
             return Promise.reject(new Error("synthetic provider outage"));
           },
         },
@@ -390,6 +400,34 @@ describe("Node HTTP flagship shell", () => {
       headers,
       method: "PUT",
     });
+
+    const issuedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
+      {
+        body: JSON.stringify({ channel: "shared", meetingId }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(issuedResponse.status).toBe(201);
+    expect(
+      IssueRealtimeClientSecretResponseSchema.parse(
+        await issuedResponse.json(),
+      ),
+    ).toMatchObject({
+      channel: "shared",
+      clientSecret: "ek_ephemeral_before_byok_clear",
+      meetingId,
+    });
+
+    const projectionBeforeClearResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers },
+    );
+    expect(projectionBeforeClearResponse.status).toBe(200);
+    const projectionBeforeClear = RoleProjectionResponseSchema.parse(
+      await projectionBeforeClearResponse.json(),
+    );
 
     const unavailable = await app.request(
       `/api/v1/meetings/${meetingId}/realtime/client-secrets`,
@@ -427,7 +465,34 @@ describe("Node HTTP flagship shell", () => {
       },
     );
     expect(missing.status).toBe(400);
-    expect(JSON.stringify(await missing.json())).not.toContain(standardApiKey);
+    const missingError = ErrorEnvelopeSchema.parse(await missing.json());
+    expect(missingError).toMatchObject({
+      code: "API_KEY_REQUIRED",
+      details: {},
+      message: "A meeting API key is required.",
+      retryable: false,
+    });
+    expect(JSON.stringify(missingError)).not.toContain(standardApiKey);
+    expect(issuerCallCount).toBe(2);
+
+    const projectionAfterClearResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers },
+    );
+    expect(projectionAfterClearResponse.status).toBe(200);
+    const projectionAfterClear = RoleProjectionResponseSchema.parse(
+      await projectionAfterClearResponse.json(),
+    );
+    expect(projectionAfterClear.shared.position).toBe(
+      projectionBeforeClear.shared.position,
+    );
+    expect(projectionAfterClear).toMatchObject({
+      capabilities: projectionBeforeClear.capabilities,
+      meeting: projectionBeforeClear.meeting,
+      participant: projectionBeforeClear.participant,
+      privateWorkspace: projectionBeforeClear.privateWorkspace,
+      shared: projectionBeforeClear.shared,
+    });
   });
 
   it("excludes simultaneous shared speakers and captures idempotent private/shared utterances", async () => {

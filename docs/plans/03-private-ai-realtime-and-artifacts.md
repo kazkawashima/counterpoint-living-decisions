@@ -82,11 +82,11 @@ text/manual degraded path.
 
 ### A8 — Degraded mode
 
-- [ ] Simulate OpenAI and Realtime unavailability.
-- [ ] Preserve state reads, manual text, manual candidate/Decision edit, export,
+- [x] Simulate OpenAI and Realtime unavailability.
+- [x] Preserve state reads, manual text, manual candidate/Decision edit, export,
       and audit.
-- [ ] Return `API_KEY_REQUIRED` after BYOK loss without losing meeting state.
-- [ ] Provide bounded retry/recovery UI.
+- [x] Return `API_KEY_REQUIRED` after BYOK loss without losing meeting state.
+- [x] Provide bounded retry/recovery UI.
 
 ## Browser and security verification
 
