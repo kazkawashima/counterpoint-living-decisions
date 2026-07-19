@@ -15,6 +15,18 @@ export {
   type ManagedAiOperationClaim,
   type ManagedAiOperationClaimRelease,
   type ManagedAiOperationClaimResult,
+  type ManagedAiOperationLegacyClaim,
+  type ManagedAiOperationLifecycleClaim,
+  type ManagedAiOperationLifecycleStatus,
+  type ManagedAiOperationProviderStart,
+  type ManagedAiOperationProviderStartedClaim,
+  type ManagedAiOperationReservedAbandonment,
+  type ManagedAiOperationReservedClaim,
+  type ManagedAiOperationReservedTakeover,
+  type ManagedAiOperationReserveClaim,
+  type ManagedAiOperationReserveClaimResult,
+  type ManagedAiOperationSettledClaim,
+  type ManagedAiOperationSettlement,
 } from "./d1-managed-ai-operation-claims.js";
 export {
   D1ManagedRealtimeCallOwnershipRepository,
