@@ -424,6 +424,23 @@ The canonical implementation-facing artifacts are:
   accumulator projection is persisted in Durable Object storage. The status
   surface exposes trust and generation count without exposing the call ID or
   provider content.
+- The sideband now owns the judge session and generation command boundary. It
+  sends a fixed `session.update` with automatic VAD response creation and
+  interruption disabled, requires the matching `session.updated`
+  acknowledgement, and exposes no generic provider-event send method. Only
+  fixed `response.create` and `response.cancel` commands are available.
+- The call controller derives response creation from ordered server-observed
+  speech stops, cancels on barge-in, serializes replacement generation after
+  cancellation completion, and caps commands at three. Unsolicited or duplicate
+  response creation, completion without creation, provider command errors, and
+  a fourth command all terminate and conservatively settle the call.
+- Managed SDP now requires exactly one audio media section and rejects data
+  channels, video, SCTP attributes, and missing or multiple media sections. A
+  separate browser transport offers only an audio transceiver and explicitly
+  terminates the server-managed call on close; it does not alter the existing
+  facilitator BYOK/data-channel path. A live Chromium smoke on 2026-07-19
+  confirmed that the official unified Realtime endpoint accepts this
+  media-only offer without exposing secrets or provider call IDs.
 - Sideband setup failure, attachment-time disconnect, provider disconnect,
   malformed/future billable telemetry, and observed reservation overflow all
   invoke authenticated hangup and settle the full reservation. Server-initiated
@@ -431,22 +448,19 @@ The canonical implementation-facing artifacts are:
   close the underlying socket, and termination is serialized so callbacks,
   requests, and alarms cannot duplicate hangup or settlement.
 - Trustworthy measured usage does not yet reduce settlement; the full
-  reservation remains the safe charge for every outcome. Sideband observation
-  also does not make the browser-controlled provider data channel safe: a
-  hostile client could issue arbitrary or concurrent generation commands before
-  the corresponding accounting events arrive.
-- The controller is intentionally not publicly routed. Reserving the complete
-  USD 25 rolling-window ceiling prevents overlap but does not prove that one
-  hostile browser data channel cannot exceed the reservation before the
-  30-second alarm. Provider control must first move to a Durable Object-owned
-  sideband path or a server-relayed transport that proactively bounds in-call
-  generations and cost.
+  reservation remains the safe charge for every outcome.
+- The controller is intentionally not publicly routed. Remaining gates are a
+  separately priced and visibility-scoped transient transcript relay,
+  authenticated hosted API parity, an opaque app-owned call handle with
+  per-request ownership checks, production keyed IP-HMAC reservation input, and
+  settlement behavior that does not consume the entire daily allowance for
+  every attempt.
 - Direct Worker judge client-secret issuance is now intentionally fail-closed,
   configured Secret or not. This removes the multi-use ephemeral-token bypass
   while retaining ordinary Node BYOK behavior and all durable/manual flows.
   Remote Secret registration remains gated.
 - Plan 05 C5 now has a reproducible `npm run security:verify` foundation. Its
-  273-case matrix, including parser-normalized loopback notation, gives strong
+  282-case matrix, including parser-normalized loopback notation, gives strong
   IDOR/meeting/owner, session/display expiry, DNS-pinned SSRF/redirect,
   disclosure preview/prompt-injection, artifact, webhook, API/Realtime, and
   content-free log regression coverage. Its repository scan includes tracked
@@ -494,14 +508,15 @@ The canonical implementation-facing artifacts are:
   shutdown runbook forbids schema down migration and secret-value inspection.
   No remote resource, secret, migration, deployment, or repository visibility
   changed during this preparation.
-- C4 is not complete: safe public route wiring, server-owned generation
-  control,
+- C4 is not complete: transcript relay/accounting, safe public route wiring,
   measured flagship limits, the web managed-call switch, structured judge AI
   routes after hosted API parity, `USAGE_LIMIT_REACHED` HTTP integration, and
   broader content-free operator visibility remain.
-- The current verification baseline is 529 regular Vitest tests and 60
-  Cloudflare-native tests, plus typecheck, architecture, and Cloudflare
-  configuration checks. No UI changed, so no browser capture was required.
+- The current verification baseline is 538 regular Vitest tests, 282 focused
+  security-matrix tests, and 66 Cloudflare-native tests, plus typecheck, lint,
+  formatting, architecture, secret scan, and Cloudflare configuration checks.
+  The live media-only provider smoke also passed. No visible UI changed, so no
+  browser capture was required.
 
 ## Not started
 
@@ -510,15 +525,16 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 C4 by removing provider generation control from the judge
-browser. Evaluate the smallest media-preserving route between media-only WebRTC
-with Durable Object-owned sideband commands and a server-relayed transport;
-prove that every `response.create`, cancellation, and session update is
-serialized behind the remaining reservation before enabling the public route.
-Then switch the judge web path to that managed contract with browser E2E
-coverage and saved reel screenshots. Apply the same reservation boundary to
-structured judge AI only after hosted API parity exists. Keep remote Secret
-registration and deployment mutation behind an explicit deployment boundary.
+Continue Plan 05 C4 with the app-owned transient transcript relay. Price or
+conservatively reserve separately billed input transcription, bind one
+app-owned utterance to one managed speech turn, keep transcript text out of
+Durable Object storage/status/logs, and require authenticated ownership on
+every await/terminate request. Then add production keyed IP-HMAC reservation
+input and hosted API parity before enabling the public route or switching the
+judge UI. The UI switch requires browser E2E coverage and saved reel
+screenshots. Apply the same reservation boundary to structured judge AI only
+after hosted API parity exists. Keep remote Secret registration and deployment
+mutation behind an explicit deployment boundary.
 
 ## Open gates
 

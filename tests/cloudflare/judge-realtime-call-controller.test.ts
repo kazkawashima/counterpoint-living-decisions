@@ -25,11 +25,11 @@ const input = {
   sdpOffer: "v=0\r\ns=offer\r\n",
 };
 
-function responseDone(): Record<string, unknown> {
+function responseDone(sequence = 1): Record<string, unknown> {
   return {
-    event_id: "event-response-1",
+    event_id: `event-response-${String(sequence)}`,
     response: {
-      id: "response-1",
+      id: `response-${String(sequence)}`,
       output: [
         {
           content: [
@@ -245,11 +245,18 @@ function lifecycle(
   };
   const finalize = options.finalize ?? vi.fn(() => Promise.resolve());
   let sidebandObserver: ManagedRealtimeSidebandObserver | undefined;
+  const sidebandCancelResponse = vi.fn();
   const sidebandClose = vi.fn();
+  const sidebandCreateResponse = vi.fn();
   const sidebandConnect = vi.fn<ManagedRealtimeSidebandConnector["connect"]>(
     (_callId, observer) => {
       sidebandObserver = observer;
-      return Promise.resolve({ close: sidebandClose, isHealthy: () => true });
+      return Promise.resolve({
+        cancelResponse: sidebandCancelResponse,
+        close: sidebandClose,
+        createResponse: sidebandCreateResponse,
+        isHealthy: () => true,
+      });
     },
   );
   const sideband = options.sideband ?? { connect: sidebandConnect };
@@ -268,8 +275,10 @@ function lifecycle(
     get sidebandObserver() {
       return sidebandObserver;
     },
+    sidebandCancelResponse,
     sidebandClose,
     sidebandConnect,
+    sidebandCreateResponse,
     storage,
     terminator,
   };
@@ -412,6 +421,12 @@ describe("JudgeRealtimeCallLifecycle", () => {
     const fixture = lifecycle();
     await fixture.instance.start(input);
 
+    await fixture.sidebandObserver?.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    await fixture.sidebandObserver?.onProviderEvent({
+      type: "response.created",
+    });
     await fixture.sidebandObserver?.onProviderEvent(responseDone());
 
     expect(fixture.storage.state).toMatchObject({
@@ -428,6 +443,149 @@ describe("JudgeRealtimeCallLifecycle", () => {
     });
     expect(JSON.stringify(fixture.storage.state)).not.toContain(
       "meeting-private-canary",
+    );
+  });
+
+  it("creates responses only from server-observed speech boundaries", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+    const observer = fixture.sidebandObserver;
+    if (observer === undefined) {
+      throw new TypeError("Expected attached sideband observer");
+    }
+
+    await observer.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    expect(fixture.sidebandCreateResponse).toHaveBeenCalledOnce();
+    await observer.onProviderEvent({ type: "response.created" });
+    await observer.onProviderEvent(responseDone());
+    await observer.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+
+    expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(2);
+    expect(fixture.hangup).not.toHaveBeenCalled();
+    expect(fixture.storage.state).toMatchObject({
+      sidebandUsage: {
+        totals: { generationCount: 1 },
+        trustworthy: true,
+      },
+      status: "active",
+    });
+  });
+
+  it("serializes cancellation before creating a response for later speech", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+    const observer = fixture.sidebandObserver;
+    if (observer === undefined) {
+      throw new TypeError("Expected attached sideband observer");
+    }
+
+    await observer.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    await observer.onProviderEvent({ type: "response.created" });
+    await observer.onProviderEvent({
+      type: "input_audio_buffer.speech_started",
+    });
+    await observer.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    expect(fixture.sidebandCancelResponse).toHaveBeenCalledOnce();
+    expect(fixture.sidebandCreateResponse).toHaveBeenCalledOnce();
+
+    await observer.onProviderEvent(responseDone());
+
+    expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(2);
+    expect(fixture.hangup).not.toHaveBeenCalled();
+  });
+
+  it("terminates an unsolicited provider response", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+
+    await fixture.sidebandObserver?.onProviderEvent({
+      type: "response.created",
+    });
+
+    expect(fixture.sidebandCreateResponse).not.toHaveBeenCalled();
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledWith(
+      input.reservationId,
+      reservedUsage,
+    );
+  });
+
+  it("terminates duplicate response creation and provider command errors", async () => {
+    const duplicateFixture = lifecycle();
+    await duplicateFixture.instance.start(input);
+    await duplicateFixture.sidebandObserver?.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    await duplicateFixture.sidebandObserver?.onProviderEvent({
+      type: "response.created",
+    });
+    await duplicateFixture.sidebandObserver?.onProviderEvent({
+      type: "response.created",
+    });
+    expect(duplicateFixture.hangup).toHaveBeenCalledOnce();
+
+    const errorFixture = lifecycle();
+    await errorFixture.instance.start(input);
+    await errorFixture.sidebandObserver?.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    await errorFixture.sidebandObserver?.onProviderEvent({
+      error: { message: "provider-private-command-error" },
+      type: "error",
+    });
+    expect(errorFixture.hangup).toHaveBeenCalledOnce();
+    expect(JSON.stringify(errorFixture.storage.state)).not.toContain(
+      "provider-private-command-error",
+    );
+  });
+
+  it("terminates a response completion without an observed creation", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+    await fixture.sidebandObserver?.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+    await fixture.sidebandObserver?.onProviderEvent(responseDone());
+
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledWith(
+      input.reservationId,
+      reservedUsage,
+    );
+  });
+
+  it("terminates before a fourth response command can exceed its reservation", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+    const observer = fixture.sidebandObserver;
+    if (observer === undefined) {
+      throw new TypeError("Expected attached sideband observer");
+    }
+
+    for (let sequence = 1; sequence <= 3; sequence += 1) {
+      await observer.onProviderEvent({
+        type: "input_audio_buffer.speech_stopped",
+      });
+      await observer.onProviderEvent({ type: "response.created" });
+      await observer.onProviderEvent(responseDone(sequence));
+    }
+    await observer.onProviderEvent({
+      type: "input_audio_buffer.speech_stopped",
+    });
+
+    expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(3);
+    expect(fixture.hangup).toHaveBeenCalledOnce();
+    expect(fixture.finalize).toHaveBeenCalledWith(
+      input.reservationId,
+      reservedUsage,
     );
   });
 
@@ -505,7 +663,12 @@ describe("JudgeRealtimeCallLifecycle", () => {
           clean: false,
           initiatedByServer: false,
         });
-        return { close, isHealthy: () => true };
+        return {
+          cancelResponse: vi.fn(),
+          close,
+          createResponse: vi.fn(),
+          isHealthy: () => true,
+        };
       },
     };
     const fixture = lifecycle({ sideband });
@@ -528,7 +691,12 @@ describe("JudgeRealtimeCallLifecycle", () => {
     const sideband: ManagedRealtimeSidebandConnector = {
       connect(_callId, selectedObserver) {
         observer = selectedObserver;
-        return Promise.resolve({ close: vi.fn(), isHealthy: () => true });
+        return Promise.resolve({
+          cancelResponse: vi.fn(),
+          close: vi.fn(),
+          createResponse: vi.fn(),
+          isHealthy: () => true,
+        });
       },
     };
     const connector: ManagedRealtimeCallConnector = {
@@ -565,7 +733,9 @@ describe("JudgeRealtimeCallLifecycle", () => {
     const sideband: ManagedRealtimeSidebandConnector = {
       connect: () =>
         Promise.resolve({
+          cancelResponse: vi.fn(),
           close,
+          createResponse: vi.fn(),
           isHealthy: () => false,
         }),
     };
@@ -591,12 +761,14 @@ describe("JudgeRealtimeCallLifecycle", () => {
       connect(_callId, selectedObserver) {
         observer = selectedObserver;
         return Promise.resolve({
+          cancelResponse: vi.fn(),
           close() {
             disconnect = observer?.onDisconnect({
               clean: true,
               initiatedByServer: true,
             });
           },
+          createResponse: vi.fn(),
           isHealthy: () => true,
         });
       },

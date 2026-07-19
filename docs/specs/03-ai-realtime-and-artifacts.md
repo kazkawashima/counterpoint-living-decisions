@@ -97,6 +97,14 @@ Browser
 The standard API key never reaches the browser. Another participant's private
 context never enters a client secret or Realtime session.
 
+Judge-managed Realtime uses a separate topology. The browser offers exactly one
+audio media section and no provider data channel. The call-controller Durable
+Object owns the standard key, provider call ID, fixed session configuration,
+response creation, response cancellation, duration alarm, and conservative
+settlement. The managed route remains unavailable until authenticated
+same-origin routing and a visibility-scoped, separately accounted transcript
+relay are complete.
+
 The product does not deliver human voice to other humans. It is a meeting-state
 input system, not conferencing.
 

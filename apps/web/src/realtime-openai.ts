@@ -105,6 +105,17 @@ export interface ConnectOpenAiRealtimeInput {
   readonly peerFactory?: RealtimePeerConnectionFactory;
 }
 
+export interface ConnectManagedOpenAiRealtimeInput {
+  readonly channel: OpenAiRealtimeChannel;
+  readonly createCall: (input: {
+    readonly channel: OpenAiRealtimeChannel;
+    readonly sdpOffer: string;
+  }) => Promise<{ readonly sdpAnswer: string }>;
+  readonly mediaFactory?: RealtimeMediaFactory;
+  readonly peerFactory?: RealtimePeerConnectionFactory;
+  readonly terminateCall: (channel: OpenAiRealtimeChannel) => Promise<void>;
+}
+
 export interface OpenAiRealtimeControllerOptions {
   readonly channel: OpenAiRealtimeChannel;
   readonly clock?: RealtimeClock;
@@ -442,6 +453,97 @@ export async function connectOpenAiRealtime(
           await audioSender.replaceTrack(null).catch(() => undefined);
           track.stop();
         }
+      },
+    };
+  } catch {
+    close();
+    throw new OpenAiRealtimeConnectionError();
+  }
+}
+
+export async function connectManagedOpenAiRealtime(
+  input: ConnectManagedOpenAiRealtimeInput,
+): Promise<OpenAiRealtimeConnection> {
+  const peer = (input.peerFactory ?? createBrowserPeerConnection)();
+  const audioSender = peer.createAudioSender();
+  const mediaFactory = input.mediaFactory ?? browserMediaFactory;
+  let activeTrack: RealtimeAudioTrack | undefined;
+  let callCreated = false;
+  let closed = false;
+  let terminationRequested = false;
+
+  const terminate = (): void => {
+    if (!callCreated || terminationRequested) {
+      return;
+    }
+    terminationRequested = true;
+    void input.terminateCall(input.channel).catch(() => undefined);
+  };
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    activeTrack?.stop();
+    activeTrack = undefined;
+    terminate();
+    peer.close();
+  };
+
+  try {
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    const answer = await input.createCall({
+      channel: input.channel,
+      sdpOffer: offer.sdp,
+    });
+    callCreated = true;
+    if (answer.sdpAnswer.trim().length === 0) {
+      throw new OpenAiRealtimeConnectionError();
+    }
+    await peer.setRemoteDescription({
+      sdp: answer.sdpAnswer,
+      type: "answer",
+    });
+    return {
+      close,
+      peer,
+      sendText: () => {
+        throw new OpenAiRealtimeConnectionError();
+      },
+      startPushToTalk: async () => {
+        if (activeTrack !== undefined) {
+          return;
+        }
+        const stream = await mediaFactory();
+        const track = stream.getAudioTracks()[0];
+        if (track === undefined || closed) {
+          track?.stop();
+          throw new OpenAiRealtimeConnectionError();
+        }
+        track.enabled = false;
+        try {
+          await audioSender.replaceTrack(track);
+          if (closed) {
+            throw new OpenAiRealtimeConnectionError();
+          }
+          activeTrack = track;
+          track.enabled = true;
+        } catch {
+          track.stop();
+          await audioSender.replaceTrack(null).catch(() => undefined);
+          throw new OpenAiRealtimeConnectionError();
+        }
+      },
+      stopPushToTalk: async () => {
+        const track = activeTrack;
+        if (track === undefined) {
+          return;
+        }
+        track.enabled = false;
+        activeTrack = undefined;
+        await audioSender.replaceTrack(null).catch(() => undefined);
+        track.stop();
       },
     };
   } catch {

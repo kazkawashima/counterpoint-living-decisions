@@ -99,7 +99,9 @@ export interface ManagedRealtimeSidebandObserver {
 }
 
 export interface ManagedRealtimeSidebandConnection {
+  cancelResponse(): void;
   close(): void;
+  createResponse(): void;
   isHealthy(): boolean;
 }
 

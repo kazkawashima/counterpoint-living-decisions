@@ -31,7 +31,7 @@ export const JUDGE_REALTIME_RESERVED_USAGE: UsageRequest = {
   estimatedCostUsd: 25,
   estimatedInputTokens: 800_000,
   estimatedOutputTokens: 400_000,
-  generationCount: 100,
+  generationCount: 3,
   realtimeSeconds: JUDGE_REALTIME_MAX_DURATION_SECONDS,
 };
 
@@ -222,6 +222,10 @@ export class JudgeRealtimeCallLifecycle {
   readonly #connector: ManagedRealtimeCallConnector;
   readonly #sidebandConnector: ManagedRealtimeSidebandConnector;
   #sidebandConnection: ManagedRealtimeSidebandConnection | undefined;
+  #responseAfterCancelPending = false;
+  #responseCommandCount = 0;
+  #responseCreated = false;
+  #responsePhase: "active" | "cancelling" | "idle" = "idle";
   #startCancelled = false;
   #startInProgress = false;
   #termination: Promise<void> | undefined;
@@ -532,6 +536,51 @@ export class JudgeRealtimeCallLifecycle {
     if (state?.status !== "active") {
       return;
     }
+    const eventType =
+      typeof event === "object" &&
+      event !== null &&
+      !Array.isArray(event) &&
+      typeof (event as { readonly type?: unknown }).type === "string"
+        ? (event as { readonly type: string }).type
+        : undefined;
+    if (eventType === "input_audio_buffer.speech_started") {
+      if (this.#responsePhase === "active") {
+        if (this.#sidebandConnection === undefined) {
+          await this.terminate();
+          return;
+        }
+        try {
+          this.#sidebandConnection.cancelResponse();
+          this.#responsePhase = "cancelling";
+        } catch {
+          await this.terminate();
+        }
+      }
+      return;
+    }
+    if (eventType === "input_audio_buffer.speech_stopped") {
+      if (this.#responsePhase === "cancelling") {
+        this.#responseAfterCancelPending = true;
+        return;
+      }
+      if (this.#responsePhase !== "idle") {
+        await this.terminate();
+        return;
+      }
+      await this.#requestResponse();
+      return;
+    }
+    if (eventType === "response.created") {
+      if (this.#responsePhase === "idle" || this.#responseCreated) {
+        await this.terminate();
+        return;
+      }
+      this.#responseCreated = true;
+    }
+    if (eventType === "error") {
+      await this.terminate();
+      return;
+    }
     const result = recordOpenAiRealtimeServerEvent(
       state.sidebandUsage,
       event,
@@ -550,6 +599,40 @@ export class JudgeRealtimeCallLifecycle {
       return;
     }
     if (result.kind === "invalid" || result.kind === "limit_exceeded") {
+      await this.terminate();
+      return;
+    }
+    if (eventType === "response.done") {
+      if (this.#responsePhase === "idle" || !this.#responseCreated) {
+        await this.terminate();
+        return;
+      }
+      const createAfterCancel = this.#responseAfterCancelPending;
+      this.#responseAfterCancelPending = false;
+      this.#responseCreated = false;
+      this.#responsePhase = "idle";
+      if (createAfterCancel) {
+        await this.#requestResponse();
+      }
+    }
+  }
+
+  async #requestResponse(): Promise<void> {
+    if (
+      this.#responsePhase !== "idle" ||
+      this.#responseCommandCount >=
+        JUDGE_REALTIME_RESERVED_USAGE.generationCount ||
+      this.#sidebandConnection === undefined
+    ) {
+      await this.terminate();
+      return;
+    }
+    this.#responsePhase = "active";
+    this.#responseCreated = false;
+    this.#responseCommandCount += 1;
+    try {
+      this.#sidebandConnection.createResponse();
+    } catch {
       await this.terminate();
     }
   }

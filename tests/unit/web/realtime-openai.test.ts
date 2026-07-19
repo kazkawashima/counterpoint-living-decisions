@@ -1,6 +1,7 @@
 import {
   OPENAI_REALTIME_CALLS_URL,
   OpenAiRealtimeConnectionError,
+  connectManagedOpenAiRealtime,
   connectOpenAiRealtime,
   createOpenAiRealtimeController,
   type OpenAiRealtimeChannel,
@@ -236,6 +237,50 @@ describe("OpenAI Realtime browser lifecycle", () => {
     connection.close();
     expect(peer.closed).toBe(true);
     expect(peer.channels[0]?.channel.closed).toBe(true);
+  });
+
+  it("uses a media-only peer for server-managed judge calls", async () => {
+    const peer = new FakePeer();
+    const createDataChannel = vi
+      .spyOn(peer, "createDataChannel")
+      .mockImplementation(() => {
+        throw new Error(
+          "managed calls must not create a provider data channel",
+        );
+      });
+    const track = new FakeAudioTrack();
+    const createCall = vi.fn(() =>
+      Promise.resolve({ sdpAnswer: "synthetic-managed-answer-sdp" }),
+    );
+    const terminateCall = vi.fn(() => Promise.resolve());
+    const connection = await connectManagedOpenAiRealtime({
+      channel: "private",
+      createCall,
+      mediaFactory: () => Promise.resolve({ getAudioTracks: () => [track] }),
+      peerFactory: () => peer,
+      terminateCall,
+    });
+
+    expect(peer.channels).toEqual([]);
+    expect(createDataChannel).not.toHaveBeenCalled();
+    expect(createCall).toHaveBeenCalledWith({
+      channel: "private",
+      sdpOffer: "synthetic-offer-sdp",
+    });
+    expect(peer.remoteDescriptions).toEqual([
+      { sdp: "synthetic-managed-answer-sdp", type: "answer" },
+    ]);
+    expect(() => connection.sendText("must use app text path")).toThrow(
+      OpenAiRealtimeConnectionError,
+    );
+
+    await connection.startPushToTalk();
+    await connection.stopPushToTalk();
+    expect(peer.replacedTracks).toEqual([track, null]);
+
+    connection.close();
+    expect(peer.closed).toBe(true);
+    expect(terminateCall).toHaveBeenCalledOnce();
   });
 
   it("publishes a connecting-to-connected state sequence", async () => {

@@ -32,6 +32,7 @@ interface SidebandSocket {
     listener: (event: SidebandMessageEvent) => void,
   ): void;
   close(code?: number, reason?: string): void;
+  send(data: string): void;
 }
 
 interface SidebandUpgradeResponse {
@@ -92,6 +93,63 @@ function decodeProviderEvent(data: unknown): unknown {
   }
 }
 
+function managedSessionConfigured(event: unknown): boolean {
+  if (
+    typeof event !== "object" ||
+    event === null ||
+    Array.isArray(event) ||
+    (event as { readonly type?: unknown }).type !== "session.updated"
+  ) {
+    return false;
+  }
+  const session = (event as { readonly session?: unknown }).session;
+  if (
+    typeof session !== "object" ||
+    session === null ||
+    Array.isArray(session)
+  ) {
+    return false;
+  }
+  const audio = (session as { readonly audio?: unknown }).audio;
+  if (typeof audio !== "object" || audio === null || Array.isArray(audio)) {
+    return false;
+  }
+  const input = (audio as { readonly input?: unknown }).input;
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return false;
+  }
+  const turnDetection = (input as { readonly turn_detection?: unknown })
+    .turn_detection;
+  return (
+    typeof turnDetection === "object" &&
+    turnDetection !== null &&
+    !Array.isArray(turnDetection) &&
+    (turnDetection as { readonly type?: unknown }).type === "server_vad" &&
+    (turnDetection as { readonly create_response?: unknown })
+      .create_response === false &&
+    (turnDetection as { readonly interrupt_response?: unknown })
+      .interrupt_response === false
+  );
+}
+
+function managedSessionUpdate(): string {
+  return JSON.stringify({
+    session: {
+      audio: {
+        input: {
+          turn_detection: {
+            create_response: false,
+            interrupt_response: false,
+            type: "server_vad",
+          },
+        },
+      },
+      type: "realtime",
+    },
+    type: "session.update",
+  });
+}
+
 export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandConnector {
   readonly #apiKey: string;
   readonly #dispatch: (work: Promise<void>) => void;
@@ -142,10 +200,17 @@ export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandC
     }
 
     let initiatedByServer = false;
+    let configured = false;
     let disconnected = false;
     let pendingProviderEvents = 0;
     let socketCloseRequested = false;
     let queue = Promise.resolve();
+    let rejectConfiguration: ((error: Error) => void) | undefined;
+    let resolveConfiguration: (() => void) | undefined;
+    const configuration = new Promise<void>((resolve, reject) => {
+      rejectConfiguration = reject;
+      resolveConfiguration = resolve;
+    });
     const closeSocket = (code: number, reason: string): boolean => {
       if (socketCloseRequested) {
         return true;
@@ -171,6 +236,13 @@ export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandC
         return;
       }
       disconnected = true;
+      if (!configured) {
+        rejectConfiguration?.(
+          new OpenAiRealtimeSidebandError(
+            "OpenAI Realtime sideband configuration was unavailable",
+          ),
+        );
+      }
       queue = queue
         .catch(() => undefined)
         .then(() =>
@@ -190,6 +262,21 @@ export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandC
       try {
         decoded = decodeProviderEvent(data);
       } catch {
+        disconnect(false, true, initiatedByServer);
+        return;
+      }
+      if (!configured && managedSessionConfigured(decoded)) {
+        configured = true;
+        resolveConfiguration?.();
+        return;
+      }
+      if (
+        !configured &&
+        typeof decoded === "object" &&
+        decoded !== null &&
+        !Array.isArray(decoded) &&
+        (decoded as { readonly type?: unknown }).type === "error"
+      ) {
         disconnect(false, true, initiatedByServer);
         return;
       }
@@ -218,6 +305,7 @@ export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandC
         disconnect(false, true);
       });
       socket.accept();
+      socket.send(managedSessionUpdate());
     } catch {
       try {
         socket.close(1011, "sideband setup failed");
@@ -229,12 +317,64 @@ export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandC
       );
     }
 
+    let configurationTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        configuration,
+        new Promise<never>((_resolve, reject) => {
+          configurationTimer = setTimeout(
+            () =>
+              reject(
+                new OpenAiRealtimeSidebandError(
+                  "OpenAI Realtime sideband configuration timed out",
+                ),
+              ),
+            DEFAULT_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      closeSocket(1011, "sideband configuration failed");
+      if (error instanceof OpenAiRealtimeSidebandError) {
+        throw error;
+      }
+      throw new OpenAiRealtimeSidebandError(
+        "OpenAI Realtime sideband configuration was unavailable",
+      );
+    } finally {
+      if (configurationTimer !== undefined) {
+        clearTimeout(configurationTimer);
+      }
+    }
+
+    const sendControlledEvent = (event: string): void => {
+      if (disconnected || socketCloseRequested) {
+        throw new OpenAiRealtimeSidebandError(
+          "OpenAI Realtime sideband command channel was unavailable",
+        );
+      }
+      try {
+        socket.send(event);
+      } catch {
+        disconnect(false, true, false);
+        throw new OpenAiRealtimeSidebandError(
+          "OpenAI Realtime sideband command channel was unavailable",
+        );
+      }
+    };
+
     return {
+      cancelResponse() {
+        sendControlledEvent(JSON.stringify({ type: "response.cancel" }));
+      },
       close() {
         initiatedByServer = true;
         if (!closeSocket(1000, "server shutdown")) {
           disconnect(false);
         }
+      },
+      createResponse() {
+        sendControlledEvent(JSON.stringify({ type: "response.create" }));
       },
       isHealthy() {
         return (

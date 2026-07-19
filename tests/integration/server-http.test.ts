@@ -69,6 +69,10 @@ const runtimes: LocalServerRuntime[] = [];
 const WEBHOOK_SECRET = "synthetic-regulatory-webhook-secret";
 const WEBHOOK_MAX_AGE_SECONDS = 300;
 
+function oneMinuteAfter(now: string): string {
+  return new Date(Date.parse(now) + 60_000).toISOString();
+}
+
 function webhookSignature(timestamp: string, rawBody: string): string {
   return `v1=${createHmac("sha256", WEBHOOK_SECRET)
     .update(`${timestamp}.`, "utf8")
@@ -896,7 +900,7 @@ describe("Node HTTP flagship shell", () => {
             issuerInputs.push(input);
             return Promise.resolve({
               channel: input.channel,
-              expiresAt: "2026-07-19T12:01:00.000Z",
+              expiresAt: oneMinuteAfter(runtime.clock.now()),
               model: "gpt-realtime-2.1",
               value: "ek_ephemeral_browser_only",
             });
@@ -1034,7 +1038,7 @@ describe("Node HTTP flagship shell", () => {
             managedInputs.push(input);
             return Promise.resolve({
               channel: input.channel,
-              expiresAt: "2026-07-19T12:01:00.000Z",
+              expiresAt: oneMinuteAfter(runtime.clock.now()),
               model: "gpt-realtime-2.1",
               value: "ek_judge_browser_ephemeral_only",
             });
@@ -1137,7 +1141,7 @@ describe("Node HTTP flagship shell", () => {
             if (issuerCallCount === 1) {
               return Promise.resolve({
                 channel: input.channel,
-                expiresAt: "2026-07-19T12:01:00.000Z",
+                expiresAt: oneMinuteAfter(runtime.clock.now()),
                 model: "gpt-realtime-2.1",
                 value: "ek_ephemeral_before_byok_clear",
               });

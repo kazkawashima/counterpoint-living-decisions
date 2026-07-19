@@ -71,6 +71,7 @@ export {
   OpenAiManagedRealtimeCallConnector,
   OpenAiManagedRealtimeCallTerminator,
   OpenAiRealtimeCallError,
+  isMediaOnlyOpenAiRealtimeSdp,
   type OpenAiManagedRealtimeCallConnectorOptions,
 } from "./realtime-calls.js";
 export {

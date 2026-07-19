@@ -151,6 +151,21 @@ C4 foundation notes:
   returned. The adapter fixes the destination to the official provider origin,
   accepts only bounded text JSON, preserves event order, and never persists raw
   provider frames. Only the content-free accumulator state is stored.
+- Judge generation control is now server-owned. The sideband sends one fixed
+  session configuration with automatic VAD response creation and interruption
+  disabled, waits for an exact acknowledgement, and exposes only fixed
+  `response.create` and `response.cancel` methods. The call controller derives
+  those commands from ordered provider speech boundaries, serializes
+  cancellation before replacement generation, rejects unsolicited or duplicate
+  response creation and command errors, and terminates before a fourth response
+  can exceed the three-generation reservation.
+- The managed connector rejects SDP containing a provider data channel, video,
+  no audio, multiple media sections, or SCTP attributes. A separate browser
+  transport creates only a send/receive audio transceiver, never requests a
+  provider data channel, and explicitly asks the app server to terminate the
+  managed call when closed. A live 2026-07-19 smoke proved that the official
+  unified Realtime endpoint accepts the resulting Chromium media-only offer;
+  the smoke emits only model and pass/fail metadata.
 - Sideband setup failure, provider-side disconnect, malformed or future
   billable telemetry, and any observed reservation-dimension overflow
   immediately invoke authenticated hangup and conservatively finalize the full
@@ -158,14 +173,12 @@ C4 foundation notes:
   browser SDP response, and server-initiated close cannot duplicate settlement.
   Trustworthy measured telemetry is visible internally but is not yet used to
   lower the charged reservation.
-- The controller is not publicly routed yet. Reserving the complete USD 25
-  window prevents overlapping calls but does not prove that one hostile
-  browser data channel cannot exceed its reservation before the 30-second
-  alarm. Sideband observation is reactive: while the browser owns the provider
-  data channel it can still issue arbitrary or concurrent generation commands
-  before accounting events arrive. Judge client-secret issuance therefore
-  remains fail-closed until provider control moves to the Durable Object
-  sideband or a server-relayed transport. No remote Secret registration occurs.
+- The controller is not publicly routed yet. The remaining safe-route gates
+  are authenticated hosted API parity, keyed IP-HMAC reservation input,
+  app-owned opaque call ownership, and a visibility-scoped transcript relay
+  whose separately billed transcription is included in the reservation proof.
+  Until those gates close, judge client-secret issuance and the public managed
+  route remain fail-closed. No remote Secret registration occurs.
 
 ### C5 — Security hardening
 
@@ -179,7 +192,7 @@ C4 foundation notes:
 - [ ] Re-run the C5 matrix against hosted Worker routes after API parity.
 
 The C5 foundation is reproducible through `npm run security:verify`. The
-current matrix exercises 273 authorization, owner isolation, session/display
+current matrix exercises 282 authorization, owner isolation, session/display
 expiry, SSRF/DNS pinning, redirect, artifact parser/size, webhook, disclosure,
 Realtime payload, API response, and structured-log cases. Parser-normalized
 decimal, hexadecimal, octal, short dotted, trailing-dot, and IPv4-embedded

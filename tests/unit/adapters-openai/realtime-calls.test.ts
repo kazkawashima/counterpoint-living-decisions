@@ -5,6 +5,7 @@ import {
   OpenAiManagedRealtimeCallConnector,
   OpenAiManagedRealtimeCallTerminator,
   OpenAiRealtimeCallError,
+  isMediaOnlyOpenAiRealtimeSdp,
   type OpenAiManagedRealtimeCallConnectorOptions,
 } from "@counterpoint/adapters-openai";
 import { describe, expect, it, vi } from "vitest";
@@ -13,7 +14,8 @@ const standardApiKey = "sk-managed-standard-secret-must-stay-server-side";
 const request = {
   channel: "private" as const,
   safetyIdentifier: "sha256:stable-pseudonymous-user",
-  sdpOffer: "v=0\r\no=- 123 456 IN IP4 0.0.0.0\r\ns=offer\r\n",
+  sdpOffer:
+    "v=0\r\no=- 123 456 IN IP4 0.0.0.0\r\ns=offer\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\n",
 };
 const sdpAnswer = "v=0\r\no=- 789 012 IN IP4 0.0.0.0\r\ns=answer\r\n";
 const location = "/v1/realtime/calls/rtc_call-ABC_123";
@@ -44,6 +46,32 @@ function connectorWith(fetch: FetchLike) {
 }
 
 describe("OpenAiManagedRealtimeCallConnector", () => {
+  it.each([
+    [
+      "browser data channel",
+      `${request.sdpOffer}m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=sctp-port:5000\r\n`,
+    ],
+    ["video media", `${request.sdpOffer}m=video 9 UDP/TLS/RTP/SAVPF 96\r\n`],
+    ["no media", "v=0\r\ns=offer\r\n"],
+    [
+      "hidden SCTP attribute",
+      `${request.sdpOffer}a=sctpmap:5000 webrtc-datachannel 1024\r\n`,
+    ],
+    [
+      "SCTP disguised as audio",
+      "v=0\r\ns=offer\r\nm=audio 9 UDP/DTLS/SCTP 5000\r\n",
+    ],
+  ])("rejects %s in managed media-only SDP", async (_label, sdpOffer) => {
+    const fetch = vi.fn<FetchLike>();
+    const connector = connectorWith(fetch);
+
+    expect(isMediaOnlyOpenAiRealtimeSdp(sdpOffer)).toBe(false);
+    await expect(connector.connect({ ...request, sdpOffer })).rejects.toThrow(
+      "call request is invalid",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("creates a unified WebRTC call with an exact bounded request", async () => {
     const fetch = vi.fn<FetchLike>(() =>
       Promise.resolve(responseWithLocation()),
@@ -85,6 +113,15 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
       throw new TypeError("Expected session to be serialized JSON");
     }
     expect(JSON.parse(sessionValue)).toEqual({
+      audio: {
+        input: {
+          turn_detection: {
+            create_response: false,
+            interrupt_response: false,
+            type: "server_vad",
+          },
+        },
+      },
       instructions: [
         "You are assisting one participant in an owner-private meeting channel.",
         "Do not request, infer, reveal, or refer to any other participant's private context.",

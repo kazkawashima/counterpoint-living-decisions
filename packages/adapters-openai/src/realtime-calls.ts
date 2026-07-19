@@ -52,6 +52,22 @@ function instructionsFor(channel: RealtimeChannel): string {
       ].join("\n");
 }
 
+export function isMediaOnlyOpenAiRealtimeSdp(sdp: string): boolean {
+  if (
+    sdp.includes("\0") ||
+    /(?:^|\r?\n)a=(?:dcmap|sctpmap|sctp-port):/iu.test(sdp)
+  ) {
+    return false;
+  }
+  const mediaLines = sdp.split(/\r?\n/u).filter((line) => /^m=/iu.test(line));
+  return (
+    mediaLines.length === 1 &&
+    /^m=audio\s+\d+\s+UDP\/TLS\/RTP\/SAVPF\s+\d+(?:\s+\d+)*$/iu.test(
+      mediaLines[0] ?? "",
+    )
+  );
+}
+
 function callIdFrom(location: string | null): string {
   const match =
     location === null ? null : REALTIME_CALL_LOCATION_PATTERN.exec(location);
@@ -148,7 +164,8 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
         input.sdpOffer.trim().length === 0 ||
         new TextEncoder().encode(input.sdpOffer).byteLength >
           MAX_OPENAI_REALTIME_SDP_BYTES ||
-        input.sdpOffer.includes(this.#apiKey)
+        input.sdpOffer.includes(this.#apiKey) ||
+        !isMediaOnlyOpenAiRealtimeSdp(input.sdpOffer)
       ) {
         throw new OpenAiRealtimeCallError(
           "OpenAI Realtime call request is invalid",
@@ -170,6 +187,15 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       body.set(
         "session",
         JSON.stringify({
+          audio: {
+            input: {
+              turn_detection: {
+                create_response: false,
+                interrupt_response: false,
+                type: "server_vad",
+              },
+            },
+          },
           instructions: instructionsFor(input.channel),
           model: DEFAULT_OPENAI_REALTIME_MODEL,
           type: "realtime",

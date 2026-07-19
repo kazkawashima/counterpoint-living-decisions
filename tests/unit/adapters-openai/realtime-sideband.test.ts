@@ -14,7 +14,9 @@ const standardApiKey = "sk-managed-standard-secret-must-stay-server-side";
 
 class FakeSocket {
   readonly listeners = new Map<string, (event: never) => void>();
+  readonly sent: string[] = [];
   accepted = false;
+  acknowledgeConfiguration: "error" | "none" | "success" = "success";
   closed: { code?: number; reason?: string } | undefined;
 
   accept(): void {
@@ -34,6 +36,43 @@ class FakeSocket {
 
   emit(type: string, event: unknown): void {
     this.listeners.get(type)?.(event as never);
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
+    const event = JSON.parse(data) as { readonly type?: unknown };
+    if (event.type !== "session.update") {
+      return;
+    }
+    if (this.acknowledgeConfiguration === "error") {
+      this.emit("message", {
+        data: JSON.stringify({
+          error: { message: "provider-private-configuration-error" },
+          type: "error",
+        }),
+      });
+      return;
+    }
+    if (this.acknowledgeConfiguration === "none") {
+      this.emit("error", {});
+      return;
+    }
+    this.emit("message", {
+      data: JSON.stringify({
+        session: {
+          audio: {
+            input: {
+              turn_detection: {
+                create_response: false,
+                interrupt_response: false,
+                type: "server_vad",
+              },
+            },
+          },
+        },
+        type: "session.updated",
+      }),
+    });
   }
 }
 
@@ -55,6 +94,10 @@ function observer() {
 
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function parseJson(serialized: string): unknown {
+  return JSON.parse(serialized) as unknown;
 }
 
 describe("OpenAiRealtimeSidebandConnector", () => {
@@ -81,8 +124,76 @@ describe("OpenAiRealtimeSidebandConnector", () => {
       }),
     );
     expect(socket.accepted).toBe(true);
+    expect(socket.sent.map(parseJson)).toEqual([
+      {
+        session: {
+          audio: {
+            input: {
+              turn_detection: {
+                create_response: false,
+                interrupt_response: false,
+                type: "server_vad",
+              },
+            },
+          },
+          type: "realtime",
+        },
+        type: "session.update",
+      },
+    ]);
     expect(JSON.stringify(fetch.mock.calls)).not.toContain(
       "meeting-private-canary",
+    );
+  });
+
+  it("exposes only fixed response control commands after configuration", async () => {
+    const socket = new FakeSocket();
+    const connection = await new OpenAiRealtimeSidebandConnector({
+      apiKey: standardApiKey,
+      fetch: () => Promise.resolve({ status: 101, webSocket: socket }),
+    }).connect("rtc_controlled", observer().value);
+
+    connection.createResponse();
+    connection.cancelResponse();
+
+    expect(socket.sent.slice(1).map(parseJson)).toEqual([
+      { type: "response.create" },
+      { type: "response.cancel" },
+    ]);
+  });
+
+  it("fails closed when managed turn-taking is not acknowledged", async () => {
+    const socket = new FakeSocket();
+    socket.acknowledgeConfiguration = "none";
+
+    await expect(
+      new OpenAiRealtimeSidebandConnector({
+        apiKey: standardApiKey,
+        fetch: () => Promise.resolve({ status: 101, webSocket: socket }),
+      }).connect("rtc_unconfigured", observer().value),
+    ).rejects.toThrow("configuration was unavailable");
+    expect(socket.closed).toEqual({
+      code: 1011,
+      reason: "sideband unavailable",
+    });
+  });
+
+  it("fails closed immediately on a provider configuration error", async () => {
+    const socket = new FakeSocket();
+    socket.acknowledgeConfiguration = "error";
+
+    await expect(
+      new OpenAiRealtimeSidebandConnector({
+        apiKey: standardApiKey,
+        fetch: () => Promise.resolve({ status: 101, webSocket: socket }),
+      }).connect("rtc_provider_error", observer().value),
+    ).rejects.toThrow("configuration was unavailable");
+    expect(socket.closed).toEqual({
+      code: 1011,
+      reason: "sideband unavailable",
+    });
+    expect(JSON.stringify(socket)).not.toContain(
+      "provider-private-configuration-error",
     );
   });
 
