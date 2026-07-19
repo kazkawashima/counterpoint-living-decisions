@@ -258,6 +258,8 @@ export function createWorkerHandler(): ExportedHandler<Env> {
         /^\/api\/v1\/meetings\/([^/]+)\/demo\/regulatory-changes$/u.exec(
           url.pathname,
         );
+      const flagshipDemoResetRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/demo\/reset$/u.exec(url.pathname);
       const flagshipCollectionOperation =
         flagshipCollectionRoute === null
           ? undefined
@@ -318,17 +320,24 @@ export function createWorkerHandler(): ExportedHandler<Env> {
                                   : request.method === "POST" &&
                                       flagshipDemoRegulatoryRoute !== null
                                     ? "inject-demo-regulatory-change"
-                                    : request.method === "GET" &&
-                                        url.pathname === "/api/v1/meetings"
-                                      ? "meetings"
-                                      : request.method === "GET" &&
-                                          flagshipProjectionRoute !== null
-                                        ? "projection"
+                                    : request.method === "POST" &&
+                                        url.pathname ===
+                                          "/api/v1/decisions/invalidation-review"
+                                      ? "review-invalidation"
+                                      : request.method === "POST" &&
+                                          flagshipDemoResetRoute !== null
+                                        ? "reset-demo"
                                         : request.method === "GET" &&
-                                            flagshipCollectionOperation !==
-                                              undefined
-                                          ? flagshipCollectionOperation
-                                          : undefined;
+                                            url.pathname === "/api/v1/meetings"
+                                          ? "meetings"
+                                          : request.method === "GET" &&
+                                              flagshipProjectionRoute !== null
+                                            ? "projection"
+                                            : request.method === "GET" &&
+                                                flagshipCollectionOperation !==
+                                                  undefined
+                                              ? flagshipCollectionOperation
+                                              : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;
@@ -351,6 +360,13 @@ export function createWorkerHandler(): ExportedHandler<Env> {
             meetingId = decodeURIComponent(
               flagshipDemoRegulatoryRoute[1] ?? "",
             );
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDemoResetRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(flagshipDemoResetRoute[1] ?? "");
           } catch {
             return apiErrorResponse("VALIDATION_FAILED", correlationId);
           }

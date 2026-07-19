@@ -41,6 +41,7 @@ function workerEnv(bindings: {
     JUDGE_REALTIME_CALLS: env.JUDGE_REALTIME_CALLS,
     MEETINGS: env.MEETINGS,
     OPENAI_MODE: env.OPENAI_MODE,
+    OPENAI_MODEL: env.OPENAI_MODEL,
     RUNTIME_MODE: env.RUNTIME_MODE,
     ...bindings,
   };

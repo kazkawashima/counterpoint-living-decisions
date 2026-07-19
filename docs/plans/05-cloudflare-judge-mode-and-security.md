@@ -272,7 +272,12 @@ secret files, and reports only the path and rule name rather than the detected
 value. API provider failures, Realtime state/errors, structured logs, and
 protocol envelopes each carry synthetic secret/private canaries that are
 asserted absent. C5 remains open only for rerunning these shared contracts
-against hosted Worker routes after API parity.
+against hosted Worker routes after API parity. The hosted Worker flagship now
+has authenticated external-host coverage through `AT_RISK`, facilitator
+`REVIEW_REQUIRED`, Action hold, reconsideration task creation, deterministic
+preview evaluation, participant denial, and reset/replay with cleared
+collections. The full C5 matrix still requires an approved hosted provider and
+deployment boundary before it can be claimed as hosted evidence.
 
 ### C6 — Hosted deployment path
 

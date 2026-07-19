@@ -52,6 +52,7 @@
   "vars": {
     "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED": "disabled",
     "RUNTIME_MODE": "preview",
-    "OPENAI_MODE": "disabled",
+    "OPENAI_MODE": "deterministic",
+    "OPENAI_MODEL": "gpt-5.6",
   },
 }

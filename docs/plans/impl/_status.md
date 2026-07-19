@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-07-19
+Updated: 2026-07-20
 
 ## Current phase
 
@@ -525,9 +525,12 @@ The canonical implementation-facing artifacts are:
   exactly one stored event in both cases.
 - All shared C5 rows now have executable coverage, including synthetic canaries
   across API provider failures, Realtime state/errors, structured logs,
-  protocol envelopes, repository files, and generated output. C5 remains open
-  only for rerunning those contracts against hosted Worker routes after C3 API
-  parity.
+  protocol envelopes, repository files, and generated output. The hosted
+  Worker flagship now proves the authenticated source-to-Commitment-to-
+  `AT_RISK`-to-`REVIEW_REQUIRED` path, facilitator-only reset, reset replay,
+  and post-reset collection clearing. C5 remains open for rerunning the full
+  security matrix against hosted Worker routes after the approved provider and
+  deployment boundary is available.
 - Plan 05 C6 now has no-mutation preview/production plan commands, a
   dispatch-only `main` workflow protected by target-specific GitHub
   Environments, and a fail-closed deployment driver. Generated remote configs
@@ -574,11 +577,19 @@ The canonical implementation-facing artifacts are:
   → `COMMITTED`. The external-host Cloudflare test covers this full
   source-to-Commitment journey without an OpenAI call.
 - The hosted flagship now also reaches `MONITORING` through the authenticated
-  Worker path. A facilitator-only demo regulatory change can be staged against
-  that registration, its external-event receipt is visible in the shared read
-  model, and the invalidation evaluation remains explicitly `pending` while
-  the provider is disabled. The external-host Cloudflare test covers this
-  post-commit monitoring path without an API call.
+  Worker path. The local preview Worker uses an explicit deterministic
+  evaluator without a provider key, so a facilitator-only demo regulatory
+  change reaches `AT_RISK`; the same facilitator-only review route reaches
+  `REVIEW_REQUIRED`, holds the affected Action, and creates a reconsideration
+  task. The live provider evaluator remains a separate, explicitly gated
+  deployment concern, while rendered remote deployment configs remain
+  provider-disabled until the judge gate is approved.
+- Hosted demo reset is now wired through the same authorization, event, and
+  projection boundaries. It clears private/shared read models without rewinding
+  the event cursor, supports exact idempotent replay, and rejects participant
+  authority. The external-host Cloudflare flagship test covers the full
+  `MONITORING` → `AT_RISK` → `REVIEW_REQUIRED` → reset journey and verifies
+  reset collections are empty afterward.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call
@@ -589,8 +600,8 @@ The canonical implementation-facing artifacts are:
   content-free operator visibility remain. The managed realtime route adapter
   is covered by three unit cases, a four-case Worker gate suite, and the new
   three-case Cloudflare integration suite; it remains disabled by default.
-  Hosted invalidation-provider evaluation, reset/replay proof, and structured
-  judge AI remain later slices.
+  Full hosted security-matrix rerun, approved provider enablement, and
+  structured judge AI remain later slices.
 - The current regular baseline is 631 Vitest tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted
@@ -603,7 +614,8 @@ The canonical implementation-facing artifacts are:
   passed 279 cases; its four WebSocket cases were blocked only because the
   sandbox denied their required `0.0.0.0` listen. The managed Worker route
   integration suite passes in the Cloudflare pool; the full Cloudflare pool
-  baseline is now 10 files and 84 tests. No visible UI
+  is now 10 files and 84 tests, all passing after the hosted invalidation/reset
+  additions. No visible UI
   changed, so no browser capture was required. Reel shooting and reel-material
   organization are deferred from the active goal; product visibility remains
   the priority, while the AGENTS.md capture rule stays available for later UI
@@ -616,11 +628,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 by closing the hosted invalidation-provider boundary and
-reset/replay proof, then extend Worker proof to real Durable Object lifecycle
-behavior. Measure the flagship to replace full-cap-per-attempt settlement with
-safe derived limits and only then enable the public judge route or switch the
-judge UI.
+Continue Plan 05 with the hosted C5 security-matrix rerun and an approved
+provider/deployment boundary. Then extend Worker proof to real Durable Object
+lifecycle behavior and measure the flagship to replace full-cap-per-attempt
+settlement with safe derived limits before enabling the public judge route or
+switching the judge UI.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is

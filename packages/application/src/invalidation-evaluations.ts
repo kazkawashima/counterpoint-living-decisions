@@ -461,7 +461,12 @@ async function refreshProjection(
 export function listAssumptionInvalidationEvaluations(
   records: readonly EventRecord<DomainEvent>[],
 ): readonly InvalidationEvaluationView[] {
-  const events = normalizeRecords(records);
+  const normalized = normalizeRecords(records);
+  const resetPosition = normalized.findLastIndex(
+    (event) => event.eventType === "DemoResetCompleted",
+  );
+  const events =
+    resetPosition < 0 ? normalized : normalized.slice(resetPosition + 1);
   return events
     .filter(
       (event): event is EventOf<"AssumptionInvalidationSuggested"> =>
@@ -494,7 +499,13 @@ export async function evaluateAssumptionInvalidation(
   }
 
   const records = await dependencies.events.load(input.meetingId);
-  const receivedRecord = records.find(
+  const normalized = normalizeRecords(records);
+  const resetPosition = normalized.findLastIndex(
+    (event) => event.eventType === "DemoResetCompleted",
+  );
+  const activeRecords =
+    resetPosition < 0 ? records : records.slice(resetPosition + 1);
+  const receivedRecord = activeRecords.find(
     (record): record is EventRecord<EventOf<"ExternalEventReceived">> =>
       record.event.eventType === "ExternalEventReceived" &&
       record.event.payload.externalEvent.id === input.externalEventId,
@@ -503,7 +514,7 @@ export async function evaluateAssumptionInvalidation(
     return failed("EXTERNAL_EVENT_NOT_FOUND");
   }
   const receivedEvent = receivedRecord.event;
-  const existingSuggested = records.find(
+  const existingSuggested = activeRecords.find(
     (
       record,
     ): record is EventRecord<EventOf<"AssumptionInvalidationSuggested">> =>
@@ -512,7 +523,7 @@ export async function evaluateAssumptionInvalidation(
   );
   if (existingSuggested !== undefined) {
     const existingSuggestedEvent = existingSuggested.event;
-    const existingAtRisk = records.find(
+    const existingAtRisk = activeRecords.find(
       (record): record is EventRecord<EventOf<"DecisionMarkedAtRisk">> =>
         record.event.eventType === "DecisionMarkedAtRisk" &&
         record.event.payload.suggestionId ===
@@ -569,7 +580,7 @@ export async function evaluateAssumptionInvalidation(
     revision: evaluatorInput.decision.revision,
     revisionId: evaluatorInput.decision.revisionId,
   });
-  const priorSuggested = records.find(
+  const priorSuggested = activeRecords.find(
     (
       record,
     ): record is EventRecord<EventOf<"AssumptionInvalidationSuggested">> =>

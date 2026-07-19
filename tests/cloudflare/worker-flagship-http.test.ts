@@ -8,7 +8,9 @@ import {
   ApproveDisclosureResponseSchema,
   CommitDecisionResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
+  FacilitatorDemoResetResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
+  ListInvalidationEvaluationsResponseSchema,
   ListSharedExternalEventsResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
@@ -16,6 +18,7 @@ import {
   SaveDecisionDraftResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
   MarkDecisionReadyResponseSchema,
+  ReviewInvalidationResponseSchema,
   StartDecisionMonitoringResponseSchema,
 } from "@counterpoint/protocol";
 
@@ -37,6 +40,7 @@ function workerEnv(): Env {
     JUDGE_REALTIME_CALLS: env.JUDGE_REALTIME_CALLS,
     MEETINGS: env.MEETINGS,
     OPENAI_MODE: env.OPENAI_MODE,
+    OPENAI_MODEL: env.OPENAI_MODEL,
     RUNTIME_MODE: env.RUNTIME_MODE,
     JUDGE_MANAGED_REALTIME_ROUTE_ENABLED:
       env.JUDGE_MANAGED_REALTIME_ROUTE_ENABLED,
@@ -531,6 +535,148 @@ describe("Cloudflare Worker hosted flagship API", () => {
       ]),
     );
 
+    const evaluationsResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/invalidation-evaluations`,
+          { headers: authorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(evaluationsResponse.status).toBe(200);
+    const evaluationsBody = ListInvalidationEvaluationsResponseSchema.parse(
+      await json(evaluationsResponse),
+    );
+    expect(evaluationsBody.evaluations).toHaveLength(1);
+    const evaluation = evaluationsBody.evaluations[0];
+    expect(evaluation).toMatchObject({
+      decision: { status: "AT_RISK" },
+      externalEventId: demoEventBody.event.eventId,
+      operation: "assumption_invalidation",
+    });
+    expect(evaluation?.suggestionId).toEqual(expect.any(String));
+
+    const reviewResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          "https://203.0.113.7/api/v1/decisions/invalidation-review",
+          {
+            body: JSON.stringify({
+              decisionId: commitBody.decision.decisionId,
+              disposition: "confirm_invalidation",
+              expectedPosition: evaluationsBody.position,
+              idempotencyKey: "worker-flagship-invalidation-review",
+              meetingId: FLAGSHIP_MEETING_ID,
+              reason:
+                "The staged regulatory change invalidates the rollout premise.",
+              suggestionId: evaluation?.suggestionId,
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(reviewResponse.status).toBe(200);
+    const reviewBody = ReviewInvalidationResponseSchema.parse(
+      await json(reviewResponse),
+    );
+    expect(reviewBody).toMatchObject({
+      decision: { status: "REVIEW_REQUIRED" },
+      disposition: "confirm_invalidation",
+      heldActionIds: [expect.any(String)],
+      reconsiderationTask: {
+        state: "open",
+        triggerExternalEventId: demoEventBody.event.eventId,
+      },
+    });
+
+    const resetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: reviewBody.position,
+              idempotencyKey: "worker-flagship-demo-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(resetResponse.status).toBe(200);
+    const resetBody = FacilitatorDemoResetResponseSchema.parse(
+      await json(resetResponse),
+    );
+    expect(resetBody.resetStatus).toBe("completed");
+
+    const resetReplayResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: resetBody.position,
+              idempotencyKey: "worker-flagship-demo-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(resetReplayResponse.status).toBe(200);
+    const resetReplayBody = FacilitatorDemoResetResponseSchema.parse(
+      await json(resetReplayResponse),
+    );
+    expect(resetReplayBody.resetRequestId).toBe(resetBody.resetRequestId);
+
+    const externalEventsAfterResetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/external-events`,
+          { headers: authorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(externalEventsAfterResetResponse.status).toBe(200);
+    expect(
+      ListSharedExternalEventsResponseSchema.parse(
+        await json(externalEventsAfterResetResponse),
+      ).events,
+    ).toEqual([]);
+
+    const evaluationsAfterResetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/invalidation-evaluations`,
+          { headers: authorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(evaluationsAfterResetResponse.status).toBe(200);
+    expect(
+      ListInvalidationEvaluationsResponseSchema.parse(
+        await json(evaluationsAfterResetResponse),
+      ).evaluations,
+    ).toEqual([]);
+
     const projectionAfterSourceResponse = await handler.fetch!(
       workerRequest(
         new Request(
@@ -543,30 +689,19 @@ describe("Cloudflare Worker hosted flagship API", () => {
     );
     expect(projectionAfterSourceResponse.status).toBe(200);
     await expect(json(projectionAfterSourceResponse)).resolves.toMatchObject({
+      meeting: {
+        phase: "preparing",
+      },
       privateWorkspace: {
-        sources: [
-          expect.objectContaining({
-            text: sourceText,
-          }),
-        ],
-        disclosureCandidates: [expect.objectContaining({ state: "approved" })],
+        sources: [],
+        disclosureCandidates: [],
       },
       shared: {
-        decisions: [
-          expect.objectContaining({
-            decisionId: commitBody.decision.decisionId,
-            status: "MONITORING",
-          }),
-        ],
-        evidence: [
-          expect.objectContaining({
-            evidenceId: approveBody.evidence.evidenceId,
-            exactSnippet,
-          }),
-        ],
+        decisions: [],
+        evidence: [],
       },
     });
-  });
+  }, 15_000);
 
   it("keeps the hosted meeting and projection routes authenticated", async () => {
     const handler = createWorkerHandler();
@@ -580,6 +715,51 @@ describe("Cloudflare Worker hosted flagship API", () => {
     expect(response.status).toBe(401);
     await expect(json(response)).resolves.toMatchObject({
       code: "AUTHENTICATION_REQUIRED",
+    });
+
+    const participantLoginResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://192.0.2.10/api/v1/login", {
+          body: JSON.stringify({
+            password: "counterpoint-safety",
+            userId: "safety",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(participantLoginResponse.status).toBe(200);
+    const participantLoginBody = await json(participantLoginResponse);
+    const participantAuthorization = {
+      authorization: `Bearer ${String(participantLoginBody.bearerToken)}`,
+    };
+    const resetResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: 0,
+              idempotencyKey: "participant-must-not-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: {
+              ...participantAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(resetResponse.status).toBe(403);
+    await expect(json(resetResponse)).resolves.toMatchObject({
+      code: "FORBIDDEN",
     });
   });
 });

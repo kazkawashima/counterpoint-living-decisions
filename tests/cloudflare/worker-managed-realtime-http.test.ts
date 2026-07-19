@@ -130,6 +130,7 @@ function workerEnv(namespace: FakeControllerNamespace): Env {
     MEETINGS: env.MEETINGS,
     OPENAI_API_KEY_JUDGE: STANDARD_KEY,
     OPENAI_MODE: env.OPENAI_MODE,
+    OPENAI_MODEL: env.OPENAI_MODEL,
     RUNTIME_MODE: env.RUNTIME_MODE,
   };
 }

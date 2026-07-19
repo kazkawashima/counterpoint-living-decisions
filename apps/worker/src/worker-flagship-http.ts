@@ -3,6 +3,7 @@ import {
   authenticateSession,
   commitDecision,
   dispositionDecisionCandidate,
+  evaluateAssumptionInvalidation,
   listAssumptionInvalidationEvaluations,
   listAssignedMeetings,
   login,
@@ -11,9 +12,11 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  resetDemoMeeting,
   markDecisionReady,
   injectDemoRegulatoryChange,
   prepareSharedDecisionCandidate,
+  reviewInvalidation,
   saveDecisionDraft,
   startDecisionMonitoring,
   resolveMeetingAuthorization,
@@ -23,7 +26,9 @@ import {
   type DecisionCandidateFailure,
   type DecisionFailure,
   type ExternalEventDependencies,
+  type InvalidationEvaluationDependencies,
   type InvalidationEvaluationView,
+  type InvalidationReviewFailure,
   type UserAuthorizationContext,
   type UserAuthorizationPolicy,
 } from "@counterpoint/application";
@@ -49,6 +54,10 @@ import {
   WebCryptoSessionTokenIssuer,
   createJsonCodec,
 } from "@counterpoint/adapters-cloudflare";
+import {
+  DeterministicAssumptionInvalidationModel,
+  OpenAiAssumptionInvalidationEvaluator,
+} from "@counterpoint/adapters-openai";
 import {
   apiErrorResponse,
   apiJsonResponse,
@@ -100,8 +109,13 @@ import {
   SynthesizeSharedDecisionResponseSchema,
   InjectDemoRegulatoryChangeRequestSchema,
   InjectDemoRegulatoryChangeResponseSchema,
+  FacilitatorDemoResetRequestSchema,
+  FacilitatorDemoResetResponseSchema,
+  ReviewInvalidationRequestSchema,
+  ReviewInvalidationResponseSchema,
   type CommitDecisionRequest,
   type DispositionSharedDecisionCandidateRequest,
+  type FacilitatorDemoResetRequest,
   type InjectDemoRegulatoryChangeRequest,
   type MarkDecisionReadyRequest,
   type ApproveDisclosureRequest,
@@ -112,6 +126,7 @@ import {
   type StartDecisionMonitoringRequest,
   type SynthesizeSharedDecisionRequest,
   type RegisterPrivateTextSourceFixtureRequest,
+  type ReviewInvalidationRequest,
 } from "@counterpoint/protocol";
 
 export interface WorkerFlagshipHttpDependencies {
@@ -120,6 +135,7 @@ export interface WorkerFlagshipHttpDependencies {
   readonly decisions: DecisionDependencies;
   readonly disclosures: DisclosureDependencies;
   readonly externalEvents: ExternalEventDependencies;
+  readonly invalidationEvaluations: InvalidationEvaluationDependencies;
   readonly events: EventStore<DomainEvent>;
   readonly identities: IdentityRepository;
   readonly ids: IdGenerator;
@@ -133,6 +149,8 @@ export interface WorkerFlagshipHttpDependencies {
 export interface WorkerFlagshipD1Bindings {
   readonly ARTIFACTS: R2Bucket;
   readonly DB: D1Database;
+  readonly OPENAI_MODE?: "disabled" | "deterministic";
+  readonly OPENAI_MODEL?: string;
 }
 
 export type WorkerFlagshipOperation =
@@ -155,7 +173,9 @@ export type WorkerFlagshipOperation =
   | "reject-disclosure"
   | "save-decision-draft"
   | "start-decision-monitoring"
-  | "inject-demo-regulatory-change";
+  | "inject-demo-regulatory-change"
+  | "review-invalidation"
+  | "reset-demo";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
 
@@ -263,12 +283,30 @@ export function createWorkerFlagshipDependencies(
     ids,
     projections,
   };
+  const invalidationEvaluator =
+    bindings.OPENAI_MODE === "deterministic"
+      ? new OpenAiAssumptionInvalidationEvaluator({
+          model: bindings.OPENAI_MODEL ?? "gpt-5.6",
+          modelAdapter: new DeterministicAssumptionInvalidationModel(),
+        })
+      : undefined;
+  const invalidationEvaluations: InvalidationEvaluationDependencies = {
+    clock,
+    events,
+    hash,
+    ids,
+    projections,
+    ...(invalidationEvaluator === undefined
+      ? {}
+      : { evaluator: invalidationEvaluator }),
+  };
   return {
     clock,
     decisionCandidates,
     decisions,
     disclosures,
     externalEvents,
+    invalidationEvaluations,
     events,
     identities: new D1IdentityRepository(bindings.DB),
     ids,
@@ -508,6 +546,15 @@ function privateDisclosureCandidates(
   return [...candidates.values()];
 }
 
+function eventsAfterLatestDemoReset(
+  events: readonly DomainEvent[],
+): readonly DomainEvent[] {
+  const resetIndex = events.findLastIndex(
+    (event) => event.eventType === "DemoResetCompleted",
+  );
+  return resetIndex < 0 ? events : events.slice(resetIndex + 1);
+}
+
 function decisionView(
   decision: DomainDecision,
   updatedAt: string = decision.createdAt,
@@ -574,6 +621,40 @@ function decisionFailureResponse(
     : apiErrorResponse("VALIDATION_FAILED", correlationId);
 }
 
+function invalidationReviewFailureResponse(
+  correlationId: string,
+  failure: InvalidationReviewFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? apiErrorResponse("CONFLICT", correlationId, {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : failure.code === "FORBIDDEN" ||
+        failure.code === "IDEMPOTENCY_CONFLICT" ||
+        failure.code === "INVALID_STATE_TRANSITION"
+      ? apiErrorResponse(failure.code, correlationId)
+      : apiErrorResponse("VALIDATION_FAILED", correlationId);
+}
+
+async function attemptInvalidationEvaluation(
+  dependencies: WorkerFlagshipHttpDependencies,
+  correlationId: string,
+  externalEventId: string,
+  meetingId: string,
+): Promise<void> {
+  try {
+    await evaluateAssumptionInvalidation(dependencies.invalidationEvaluations, {
+      correlationId,
+      externalEventId,
+      meetingId,
+    });
+  } catch {
+    // The receipt is durable even when a provider is unavailable or fails.
+    // The shared read model remains in MONITORING/pending until retried.
+  }
+}
+
 async function assignedMeeting(
   dependencies: WorkerFlagshipHttpDependencies,
   meetingId: string,
@@ -623,6 +704,7 @@ async function roleProjection(
     ...event,
     position: meetingPosition(position),
   }));
+  const activeEvents = eventsAfterLatestDemoReset(events);
   const projection = replayMeeting(
     domainMeetingId(authorization.meetingId),
     events,
@@ -632,7 +714,7 @@ async function roleProjection(
       ownerParticipantId === authorization.participantId,
   );
   const privateSources = await Promise.all(
-    events.flatMap((event) =>
+    activeEvents.flatMap((event) =>
       event.eventType === "ArtifactRegistered" &&
       event.visibility === "private" &&
       event.ownerParticipantId === authorization.participantId &&
@@ -680,7 +762,7 @@ async function roleProjection(
     privateWorkspace: {
       artifacts: [],
       disclosureCandidates: privateDisclosureCandidates(
-        events,
+        activeEvents,
         authorization.participantId,
       ),
       inferenceSuggestions: [],
@@ -794,6 +876,8 @@ export async function handleWorkerFlagshipHttp(input: {
     DispositionSharedDecisionCandidateRequest | undefined;
   let injectDemoRegulatoryChangeRequest:
     InjectDemoRegulatoryChangeRequest | undefined;
+  let reviewInvalidationRequest: ReviewInvalidationRequest | undefined;
+  let resetDemoRequest: FacilitatorDemoResetRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
 
@@ -984,6 +1068,26 @@ export async function handleWorkerFlagshipHttp(input: {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
     injectDemoRegulatoryChangeRequest = parsed.data;
+  }
+  if (operation === "review-invalidation") {
+    const parsed = ReviewInvalidationRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    reviewInvalidationRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "reset-demo") {
+    const parsed = FacilitatorDemoResetRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    resetDemoRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
   }
 
   if (meetingId === undefined) {
@@ -1288,6 +1392,12 @@ export async function handleWorkerFlagshipHttp(input: {
           ? apiErrorResponse("IDEMPOTENCY_CONFLICT", correlationId)
           : apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
+    await attemptInvalidationEvaluation(
+      dependencies,
+      result.correlationId,
+      result.event.id,
+      meetingId,
+    );
     const records = await dependencies.events.load(meetingId);
     const events = records.map(({ event, position }) => ({
       ...event,
@@ -1307,6 +1417,126 @@ export async function handleWorkerFlagshipHttp(input: {
         replayed: result.replayed,
       }),
       202,
+      correlationId,
+    );
+  }
+
+  if (operation === "review-invalidation") {
+    if (reviewInvalidationRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await reviewInvalidation(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        ...reviewInvalidationRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return invalidationReviewFailureResponse(correlationId, result);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    const common = {
+      correlationId: result.correlationId,
+      disposition: result.disposition,
+      meetingId,
+      position: visiblePosition(
+        events,
+        resolved.authorization.participantId,
+        result.position,
+      ),
+      reviewAuditId: `audit-${result.reviewEventId}`,
+      reviewEventId: result.reviewEventId,
+      reviewReason: result.reviewReason,
+      suggestionId: result.suggestionId,
+    };
+    return apiJsonResponse(
+      ReviewInvalidationResponseSchema.parse(
+        result.kind === "suggestion_rejected"
+          ? {
+              ...common,
+              decision: decisionView(result.decision, dependencies.clock.now()),
+            }
+          : {
+              ...common,
+              decision: decisionView(result.decision, dependencies.clock.now()),
+              heldActionIds: result.heldActionIds,
+              reconsiderationTask: {
+                affectedActionIds: result.reconsiderationTask.affectedActionIds,
+                affectedPremiseIds:
+                  result.reconsiderationTask.affectedPremiseIds,
+                createdAt: result.reconsiderationTask.createdAt,
+                decisionId: result.reconsiderationTask.decisionId,
+                ownerParticipantId:
+                  result.reconsiderationTask.ownerParticipantId,
+                reconsiderationTaskId: result.reconsiderationTask.id,
+                state: result.reconsiderationTask.state,
+                triggerExternalEventId:
+                  result.reconsiderationTask.triggerExternalEventId,
+              },
+            },
+      ),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "reset-demo") {
+    if (resetDemoRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const priorResetRequest = records.find(
+      ({ event }) =>
+        event.eventType === "DemoResetRequested" &&
+        String(event.idempotencyKey) ===
+          String(resetDemoRequest.idempotencyKey),
+    );
+    const result = await resetDemoMeeting(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        expectedPosition:
+          priorResetRequest === undefined
+            ? await dependencies.events.position(meetingId)
+            : priorResetRequest.position - 1,
+        idempotencyKey: resetDemoRequest.idempotencyKey,
+        meetingId,
+        seedName: "flagship",
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const nextRecords = await dependencies.events.load(meetingId);
+    const nextEvents = nextRecords.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      FacilitatorDemoResetResponseSchema.parse({
+        correlationId: result.correlationId,
+        meetingId,
+        position: visiblePosition(
+          nextEvents,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        resetRequestId: result.resetRequestId,
+        resetStatus: "completed",
+      }),
+      200,
       correlationId,
     );
   }
