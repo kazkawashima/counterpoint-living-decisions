@@ -8,9 +8,11 @@ import type {
   DispositionSharedDecisionCandidateResponse,
   ExternalEventReceipt,
   InvalidationEvaluation,
+  IssueDisplayTokenResponse,
   PreviewDisclosureResponse,
   SharedEvidence,
   SharedDecisionSynthesisCandidate,
+  SharedDisplayProjectionResponse,
 } from "@counterpoint/protocol";
 
 import {
@@ -22,7 +24,9 @@ import {
   exportDecisionJson,
   getDecisionAudit,
   getDecisionHistory,
+  getSharedDisplayProjection,
   injectDemoRegulatoryChange,
+  issueDisplayToken,
   joinMeeting,
   listMeetings,
   listInvalidationEvaluations,
@@ -38,6 +42,7 @@ import {
   registerPrivateTextSource,
   rejectDisclosure,
   resetDemoMeeting,
+  revokeDisplayToken,
   reviewInvalidation,
   resolveDecisionReview,
   saveDecisionDraft,
@@ -2048,6 +2053,208 @@ function FacilitatorDecisionPanel({
   );
 }
 
+function SharedDisplayScreen({
+  displayToken,
+  meetingId,
+}: {
+  readonly displayToken: string;
+  readonly meetingId: string;
+}) {
+  const [projection, setProjection] =
+    useState<SharedDisplayProjectionResponse>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    async function refresh() {
+      try {
+        const next = await getSharedDisplayProjection(
+          meetingId,
+          displayToken,
+          controller.signal,
+        );
+        if (active) {
+          setProjection(next);
+          setError(undefined);
+          setLoading(false);
+        }
+      } catch (cause) {
+        if (active && !controller.signal.aborted) {
+          setProjection(undefined);
+          setError(
+            cause instanceof ApiError && cause.code === "DISPLAY_TOKEN_EXPIRED"
+              ? "This shared display link has expired or was revoked."
+              : messageFor(cause),
+          );
+          setLoading(false);
+        }
+      }
+    }
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 3_000);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [displayToken, meetingId]);
+
+  if (loading) {
+    return (
+      <main className="shared-display-shell">
+        <header className="shared-display-topbar">
+          <Brand />
+          <span>Read-only shared display</span>
+        </header>
+        <section className="shared-display-loading" aria-live="polite">
+          <span className="live-dot" />
+          Loading the shared Decision…
+        </section>
+      </main>
+    );
+  }
+
+  if (projection === undefined) {
+    return (
+      <main className="shared-display-shell">
+        <header className="shared-display-topbar">
+          <Brand />
+          <span>Read-only shared display</span>
+        </header>
+        <section className="shared-display-expired" role="alert">
+          <span aria-hidden="true">◇</span>
+          <p className="section-kicker">Access ended</p>
+          <h1>Shared content is no longer available</h1>
+          <p>{error}</p>
+          <small>
+            Ask the facilitator for a new display link. No previous meeting
+            content is retained on this screen.
+          </small>
+        </section>
+      </main>
+    );
+  }
+
+  const decision = projection.shared.decisions.at(-1);
+  return (
+    <main className="shared-display-shell">
+      <header className="shared-display-topbar">
+        <Brand />
+        <div>
+          <span className="live-dot" />
+          <strong>Read-only shared display</strong>
+        </div>
+        <small>
+          Link expires {new Date(projection.expiresAt).toLocaleTimeString()}
+        </small>
+      </header>
+      <section className="shared-display-hero">
+        <div>
+          <p className="eyebrow">Current question</p>
+          <h1>{projection.meeting.purpose}</h1>
+          <p>Shared, human-approved material only.</p>
+        </div>
+        <div className="shared-display-phase">
+          <span>Meeting phase</span>
+          <strong>{projection.meeting.phase}</strong>
+          <small>Position {projection.shared.position}</small>
+        </div>
+      </section>
+      <section className="shared-display-grid">
+        <article className="display-panel display-evidence">
+          <header>
+            <p className="zone-label shared">Shared evidence</p>
+            <span>{projection.shared.evidence.length}</span>
+          </header>
+          {projection.shared.evidence.length === 0 ? (
+            <p className="display-empty">No approved evidence yet.</p>
+          ) : (
+            projection.shared.evidence.map((evidence) => (
+              <blockquote key={evidence.evidenceId}>
+                “{evidence.exactSnippet}”
+                <small>Human confirmed · Source attached</small>
+              </blockquote>
+            ))
+          )}
+        </article>
+        <article className="display-panel display-premises">
+          <header>
+            <p className="zone-label shared">Confirmed premises</p>
+            <span>{projection.shared.premises.length}</span>
+          </header>
+          {projection.shared.premises.length === 0 ? (
+            <p className="display-empty">No confirmed premises yet.</p>
+          ) : (
+            <ul>
+              {projection.shared.premises.map((premise) => (
+                <li key={premise.premiseId}>
+                  <span aria-hidden="true">✓</span>
+                  <div>
+                    <strong>{premise.statement}</strong>
+                    <small>{premise.confirmationStatus}</small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+        <article className="display-panel display-decision">
+          <header>
+            <p className="zone-label shared">Living Decision</p>
+            <span>{decision?.status ?? "ASSEMBLING"}</span>
+          </header>
+          {decision === undefined ? (
+            <div className="display-decision-empty">
+              <span aria-hidden="true">◎</span>
+              <h2>Commitment is still assembling</h2>
+              <p>
+                Evidence, premise, dissent, and Action remain visible above.
+              </p>
+            </div>
+          ) : (
+            <div className="display-decision-current">
+              <span>Revision {decision.activeRevision}</span>
+              <h2>{decision.snapshot.title}</h2>
+              <p>{decision.snapshot.outcome}</p>
+              <small>{decision.status} · Human-controlled lifecycle</small>
+            </div>
+          )}
+        </article>
+        <article className="display-panel display-actions">
+          <header>
+            <p className="zone-label shared">Actions</p>
+            <span>{projection.shared.actions.length}</span>
+          </header>
+          {projection.shared.actions.length === 0 ? (
+            <p className="display-empty">No shared Actions yet.</p>
+          ) : (
+            <ul>
+              {projection.shared.actions.map((action) => (
+                <li key={action.actionId}>
+                  <strong>{action.scope.join(" · ")}</strong>
+                  <small>{action.status}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+          {projection.shared.dissent.map((dissent) => (
+            <div className="display-dissent" key={dissent.dissentId}>
+              <span>Retained dissent</span>
+              <p>{dissent.reason}</p>
+            </div>
+          ))}
+        </article>
+      </section>
+      <footer className="shared-display-footer">
+        <span>Counterpoint · Living Decisions</span>
+        <span>Synthetic hackathon demonstration</span>
+      </footer>
+    </main>
+  );
+}
+
 function WorkspaceShell({
   meeting,
   session,
@@ -2083,6 +2290,12 @@ function WorkspaceShell({
   const [resetState, setResetState] = useState<
     "confirming" | "idle" | "resetting" | "succeeded"
   >("idle");
+  const [displayAccess, setDisplayAccess] =
+    useState<IssueDisplayTokenResponse>();
+  const [displayAccessState, setDisplayAccessState] = useState<
+    "idle" | "issuing" | "revoking"
+  >("idle");
+  const [displayAccessError, setDisplayAccessError] = useState<string>();
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const [selectedSnippet, setSelectedSnippet] = useState(
     SYNTHETIC_EXACT_SNIPPET,
@@ -2267,6 +2480,8 @@ function WorkspaceShell({
       setSharedDecision(undefined);
       setSharedExternalEvent(undefined);
       setSharedInvalidation(undefined);
+      setDisplayAccess(undefined);
+      setDisplayAccessState("idle");
       setSelectedSnippet(SYNTHETIC_EXACT_SNIPPET);
       commandKeys.current = {
         approve: crypto.randomUUID(),
@@ -2284,6 +2499,52 @@ function WorkspaceShell({
       setResetState("confirming");
     }
   }
+
+  async function createSharedDisplay() {
+    setDisplayAccessState("issuing");
+    setDisplayAccessError(undefined);
+    try {
+      const issued = await issueDisplayToken(session, {
+        expectedPosition: position,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(issued.position);
+      setDisplayAccess(issued);
+      setDisplayAccessState("idle");
+    } catch (cause) {
+      setDisplayAccessError(messageFor(cause));
+      setDisplayAccessState("idle");
+    }
+  }
+
+  async function endSharedDisplay() {
+    if (displayAccess === undefined) {
+      return;
+    }
+    setDisplayAccessState("revoking");
+    setDisplayAccessError(undefined);
+    try {
+      const revoked = await revokeDisplayToken(session, {
+        displayTokenId: displayAccess.displayTokenId,
+        expectedPosition: position,
+        meetingId: meeting.meetingId,
+      });
+      advancePosition(revoked.position);
+      setDisplayAccess(undefined);
+      setDisplayAccessState("idle");
+    } catch (cause) {
+      setDisplayAccessError(messageFor(cause));
+      setDisplayAccessState("idle");
+    }
+  }
+
+  const displayUrl =
+    displayAccess === undefined
+      ? undefined
+      : `${window.location.origin}/?${new URLSearchParams({
+          displayMeetingId: meeting.meetingId,
+          displayToken: displayAccess.displayToken,
+        }).toString()}`;
 
   const stageLabels = [
     "01 Context",
@@ -2345,6 +2606,38 @@ function WorkspaceShell({
         </div>
         <div className="workspace-actions">
           {meeting.role === "facilitator" ? (
+            displayAccess === undefined ? (
+              <button
+                className="display-access-button"
+                disabled={displayAccessState !== "idle"}
+                onClick={() => void createSharedDisplay()}
+                type="button"
+              >
+                {displayAccessState === "issuing"
+                  ? "Creating display…"
+                  : "Create shared display"}
+              </button>
+            ) : (
+              <div
+                aria-label="Read-only display active"
+                className="display-access-control"
+                role="group"
+              >
+                <span>Read-only display active</span>
+                <a href={displayUrl} rel="noreferrer" target="_blank">
+                  Open display ↗
+                </a>
+                <button
+                  disabled={displayAccessState === "revoking"}
+                  onClick={() => void endSharedDisplay()}
+                  type="button"
+                >
+                  {displayAccessState === "revoking" ? "Ending…" : "End access"}
+                </button>
+              </div>
+            )
+          ) : null}
+          {meeting.role === "facilitator" ? (
             resetState === "confirming" || resetState === "resetting" ? (
               <div className="reset-confirmation" role="group">
                 <span>Only this staged meeting will be cleared.</span>
@@ -2381,6 +2674,11 @@ function WorkspaceShell({
           </button>
         </div>
       </header>
+      {displayAccessError === undefined ? null : (
+        <p className="display-access-error" role="alert">
+          {displayAccessError}
+        </p>
+      )}
 
       <nav className="progress-rail" aria-label="Flagship progress">
         {stageLabels.map((label, index) => {
@@ -2713,6 +3011,10 @@ function WorkspaceShell({
 }
 
 export function App() {
+  const displayParameters = new URLSearchParams(window.location.search);
+  const displayMeetingId = displayParameters.get("displayMeetingId");
+  const displayToken = displayParameters.get("displayToken");
+  const displayMode = displayMeetingId !== null && displayToken !== null;
   const [session, setSession] = useState<StoredSession | undefined>(() =>
     loadStoredSession(),
   );
@@ -2722,7 +3024,7 @@ export function App() {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (session === undefined) {
+    if (session === undefined || displayMode) {
       return;
     }
     const controller = new AbortController();
@@ -2749,7 +3051,7 @@ export function App() {
         }
       });
     return () => controller.abort();
-  }, [session]);
+  }, [displayMode, session]);
 
   async function signOut() {
     if (session !== undefined) {
@@ -2781,6 +3083,14 @@ export function App() {
     }
   }
 
+  if (displayMode) {
+    return (
+      <SharedDisplayScreen
+        displayToken={displayToken}
+        meetingId={displayMeetingId}
+      />
+    );
+  }
   if (session === undefined) {
     return <LoginScreen onAuthenticated={setSession} />;
   }

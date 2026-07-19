@@ -7,6 +7,7 @@ import type { ZodType } from "zod";
 
 import {
   approveDisclosure,
+  authorizeDisplayToken,
   authenticateSession,
   authenticateSessionById,
   commitDecision,
@@ -14,6 +15,7 @@ import {
   dispositionDecisionCandidate,
   evaluateAssumptionInvalidation,
   injectDemoRegulatoryChange,
+  issueDisplayToken,
   joinMeetingByCode,
   listAssignedMeetings,
   listAssumptionInvalidationEvaluations,
@@ -29,6 +31,7 @@ import {
   recommitDecision,
   rejectDecision,
   resetDemoMeeting,
+  revokeDisplayToken,
   resolveMeetingAuthorization,
   reviewInvalidation,
   saveDecisionDraft,
@@ -82,6 +85,8 @@ import {
   HealthResponseSchema,
   InjectDemoRegulatoryChangeRequestSchema,
   InjectDemoRegulatoryChangeResponseSchema,
+  IssueDisplayTokenRequestSchema,
+  IssueDisplayTokenResponseSchema,
   JoinMeetingByCodeRequestSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
@@ -103,6 +108,8 @@ import {
   RealtimeTicketRequestSchema,
   RealtimeTicketResponseSchema,
   RealtimeTicketSchema,
+  RevokeDisplayTokenRequestSchema,
+  RevokeDisplayTokenResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RegulatoryChangeWebhookRequestSchema,
@@ -115,6 +122,7 @@ import {
   ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
   RoleProjectionResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   SaveDecisionDraftRequestSchema,
   SaveDecisionDraftResponseSchema,
   SynthesizeSharedDecisionRequestSchema,
@@ -129,6 +137,7 @@ import type { ServerRuntime } from "./runtime.js";
 import {
   realtimeRoleProjectionFor,
   roleProjectionFor,
+  sharedDisplayProjectionFor,
 } from "./role-projection.js";
 
 interface AppEnvironment {
@@ -785,6 +794,15 @@ function manualDisclosureDependencies(
   };
 }
 
+function displayTokenDependencies(runtime: ServerRuntime) {
+  return {
+    clock: runtime.clock,
+    events: runtime.decisions.events,
+    ids: runtime.ids,
+    tokens: runtime.tokens,
+  };
+}
+
 export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
   const app = new Hono<AppEnvironment>();
 
@@ -1095,6 +1113,173 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       }),
       201,
     );
+  });
+
+  app.post("/api/v1/meetings/:meetingId/display-tokens", async (context) => {
+    const request = await parseJson(context, IssueDisplayTokenRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const visiblePosition = await participantVisiblePosition(
+      runtime,
+      request.value.meetingId,
+      resolved.authorization.participantId,
+    );
+    if (visiblePosition !== request.value.expectedPosition) {
+      return errorResponse(context, "CONFLICT", {
+        actualPosition: visiblePosition,
+        expectedPosition: request.value.expectedPosition,
+      });
+    }
+    const result = await issueDisplayToken(
+      displayTokenDependencies(runtime),
+      resolved.authorization,
+      {
+        correlationId: context.get("correlationId"),
+        expectedPosition: await runtime.decisions.events.position(
+          request.value.meetingId,
+        ),
+        meetingId: request.value.meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? errorResponse(context, "CONFLICT", {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : errorResponse(context, result.code);
+    }
+    return context.json(
+      IssueDisplayTokenResponseSchema.parse({
+        correlationId: result.correlationId,
+        displayToken: result.displayToken,
+        displayTokenId: result.displayTokenId,
+        expiresAt: result.expiresAt,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      201,
+    );
+  });
+
+  app.post(
+    "/api/v1/meetings/:meetingId/display-tokens/revoke",
+    async (context) => {
+      const request = await parseJson(context, RevokeDisplayTokenRequestSchema);
+      if (
+        request.kind === "rejected" ||
+        request.value.meetingId !== context.req.param("meetingId")
+      ) {
+        return errorResponse(context, "VALIDATION_FAILED");
+      }
+      const authenticated = await authenticatedSession(context, runtime);
+      if (authenticated.kind === "rejected") {
+        return errorResponse(context, authenticated.code);
+      }
+      const resolved = await resolveMeetingAuthorization(
+        runtime.meetings,
+        authenticated.session,
+        request.value.meetingId,
+      );
+      if (resolved.kind === "rejected") {
+        return errorResponse(context, resolved.code);
+      }
+      const visiblePosition = await participantVisiblePosition(
+        runtime,
+        request.value.meetingId,
+        resolved.authorization.participantId,
+      );
+      if (visiblePosition !== request.value.expectedPosition) {
+        return errorResponse(context, "CONFLICT", {
+          actualPosition: visiblePosition,
+          expectedPosition: request.value.expectedPosition,
+        });
+      }
+      const result = await revokeDisplayToken(
+        displayTokenDependencies(runtime),
+        resolved.authorization,
+        {
+          correlationId: context.get("correlationId"),
+          displayTokenId: request.value.displayTokenId,
+          expectedPosition: await runtime.decisions.events.position(
+            request.value.meetingId,
+          ),
+          meetingId: request.value.meetingId,
+        },
+      );
+      if (result.kind === "failed") {
+        return result.code === "CONFLICT"
+          ? errorResponse(context, "CONFLICT", {
+              actualPosition: result.actualPosition,
+              expectedPosition: result.expectedPosition,
+            })
+          : errorResponse(context, result.code);
+      }
+      return context.json(
+        RevokeDisplayTokenResponseSchema.parse({
+          correlationId: result.correlationId,
+          displayTokenId: result.displayTokenId,
+          meetingId: request.value.meetingId,
+          position: await participantVisiblePositionAt(
+            runtime,
+            request.value.meetingId,
+            resolved.authorization.participantId,
+            result.position,
+          ),
+          revokedAt: result.revokedAt,
+        }),
+      );
+    },
+  );
+
+  app.get("/api/v1/meetings/:meetingId/display", async (context) => {
+    const query = RoleProjectionQuerySchema.safeParse({
+      meetingId: context.req.param("meetingId"),
+    });
+    const displayToken = context.req.query("token");
+    if (!query.success || displayToken === undefined) {
+      return errorResponse(context, "DISPLAY_TOKEN_EXPIRED");
+    }
+    const authorized = await authorizeDisplayToken(
+      displayTokenDependencies(runtime),
+      {
+        displayToken,
+        meetingId: query.data.meetingId,
+      },
+    );
+    if (authorized.kind === "failed") {
+      return errorResponse(context, authorized.code);
+    }
+    const projection = await sharedDisplayProjectionFor(
+      runtime,
+      query.data.meetingId,
+      authorized.expiresAt,
+      context.get("correlationId"),
+    );
+    return projection === undefined
+      ? errorResponse(context, "DISPLAY_TOKEN_EXPIRED")
+      : context.json(SharedDisplayProjectionResponseSchema.parse(projection));
   });
 
   app.get("/api/v1/meetings/:meetingId/evidence", async (context) => {

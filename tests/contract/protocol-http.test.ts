@@ -16,6 +16,8 @@ import {
   HTTP_API_V1_PREFIX,
   InjectDemoRegulatoryChangeRequestSchema,
   InvalidationEvaluationSchema,
+  IssueDisplayTokenRequestSchema,
+  IssueDisplayTokenResponseSchema,
   JoinMeetingByCodeRequestSchema,
   ListAssignedMeetingsRequestSchema,
   LoginRequestSchema,
@@ -36,11 +38,14 @@ import {
   RecommitDecisionRevisionResponseSchema,
   ResolveDecisionReviewRequestSchema,
   ResolveDecisionReviewResponseSchema,
+  RevokeDisplayTokenRequestSchema,
+  RevokeDisplayTokenResponseSchema,
   ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
   SaveDecisionDraftRequestSchema,
   StartDecisionMonitoringRequestSchema,
   StartDecisionMonitoringResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
   type DecisionJsonExportResponse,
@@ -48,9 +53,14 @@ import {
   type FacilitatorDemoResetResponse,
   type FacilitatorInvalidationReviewRequest,
   type FacilitatorInvalidationReviewResponse,
+  type IssueDisplayTokenRequest,
+  type IssueDisplayTokenResponse,
   type LoginRequest,
   type ResolveDecisionReviewRequest,
   type ResolveDecisionReviewResponse,
+  type RevokeDisplayTokenRequest,
+  type RevokeDisplayTokenResponse,
+  type SharedDisplayProjectionResponse,
 } from "@counterpoint/protocol";
 
 const meetingMutation = {
@@ -1008,6 +1018,159 @@ describe("strict v1 HTTP protocol", () => {
     expect(
       ListAssignedMeetingsRequestSchema.safeParse({ userId: "user-other" })
         .success,
+    ).toBe(false);
+  });
+
+  it("issues and revokes display tokens with strict meeting-scoped DTOs", () => {
+    const issueRequest = {
+      meetingId: "meeting-1",
+      expectedPosition: 4,
+      correlationId: "correlation-1",
+    } as const;
+    const parsedIssueRequest =
+      IssueDisplayTokenRequestSchema.parse(issueRequest);
+    expectTypeOf(parsedIssueRequest).toEqualTypeOf<IssueDisplayTokenRequest>();
+    expect(
+      IssueDisplayTokenRequestSchema.safeParse({
+        ...issueRequest,
+        idempotencyKey: "not-part-of-this-contract",
+      }).success,
+    ).toBe(false);
+
+    const issueResponse = {
+      meetingId: "meeting-1",
+      displayTokenId: "display-token-1",
+      displayToken: "raw-opaque-display-token",
+      expiresAt: "2026-07-19T12:05:00.000Z",
+      position: 5,
+      correlationId: "correlation-1",
+    } as const;
+    const parsedIssueResponse =
+      IssueDisplayTokenResponseSchema.parse(issueResponse);
+    expectTypeOf(
+      parsedIssueResponse,
+    ).toEqualTypeOf<IssueDisplayTokenResponse>();
+    expect(
+      IssueDisplayTokenResponseSchema.safeParse({
+        ...issueResponse,
+        participantId: "participant-1",
+      }).success,
+    ).toBe(false);
+
+    const revokeRequest = {
+      meetingId: "meeting-1",
+      displayTokenId: "display-token-1",
+      expectedPosition: 5,
+      correlationId: "correlation-2",
+    } as const;
+    const parsedRevokeRequest =
+      RevokeDisplayTokenRequestSchema.parse(revokeRequest);
+    expectTypeOf(
+      parsedRevokeRequest,
+    ).toEqualTypeOf<RevokeDisplayTokenRequest>();
+    expect(
+      RevokeDisplayTokenRequestSchema.safeParse({
+        ...revokeRequest,
+        actor: { kind: "participant", participantId: "participant-1" },
+      }).success,
+    ).toBe(false);
+
+    const revokeResponse = {
+      meetingId: "meeting-1",
+      displayTokenId: "display-token-1",
+      revokedAt: "2026-07-19T12:04:00.000Z",
+      position: 6,
+      correlationId: "correlation-2",
+    } as const;
+    const parsedRevokeResponse =
+      RevokeDisplayTokenResponseSchema.parse(revokeResponse);
+    expectTypeOf(
+      parsedRevokeResponse,
+    ).toEqualTypeOf<RevokeDisplayTokenResponse>();
+    expect(
+      RevokeDisplayTokenResponseSchema.safeParse({
+        ...revokeResponse,
+        privateWorkspace: {},
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exposes only the strict read-only shared display projection", () => {
+    const response = {
+      meeting: {
+        meetingId: "meeting-1",
+        purpose: "Synthetic rollout decision",
+        phase: "deciding",
+      },
+      shared: {
+        position: 5,
+        evidence: [
+          {
+            evidenceId: "evidence-1",
+            exactSnippet: "Synthetic approved evidence.",
+            sourceArtifactId: "source-1",
+            sourceRange: { start: 0, end: 28 },
+            createdAt: "2026-07-19T12:00:00.000Z",
+          },
+        ],
+        premises: [
+          {
+            premiseId: "premise-1",
+            statement: "The listed controls are complete.",
+            confirmationStatus: "confirmed",
+          },
+        ],
+        dissent: [
+          {
+            dissentId: "dissent-1",
+            reason: "The rollout remains reversible.",
+            retained: true,
+          },
+        ],
+        actions: [
+          {
+            actionId: "action-1",
+            ownerParticipantId: "participant-1",
+            scope: ["Complete the listed controls."],
+            status: "active",
+          },
+        ],
+        decisions: [monitoringDecision],
+      },
+      expiresAt: "2026-07-19T12:05:00.000Z",
+      correlationId: "correlation-1",
+    } as const;
+
+    const parsed = SharedDisplayProjectionResponseSchema.parse(response);
+    expectTypeOf(parsed).toEqualTypeOf<SharedDisplayProjectionResponse>();
+    expect(
+      SharedDisplayProjectionResponseSchema.safeParse({
+        ...response,
+        participant: {
+          participantId: "participant-1",
+          userId: "user-1",
+          role: "participant",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      SharedDisplayProjectionResponseSchema.safeParse({
+        ...response,
+        privateWorkspace: {
+          sources: [],
+          disclosureCandidates: [],
+          inferenceSuggestions: [],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      SharedDisplayProjectionResponseSchema.safeParse({
+        ...response,
+        shared: {
+          ...response.shared,
+          participants: [],
+        },
+      }).success,
     ).toBe(false);
   });
 });

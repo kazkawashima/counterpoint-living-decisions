@@ -9,8 +9,10 @@ import {
 import {
   RealtimeRoleProjectionSchema,
   RoleProjectionResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   type RealtimeRoleProjection,
   type RoleProjectionResponse,
+  type SharedDisplayProjectionResponse,
 } from "@counterpoint/protocol";
 
 import type { ServerRuntime } from "./runtime.js";
@@ -376,6 +378,75 @@ export async function realtimeRoleProjectionFor(
       disclosureCandidates: projection.privateWorkspace.disclosureCandidates,
       inferenceSuggestions: projection.privateWorkspace.inferenceSuggestions,
       sources,
+    },
+  });
+}
+
+export async function sharedDisplayProjectionFor(
+  runtime: ServerRuntime,
+  meetingScope: string,
+  expiresAt: string,
+  correlationId: string,
+): Promise<SharedDisplayProjectionResponse | undefined> {
+  const meeting = await runtime.meetings.findById(meetingScope);
+  if (!meeting?.active) {
+    return undefined;
+  }
+  const records = await runtime.decisions.events.load(meetingScope);
+  const events = records.map(({ event, position }) => ({
+    ...event,
+    position: meetingPosition(position),
+  }));
+  const projection = replayMeeting(domainMeetingId(meetingScope), events);
+  return SharedDisplayProjectionResponseSchema.parse({
+    correlationId,
+    expiresAt,
+    meeting: {
+      meetingId: meeting.meetingId,
+      phase: projection.shared.meeting?.phase ?? "preparing",
+      purpose: meeting.purpose,
+    },
+    shared: {
+      actions: projection.shared.actions.map(
+        ({ id, ownerParticipantId, scope, status }) => ({
+          actionId: id,
+          ownerParticipantId,
+          scope,
+          status,
+        }),
+      ),
+      decisions: projection.shared.decisions.map((decision) => {
+        const revision = projection.shared.decisionRevisions.find(
+          ({ id }) => id === decision.activeRevisionId,
+        );
+        return decisionView(
+          decision,
+          revision?.createdAt ?? decision.createdAt,
+        );
+      }),
+      dissent: projection.shared.dissent.map(({ id, reason, retained }) => ({
+        dissentId: id,
+        reason,
+        retained,
+      })),
+      evidence: projection.shared.evidence.map(
+        ({ createdAt, exactSnippet, id, sourceArtifactId, sourceRange }) => ({
+          createdAt,
+          evidenceId: id,
+          exactSnippet,
+          sourceArtifactId,
+          sourceRange,
+        }),
+      ),
+      position: events.filter(({ visibility }) => visibility === "shared")
+        .length,
+      premises: projection.shared.premises.map(
+        ({ confirmationStatus, id, statement }) => ({
+          confirmationStatus,
+          premiseId: id,
+          statement,
+        }),
+      ),
     },
   });
 }

@@ -7,7 +7,8 @@ Updated: 2026-07-19
 **The complete local guided flagship is implemented from private evidence
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
-The remaining L3 HTTP surface and hosted judge mode are next.**
+The revocable read-only shared display is also complete; A6 and hosted judge
+mode are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -206,11 +207,27 @@ The canonical implementation-facing artifacts are:
 - Real HTTP/WebSocket integration proof covers the `101` upgrade on a
   `0.0.0.0` server, owner resume, cross-owner withholding followed by shared
   publication, single-use tickets, and logout revocation. The full suite is
-  242 tests.
+  250 tests.
+- The L3 versioned local flagship HTTP surface is complete. Capabilities that
+  belong to URL/file ingestion, BYOK, voice, and hosted runtime plans remain
+  explicitly in their later work packages rather than widening L3.
+- L4 now includes a projector-style read-only shared display. A facilitator
+  issues an eight-hour meeting-scoped credential whose raw value is returned
+  only once; only its digest is recorded in the shared event stream.
+- Issuing a new display credential rotates every active predecessor, explicit
+  revocation and demo reset fail closed, and the display clears its prior
+  projection on the next three-second authorization refresh.
+- The display DTO excludes participant lists, private workspaces, source
+  titles/bodies, and private-event timing. It renders only shared Evidence,
+  premises, dissent, Actions, Decisions, meeting phase, and a shared-event
+  cursor.
+- Browser proof covers empty, approved-Evidence, mobile reduced-motion, and
+  revoked states with four screenshots and a dedicated Evidence-to-revocation
+  clip. Server integration proves facilitator-only issue/revoke, digest-only
+  persistence, rotation, and private-text exclusion.
 
 ## In progress
 
-- Complete the remaining L3 versioned HTTP capability surface.
 - Continue the A6 Realtime client-secret path without exposing the standard
   provider key.
 
@@ -220,11 +237,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue L3 in
-[`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md): close the
-remaining versioned HTTP capability gaps, then connect the completed
-application realtime hub to A6 without changing the completed text flagship
-semantics.
+Continue A6 in
+[`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md):
+add the transient BYOK/judge key-source boundary and channel-scoped client
+secret issuance, then connect it to the completed application realtime hub
+without changing the completed text flagship semantics.
 
 ## Open gates
 

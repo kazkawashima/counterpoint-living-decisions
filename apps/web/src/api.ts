@@ -8,6 +8,7 @@ import {
   ErrorEnvelopeSchema,
   FacilitatorDemoResetResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
+  IssueDisplayTokenResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -22,9 +23,11 @@ import {
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
   ResolveDecisionReviewResponseSchema,
+  RevokeDisplayTokenResponseSchema,
   ReviewInvalidationResponseSchema,
   SaveDecisionDraftResponseSchema,
   StartDecisionMonitoringResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
   type AssignedMeeting,
   type ApproveDisclosureResponse,
@@ -40,6 +43,7 @@ import {
   type FacilitatorDemoResetResponse,
   type LoginResponse,
   type InjectDemoRegulatoryChangeResponse,
+  type IssueDisplayTokenResponse,
   type ListSharedDecisionsResponse,
   type ListSharedExternalEventsResponse,
   type ListSharedEvidenceResponse,
@@ -53,9 +57,11 @@ import {
   type ReviewInvalidationRequest,
   type ReviewInvalidationResponse,
   type ResolveDecisionReviewResponse,
+  type RevokeDisplayTokenResponse,
   type SaveDecisionDraftRequest,
   type SaveDecisionDraftResponse,
   type StartDecisionMonitoringResponse,
+  type SharedDisplayProjectionResponse,
   type SynthesizeSharedDecisionRequest,
   type SynthesizeSharedDecisionResponse,
   type TextRange,
@@ -71,6 +77,7 @@ export type {
   DecisionJsonExportResponse,
   FacilitatorDemoResetResponse,
   InjectDemoRegulatoryChangeResponse,
+  IssueDisplayTokenResponse,
   ListInvalidationEvaluationsResponse,
   DispositionSharedDecisionCandidateRequest,
   DispositionSharedDecisionCandidateResponse,
@@ -79,9 +86,11 @@ export type {
   ReviewInvalidationRequest,
   ReviewInvalidationResponse,
   ResolveDecisionReviewResponse,
+  RevokeDisplayTokenResponse,
   SaveDecisionDraftRequest,
   SaveDecisionDraftResponse,
   StartDecisionMonitoringResponse,
+  SharedDisplayProjectionResponse,
   SynthesizeSharedDecisionRequest,
   SynthesizeSharedDecisionResponse,
 };
@@ -683,6 +692,55 @@ export async function resetDemoMeeting(
     session,
   );
   return FacilitatorDemoResetResponseSchema.parse(body);
+}
+
+export async function issueDisplayToken(
+  session: StoredSession,
+  input: {
+    readonly expectedPosition: number;
+    readonly meetingId: string;
+  },
+): Promise<IssueDisplayTokenResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/display-tokens`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return IssueDisplayTokenResponseSchema.parse(body);
+}
+
+export async function revokeDisplayToken(
+  session: StoredSession,
+  input: {
+    readonly displayTokenId: string;
+    readonly expectedPosition: number;
+    readonly meetingId: string;
+  },
+): Promise<RevokeDisplayTokenResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(input.meetingId)}/display-tokens/revoke`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return RevokeDisplayTokenResponseSchema.parse(body);
+}
+
+export async function getSharedDisplayProjection(
+  meetingId: string,
+  displayToken: string,
+  signal?: AbortSignal,
+): Promise<SharedDisplayProjectionResponse> {
+  const body = await request(
+    `/api/v1/meetings/${encodeURIComponent(meetingId)}/display?token=${encodeURIComponent(displayToken)}`,
+    signal === undefined ? {} : { signal },
+  );
+  return SharedDisplayProjectionResponseSchema.parse(body);
 }
 
 export async function getDecisionHistory(

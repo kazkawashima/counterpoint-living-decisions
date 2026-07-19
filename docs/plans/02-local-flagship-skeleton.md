@@ -35,7 +35,7 @@ ports.
 
 ### L3 — Node API and realtime application hub
 
-- [ ] Implement versioned HTTP capability surface.
+- [x] Implement versioned HTTP capability surface.
 - [x] Implement safe error mapping and correlation IDs.
 - [x] Implement scoped realtime projection subscriptions.
 - [x] Handle resume from last-seen meeting position.
@@ -45,9 +45,9 @@ ports.
 
 - [x] Build login and meeting list.
 - [x] Build participant-private workspace shell.
-- [ ] Build facilitator dashboard shell.
-- [ ] Build read-only shared display with revocable token.
-- [ ] Build Decision history/audit shell.
+- [x] Build facilitator dashboard shell.
+- [x] Build read-only shared display with revocable token.
+- [x] Build Decision history/audit shell.
 - [x] Use stable visual grammar for scope, origin, and confirmation.
 - [x] Add responsive navigation and keyboard support for implemented surfaces.
 

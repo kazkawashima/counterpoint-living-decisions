@@ -8,6 +8,7 @@ import {
   DecisionIdSchema,
   DecisionRevisionIdSchema,
   DisclosureCandidateIdSchema,
+  DisplayTokenIdSchema,
   DissentIdSchema,
   EvidenceIdSchema,
   EventIdSchema,
@@ -440,6 +441,68 @@ export type RoleProjectionResponse = z.infer<
 >;
 export type GetRoleProjectionRequest = RoleProjectionQuery;
 export type GetRoleProjectionResponse = RoleProjectionResponse;
+
+const DisplayTokenSchema = z.string().min(1).max(4096);
+
+export const IssueDisplayTokenRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  expectedPosition: MeetingPositionSchema,
+  ...OptionalCorrelationShape,
+});
+export const IssueDisplayTokenResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  displayTokenId: DisplayTokenIdSchema,
+  displayToken: DisplayTokenSchema,
+  expiresAt: UtcIsoTimestampSchema,
+  position: MeetingPositionSchema,
+  ...RequiredCorrelationShape,
+});
+export const RevokeDisplayTokenRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  displayTokenId: DisplayTokenIdSchema,
+  expectedPosition: MeetingPositionSchema,
+  ...OptionalCorrelationShape,
+});
+export const RevokeDisplayTokenResponseSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  displayTokenId: DisplayTokenIdSchema,
+  revokedAt: UtcIsoTimestampSchema,
+  position: MeetingPositionSchema,
+  ...RequiredCorrelationShape,
+});
+export const SharedDisplayProjectionResponseSchema = z.strictObject({
+  meeting: z.strictObject({
+    meetingId: MeetingIdSchema,
+    purpose: NonEmptyTextSchema,
+    phase: MeetingPhaseSchema,
+  }),
+  shared: z.strictObject({
+    position: MeetingPositionSchema,
+    evidence: z.array(SharedEvidenceSchema),
+    premises: z.array(SharedPremiseSchema),
+    dissent: z.array(SharedDissentSchema),
+    actions: z.array(SharedActionSchema),
+    decisions: z.array(DecisionSchema),
+  }),
+  expiresAt: UtcIsoTimestampSchema,
+  ...RequiredCorrelationShape,
+});
+
+export type IssueDisplayTokenRequest = z.infer<
+  typeof IssueDisplayTokenRequestSchema
+>;
+export type IssueDisplayTokenResponse = z.infer<
+  typeof IssueDisplayTokenResponseSchema
+>;
+export type RevokeDisplayTokenRequest = z.infer<
+  typeof RevokeDisplayTokenRequestSchema
+>;
+export type RevokeDisplayTokenResponse = z.infer<
+  typeof RevokeDisplayTokenResponseSchema
+>;
+export type SharedDisplayProjectionResponse = z.infer<
+  typeof SharedDisplayProjectionResponseSchema
+>;
 
 export const RegisterPrivateTextSourceFixtureRequestSchema = z.strictObject({
   ...MeetingMutationShape,

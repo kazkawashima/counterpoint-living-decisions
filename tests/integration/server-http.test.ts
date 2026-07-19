@@ -20,6 +20,7 @@ import {
   DispositionSharedDecisionCandidateResponseSchema,
   ErrorEnvelopeSchema,
   FacilitatorDemoResetResponseSchema,
+  IssueDisplayTokenResponseSchema,
   JoinMeetingByCodeResponseSchema,
   ListAssignedMeetingsResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -33,9 +34,11 @@ import {
   ReadinessResponseSchema,
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  RevokeDisplayTokenResponseSchema,
   ReviewInvalidationResponseSchema,
   ResolveDecisionReviewResponseSchema,
   SaveDecisionDraftResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
 } from "@counterpoint/protocol";
@@ -218,6 +221,133 @@ describe("Node HTTP flagship shell", () => {
     expect(ErrorEnvelopeSchema.parse(await afterLogout.json())).toMatchObject({
       code: "AUTHENTICATION_REQUIRED",
     });
+  });
+
+  it("issues a digest-only shared display token, rotates it, and revokes access", async () => {
+    const { app, runtime } = await fixture();
+    const facilitator = await login(app, "product", "counterpoint-product");
+    const participant = await login(app, "safety", "counterpoint-safety");
+    const meetingId = "meeting-global-ai-rollout";
+    const facilitatorHeaders = {
+      authorization: `Bearer ${facilitator.bearerToken}`,
+      "content-type": "application/json",
+    };
+    const participantHeaders = {
+      authorization: `Bearer ${participant.bearerToken}`,
+      "content-type": "application/json",
+    };
+
+    const forbidden = await app.request(
+      `/api/v1/meetings/${meetingId}/display-tokens`,
+      {
+        body: JSON.stringify({ expectedPosition: 0, meetingId }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(forbidden.status).toBe(403);
+
+    const issuedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/display-tokens`,
+      {
+        body: JSON.stringify({ expectedPosition: 0, meetingId }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(issuedResponse.status).toBe(201);
+    const issued = IssueDisplayTokenResponseSchema.parse(
+      await issuedResponse.json(),
+    );
+    expect(issued.position).toBe(1);
+
+    const privateText =
+      "Synthetic facilitator-only note that must never reach the display.";
+    const privateSource = await app.request(
+      "/api/v1/disclosures/sources/text",
+      {
+        body: JSON.stringify({
+          expectedPosition: issued.position,
+          idempotencyKey: "display-private-source",
+          meetingId,
+          text: privateText,
+          title: "Display privacy control",
+        }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(privateSource.status).toBe(201);
+
+    const displayed = await app.request(
+      `/api/v1/meetings/${meetingId}/display?token=${encodeURIComponent(issued.displayToken)}`,
+    );
+    expect(displayed.status).toBe(200);
+    const projection = SharedDisplayProjectionResponseSchema.parse(
+      await displayed.json(),
+    );
+    expect(projection).toMatchObject({
+      meeting: { meetingId, purpose: "Global AI Product Rollout" },
+      shared: { position: 1 },
+    });
+    const serializedProjection = JSON.stringify(projection);
+    expect(serializedProjection).not.toContain(privateText);
+    expect(serializedProjection).not.toContain("privateWorkspace");
+    expect(serializedProjection).not.toContain("participants");
+
+    const rotatedResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/display-tokens`,
+      {
+        body: JSON.stringify({ expectedPosition: 2, meetingId }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(rotatedResponse.status).toBe(201);
+    const rotated = IssueDisplayTokenResponseSchema.parse(
+      await rotatedResponse.json(),
+    );
+    expect(rotated.position).toBe(4);
+    const expiredOld = await app.request(
+      `/api/v1/meetings/${meetingId}/display?token=${encodeURIComponent(issued.displayToken)}`,
+    );
+    expect(expiredOld.status).toBe(401);
+    expect(ErrorEnvelopeSchema.parse(await expiredOld.json())).toMatchObject({
+      code: "DISPLAY_TOKEN_EXPIRED",
+    });
+
+    const revokeResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/display-tokens/revoke`,
+      {
+        body: JSON.stringify({
+          displayTokenId: rotated.displayTokenId,
+          expectedPosition: rotated.position,
+          meetingId,
+        }),
+        headers: facilitatorHeaders,
+        method: "POST",
+      },
+    );
+    expect(revokeResponse.status).toBe(200);
+    expect(
+      RevokeDisplayTokenResponseSchema.parse(await revokeResponse.json()),
+    ).toMatchObject({
+      displayTokenId: rotated.displayTokenId,
+      meetingId,
+      position: 5,
+    });
+    const expiredRevoked = await app.request(
+      `/api/v1/meetings/${meetingId}/display?token=${encodeURIComponent(rotated.displayToken)}`,
+    );
+    expect(expiredRevoked.status).toBe(401);
+
+    const serializedEvents = JSON.stringify(
+      await runtime.decisions.events.load(meetingId),
+    );
+    expect(serializedEvents).not.toContain(issued.displayToken);
+    expect(serializedEvents).not.toContain(rotated.displayToken);
+    expect(serializedEvents).toContain(issued.displayTokenId);
+    expect(serializedEvents).toContain(rotated.displayTokenId);
   });
 
   it("lets only the facilitator reset one staged meeting deterministically", async () => {

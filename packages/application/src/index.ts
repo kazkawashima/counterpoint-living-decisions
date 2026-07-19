@@ -109,6 +109,19 @@ export {
   type ResetDemoMeetingResult,
 } from "./demo-reset.js";
 export {
+  DISPLAY_TOKEN_TTL_MS,
+  authorizeDisplayToken,
+  issueDisplayToken,
+  revokeDisplayToken,
+  type DisplayTokenAuthorizationResult,
+  type DisplayTokenDependencies,
+  type DisplayTokenFailure,
+  type IssueDisplayTokenInput,
+  type IssueDisplayTokenResult,
+  type RevokeDisplayTokenInput,
+  type RevokeDisplayTokenResult,
+} from "./display-tokens.js";
+export {
   evaluateAssumptionInvalidation,
   listAssumptionInvalidationEvaluations,
   type AssumptionInvalidationCandidate,
