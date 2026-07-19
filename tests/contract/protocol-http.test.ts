@@ -3,8 +3,10 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   ApproveDisclosureRequestSchema,
   CommitDecisionRequestSchema,
+  ConfirmInvalidationReviewResponseSchema,
   CreateMeetingRequestSchema,
   DispositionConfirmedInferenceRequestSchema,
+  FacilitatorInvalidationReviewRequestSchema,
   HealthRequestSchema,
   HealthResponseSchema,
   HTTP_API_V1_PREFIX,
@@ -24,10 +26,14 @@ import {
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RejectDisclosureRequestSchema,
+  RejectInvalidationReviewResponseSchema,
+  ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
   SaveDecisionDraftRequestSchema,
   StartDecisionMonitoringRequestSchema,
   StartDecisionMonitoringResponseSchema,
+  type FacilitatorInvalidationReviewRequest,
+  type FacilitatorInvalidationReviewResponse,
   type LoginRequest,
 } from "@counterpoint/protocol";
 
@@ -176,6 +182,16 @@ const mutationExamples = [
   {
     schema: StartDecisionMonitoringRequestSchema,
     value: { ...meetingMutation, decisionId: "decision-1" },
+  },
+  {
+    schema: FacilitatorInvalidationReviewRequestSchema,
+    value: {
+      ...meetingMutation,
+      decisionId: "decision-1",
+      suggestionId: "suggestion-1",
+      disposition: "confirm_invalidation",
+      reason: "The synthetic regulatory evidence is material.",
+    },
   },
 ] as const;
 
@@ -381,6 +397,149 @@ describe("strict v1 HTTP protocol", () => {
       InvalidationEvaluationSchema.safeParse({
         ...response.evaluation,
         reviewConfirmed: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a bounded reason and strict mutation identity for invalidation review", () => {
+    const request = {
+      ...meetingMutation,
+      decisionId: "decision-1",
+      suggestionId: "suggestion-1",
+      disposition: "confirm_invalidation",
+      reason: "The synthetic regulatory evidence is material.",
+    } as const;
+
+    const parsed = FacilitatorInvalidationReviewRequestSchema.parse(request);
+    expectTypeOf(parsed).toEqualTypeOf<FacilitatorInvalidationReviewRequest>();
+    expect(
+      FacilitatorInvalidationReviewRequestSchema.safeParse({
+        ...request,
+        disposition: "reject_suggestion",
+      }).success,
+    ).toBe(true);
+    expect(
+      FacilitatorInvalidationReviewRequestSchema.safeParse({
+        ...request,
+        reason: "   ",
+      }).success,
+    ).toBe(false);
+    expect(
+      FacilitatorInvalidationReviewRequestSchema.safeParse({
+        ...request,
+        reason: "x".repeat(4097),
+      }).success,
+    ).toBe(false);
+    expect(
+      FacilitatorInvalidationReviewRequestSchema.safeParse({
+        ...request,
+        expectedPosition: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      FacilitatorInvalidationReviewRequestSchema.safeParse({
+        ...request,
+        idempotencyKey: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      FacilitatorInvalidationReviewRequestSchema.safeParse({
+        ...request,
+        reviewConfirmed: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("discriminates confirmed invalidation review from rejected suggestions", () => {
+    const reviewReceipt = {
+      meetingId: "meeting-1",
+      position: 17,
+      correlationId: "correlation-1",
+      suggestionId: "suggestion-1",
+      reviewReason: "The synthetic regulatory evidence is material.",
+      reviewEventId: "event-facilitator-reviewed-1",
+      reviewAuditId: "audit-event-facilitator-reviewed-1",
+    } as const;
+    const reviewRequiredDecision = {
+      ...monitoringDecision,
+      status: "REVIEW_REQUIRED",
+      snapshot: {
+        ...monitoringDecision.snapshot,
+        status: "REVIEW_REQUIRED",
+      },
+      updatedAt: "2026-07-19T12:02:00.000Z",
+    } as const;
+    const reconsiderationTask = {
+      reconsiderationTaskId: "task-review-1",
+      decisionId: "decision-1",
+      triggerExternalEventId: "external-event-1",
+      ownerParticipantId: "participant-facilitator",
+      affectedPremiseIds: ["premise-1"],
+      affectedActionIds: ["action-1"],
+      state: "open",
+      createdAt: "2026-07-19T12:02:00.000Z",
+    } as const;
+    const confirmed = {
+      ...reviewReceipt,
+      disposition: "confirm_invalidation",
+      decision: reviewRequiredDecision,
+      heldActionIds: ["action-1"],
+      reconsiderationTask,
+    } as const;
+    const rejected = {
+      ...reviewReceipt,
+      disposition: "reject_suggestion",
+      decision: monitoringDecision,
+    } as const;
+
+    const parsedConfirmed = ReviewInvalidationResponseSchema.parse(confirmed);
+    const parsedRejected = ReviewInvalidationResponseSchema.parse(rejected);
+    expectTypeOf(
+      parsedConfirmed,
+    ).toMatchTypeOf<FacilitatorInvalidationReviewResponse>();
+    expectTypeOf(
+      parsedRejected,
+    ).toMatchTypeOf<FacilitatorInvalidationReviewResponse>();
+    expect(
+      ConfirmInvalidationReviewResponseSchema.safeParse(confirmed).success,
+    ).toBe(true);
+    expect(
+      RejectInvalidationReviewResponseSchema.safeParse(rejected).success,
+    ).toBe(true);
+    expect(
+      ReviewInvalidationResponseSchema.safeParse({
+        ...confirmed,
+        heldActionIds: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      ReviewInvalidationResponseSchema.safeParse({
+        ...confirmed,
+        reconsiderationTask: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      ReviewInvalidationResponseSchema.safeParse({
+        ...rejected,
+        heldActionIds: ["action-1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      ReviewInvalidationResponseSchema.safeParse({
+        ...rejected,
+        reconsiderationTask,
+      }).success,
+    ).toBe(false);
+    expect(
+      ReviewInvalidationResponseSchema.safeParse({
+        ...confirmed,
+        decision: monitoringDecision,
+      }).success,
+    ).toBe(false);
+    expect(
+      ReviewInvalidationResponseSchema.safeParse({
+        ...rejected,
+        decision: reviewRequiredDecision,
       }).success,
     ).toBe(false);
   });

@@ -31,6 +31,7 @@ import {
   ReadinessResponseSchema,
   RegulatoryChangeWebhookResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  ReviewInvalidationResponseSchema,
   SaveDecisionDraftResponseSchema,
   StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
@@ -1265,17 +1266,14 @@ describe("Node HTTP flagship shell", () => {
       },
     );
     expect(listedExternalEventsResponse.status).toBe(200);
-    expect(
-      ListSharedExternalEventsResponseSchema.parse(
-        await listedExternalEventsResponse.json(),
-      ).events,
-    ).toHaveLength(2);
+    const listedExternalEvents = ListSharedExternalEventsResponseSchema.parse(
+      await listedExternalEventsResponse.json(),
+    );
+    expect(listedExternalEvents.events).toHaveLength(2);
     const invalidationResponse = await app.request(
       `/api/v1/meetings/${meetingId}/invalidation-evaluations`,
       {
-        headers: {
-          authorization: `Bearer ${participant.bearerToken}`,
-        },
+        headers,
       },
     );
     expect(invalidationResponse.status).toBe(200);
@@ -1312,6 +1310,101 @@ describe("Node HTTP flagship shell", () => {
         ({ event }) => event.eventType === "DecisionReviewRequired",
       ),
     ).toBe(false);
+
+    const participantReview = await app.request(
+      "/api/v1/decisions/invalidation-review",
+      {
+        body: JSON.stringify({
+          decisionId: draft.decision.decisionId,
+          disposition: "confirm_invalidation",
+          expectedPosition: listedExternalEvents.position,
+          idempotencyKey: "participant-invalidation-review",
+          meetingId,
+          reason: "A participant cannot confirm this review.",
+          suggestionId: invalidations.evaluations[0]?.suggestionId,
+        }),
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    expect(participantReview.status).toBe(403);
+
+    const reviewResponse = await app.request(
+      "/api/v1/decisions/invalidation-review",
+      {
+        body: JSON.stringify({
+          decisionId: draft.decision.decisionId,
+          disposition: "confirm_invalidation",
+          expectedPosition: invalidations.position,
+          idempotencyKey: "facilitator-invalidation-review",
+          meetingId,
+          reason:
+            "The staged regulatory evidence materially affects the launch premise.",
+          suggestionId: invalidations.evaluations[0]?.suggestionId,
+        }),
+        headers,
+        method: "POST",
+      },
+    );
+    expect(reviewResponse.status).toBe(200);
+    const review = ReviewInvalidationResponseSchema.parse(
+      await reviewResponse.json(),
+    );
+    expect(review).toMatchObject({
+      disposition: "confirm_invalidation",
+      decision: {
+        status: "REVIEW_REQUIRED",
+        snapshot: { status: "REVIEW_REQUIRED" },
+      },
+      heldActionIds: [disposition.actions[0]?.actionId],
+      reconsiderationTask: {
+        affectedActionIds: [disposition.actions[0]?.actionId],
+        affectedPremiseIds: [disposition.premises[0]?.premiseId],
+        state: "open",
+      },
+      reviewReason:
+        "The staged regulatory evidence materially affects the launch premise.",
+    });
+
+    const reviewedInvalidationsResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/invalidation-evaluations`,
+      {
+        headers: {
+          authorization: `Bearer ${participant.bearerToken}`,
+        },
+      },
+    );
+    const reviewedInvalidations =
+      ListInvalidationEvaluationsResponseSchema.parse(
+        await reviewedInvalidationsResponse.json(),
+      );
+    expect(reviewedInvalidations.evaluations[0]?.review).toMatchObject({
+      disposition: "confirm_invalidation",
+      heldActionIds: [disposition.actions[0]?.actionId],
+      reason:
+        "The staged regulatory evidence materially affects the launch premise.",
+      reconsiderationTask: { state: "open" },
+    });
+
+    const reviewedAuditResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/decisions/audit?decisionId=${draft.decision.decisionId}`,
+      { headers },
+    );
+    expect(reviewedAuditResponse.status).toBe(200);
+    const reviewedAudit = DecisionAuditResponseSchema.parse(
+      await reviewedAuditResponse.json(),
+    );
+    expect(reviewedAudit.entries.map(({ eventType }) => eventType)).toEqual(
+      expect.arrayContaining([
+        "FacilitatorReviewed",
+        "DecisionReviewRequired",
+        "ActionHeld",
+        "ReconsiderationTaskCreated",
+      ]),
+    );
 
     const staleReady = await app.request("/api/v1/decisions/ready", {
       body: JSON.stringify({

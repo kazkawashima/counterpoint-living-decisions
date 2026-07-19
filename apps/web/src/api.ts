@@ -19,6 +19,7 @@ import {
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
+  ReviewInvalidationResponseSchema,
   SaveDecisionDraftResponseSchema,
   StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
@@ -44,6 +45,8 @@ import {
   type ProposeDisclosureResponse,
   type RegisterPrivateTextSourceFixtureResponse,
   type RejectDisclosureResponse,
+  type ReviewInvalidationRequest,
+  type ReviewInvalidationResponse,
   type SaveDecisionDraftRequest,
   type SaveDecisionDraftResponse,
   type StartDecisionMonitoringResponse,
@@ -65,6 +68,8 @@ export type {
   DispositionSharedDecisionCandidateResponse,
   MarkDecisionReadyRequest,
   MarkDecisionReadyResponse,
+  ReviewInvalidationRequest,
+  ReviewInvalidationResponse,
   SaveDecisionDraftRequest,
   SaveDecisionDraftResponse,
   StartDecisionMonitoringResponse,
@@ -77,6 +82,13 @@ interface MeetingMutationInput {
   readonly expectedPosition: number;
   readonly idempotencyKey: string;
   readonly meetingId: string;
+}
+
+export interface ReviewInvalidationClientInput extends MeetingMutationInput {
+  readonly decisionId: string;
+  readonly disposition: "confirm_invalidation" | "reject_suggestion";
+  readonly reason: string;
+  readonly suggestionId: string;
 }
 
 export interface ManualSharedDecisionDraftClientInput {
@@ -577,6 +589,21 @@ export async function startDecisionMonitoring(
     session,
   );
   return StartDecisionMonitoringResponseSchema.parse(body);
+}
+
+export async function reviewInvalidation(
+  session: StoredSession,
+  input: ReviewInvalidationClientInput,
+): Promise<ReviewInvalidationResponse> {
+  const body = await request(
+    "/api/v1/decisions/invalidation-review",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return ReviewInvalidationResponseSchema.parse(body);
 }
 
 export async function injectDemoRegulatoryChange(

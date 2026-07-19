@@ -19,6 +19,7 @@ import {
   sourceReferenceId,
   suggestionId,
   toSharedMeetingProjection,
+  transitionDecision,
   type DomainEvent,
   type DomainEventPayloads,
   type SharedDomainEvent,
@@ -146,6 +147,38 @@ function privateSynthesisCandidates(): readonly DomainEvent[] {
 }
 
 describe("meeting projection replay", () => {
+  it("replays a facilitator rejection back to MONITORING from the review event", () => {
+    const reason = nonEmptyText("The external evidence was superseded");
+    const monitoring = transitionDecision(flagshipDecision("AT_RISK"), {
+      authority: {
+        kind: "facilitator",
+        participantId: ids.facilitator,
+      },
+      rejectionReason: reason,
+      to: "MONITORING",
+    });
+    const projection = replayMeeting(ids.meeting, [
+      sharedEvent("FacilitatorReviewed", 1, {
+        decision: monitoring,
+        decisionId: ids.decision,
+        disposition: "reject_suggestion",
+        facilitatorParticipantId: ids.facilitator,
+        reason,
+        reviewedActionIds: [ids.actionEurope],
+        reviewedEvidenceReferenceIds: [ids.sourceReference],
+        reviewedPremiseIds: [ids.premiseEurope],
+        suggestionId: suggestionId("suggestion-invalidation"),
+      }),
+    ]);
+
+    expect(projection.shared.decisions).toMatchObject([
+      { id: ids.decision, status: "MONITORING" },
+    ]);
+    expect(projection.shared.auditTimeline).toMatchObject([
+      { eventType: "FacilitatorReviewed" },
+    ]);
+  });
+
   it("replays deterministically from the same ordered event stream", () => {
     const events = flagshipEvents();
     const first = replayMeeting(ids.meeting, events);

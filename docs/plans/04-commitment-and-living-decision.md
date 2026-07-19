@@ -50,11 +50,11 @@ history.
 
 ### D5 — Human review
 
-- [ ] Show event, affected premise, evidence, Actions, and model reason.
-- [ ] Require facilitator confirm or reject plus optional/required reason as
+- [x] Show event, affected premise, evidence, Actions, and model reason.
+- [x] Require facilitator confirm or reject plus optional/required reason as
       specified.
-- [ ] On reject, record reason and return to `MONITORING`.
-- [ ] On confirm, append `DecisionReviewRequired`, hold only affected Actions,
+- [x] On reject, record reason and return to `MONITORING`.
+- [x] On confirm, append `DecisionReviewRequired`, hold only affected Actions,
       and create reconsideration task.
 
 ### D6 — Revision workflow

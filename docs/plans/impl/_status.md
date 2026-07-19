@@ -151,10 +151,22 @@ The canonical implementation-facing artifacts are:
   grounded premise/Action/external-source references, 667 total tokens, and no
   retry. Browser proof covers facilitator and participant `AT_RISK`, reload,
   mobile, reduced motion, three screenshots, and the extended reel clip.
+- D5 adds a facilitator-only, reason-required review command over the exact
+  recorded suggestion. Confirmation atomically records `FacilitatorReviewed`,
+  transitions to `REVIEW_REQUIRED`, holds only the affected Action, and opens a
+  reconsideration task. Rejection records its reason and returns to
+  `MONITORING` without a hold or task.
+- The shared invalidation read model now reconstructs review disposition,
+  reason, held Action IDs, and reconsideration task after reload. Assigned
+  participants receive the same read-only state; the mutation endpoint rejects
+  participant authority.
+- Browser proof covers the review workbench, required reason, confirmation,
+  audit lineage, reload, participant view, mobile reduced motion, five new
+  screenshots, and a dedicated review clip.
 
 ## In progress
 
-- Add facilitator confirm/reject review from `AT_RISK`.
+- Add D6 revision outcomes from `REVIEW_REQUIRED`.
 - Complete the versioned capability surface and realtime resume path.
 
 ## Not started
@@ -164,11 +176,10 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue D5 in
+Continue D6 in
 [`04-commitment-and-living-decision.md`](../04-commitment-and-living-decision.md):
-show the affected premise, Evidence, and Action to the facilitator, require an
-explicit confirm or reject reason, and keep `AT_RISK` separate from
-human-confirmed `REVIEW_REQUIRED`.
+allow a human-reviewed Decision to finish in a new committed revision,
+superseded Decision, or explicit rejection while preserving immutable history.
 
 ## Open gates
 

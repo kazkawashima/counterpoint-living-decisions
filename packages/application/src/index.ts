@@ -97,6 +97,19 @@ export {
   type InvalidationEvaluationView,
 } from "./invalidation-evaluations.js";
 export {
+  confirmInvalidationReview,
+  rejectInvalidationReview,
+  reviewInvalidation,
+  type ConfirmInvalidationReviewInput,
+  type ConfirmInvalidationReviewResult,
+  type InvalidationReviewDependencies,
+  type InvalidationReviewFailure,
+  type RejectInvalidationReviewInput,
+  type RejectInvalidationReviewResult,
+  type ReviewInvalidationInput,
+  type ReviewInvalidationResult,
+} from "./invalidation-reviews.js";
+export {
   createMeeting,
   joinMeetingByCode,
   listAssignedMeetings,

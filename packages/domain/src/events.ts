@@ -296,6 +296,7 @@ export interface DomainEventPayloads {
     readonly affectedActionIds: readonly ActionId[];
   };
   readonly FacilitatorReviewed: {
+    readonly decision: Decision;
     readonly decisionId: DecisionId;
     readonly suggestionId: SuggestionId;
     readonly facilitatorParticipantId: ParticipantId;

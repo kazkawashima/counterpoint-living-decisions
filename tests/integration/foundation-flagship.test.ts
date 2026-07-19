@@ -196,6 +196,7 @@ function completeFlagshipEvents(): readonly DomainEvent[] {
       affectedActionIds: [ids.actionEurope],
     }),
     sharedEvent("FacilitatorReviewed", 13, {
+      decision: reviewRequired,
       decisionId: ids.decision,
       suggestionId: invalidationSuggestionId,
       facilitatorParticipantId: ids.facilitator,

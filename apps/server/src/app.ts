@@ -25,6 +25,7 @@ import {
   rejectDisclosure,
   receiveRegulatoryChange,
   resolveMeetingAuthorization,
+  reviewInvalidation,
   saveDecisionDraft,
   startDecisionMonitoring,
   userAuthorizationContext,
@@ -33,6 +34,7 @@ import {
   type DisclosureFailure,
   type DisclosureDependencies,
   type InvalidationEvaluationView,
+  type InvalidationReviewFailure,
 } from "@counterpoint/application";
 import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import {
@@ -92,6 +94,8 @@ import {
   RegulatoryChangeWebhookResponseSchema,
   RejectDisclosureRequestSchema,
   RejectDisclosureResponseSchema,
+  ReviewInvalidationRequestSchema,
+  ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
   SaveDecisionDraftRequestSchema,
   SaveDecisionDraftResponseSchema,
@@ -398,6 +402,22 @@ function decisionFailureResponse(
   }
 }
 
+function invalidationReviewFailureResponse(
+  context: AppContext,
+  failure: InvalidationReviewFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? errorResponse(context, "CONFLICT", {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : failure.code === "FORBIDDEN" ||
+        failure.code === "IDEMPOTENCY_CONFLICT" ||
+        failure.code === "INVALID_STATE_TRANSITION"
+      ? errorResponse(context, failure.code)
+      : errorResponse(context, "VALIDATION_FAILED");
+}
+
 function decisionReadiness(decision: DomainDecision) {
   return {
     actionIds: decision.actionIds.length > 0,
@@ -465,6 +485,7 @@ function externalEventReceiptView(event: DomainExternalEvent) {
 }
 
 function invalidationEvaluationView(evaluation: InvalidationEvaluationView) {
+  const review = evaluation.review;
   return {
     affectedActionIds: evaluation.affectedActionIds,
     affectedPremiseIds: evaluation.affectedPremiseIds,
@@ -479,6 +500,35 @@ function invalidationEvaluationView(evaluation: InvalidationEvaluationView) {
     outputSchemaVersion: evaluation.outputSchemaVersion,
     promptVersion: evaluation.promptVersion,
     reason: evaluation.reason,
+    ...(review === undefined
+      ? {}
+      : {
+          review: {
+            disposition: review.disposition,
+            facilitatorParticipantId: review.facilitatorParticipantId,
+            heldActionIds: review.heldActionIds,
+            reason: review.reason,
+            ...(review.reconsiderationTask === undefined
+              ? {}
+              : {
+                  reconsiderationTask: {
+                    affectedActionIds:
+                      review.reconsiderationTask.affectedActionIds,
+                    affectedPremiseIds:
+                      review.reconsiderationTask.affectedPremiseIds,
+                    createdAt: review.reconsiderationTask.createdAt,
+                    decisionId: review.reconsiderationTask.decisionId,
+                    ownerParticipantId:
+                      review.reconsiderationTask.ownerParticipantId,
+                    reconsiderationTaskId: review.reconsiderationTask.id,
+                    state: review.reconsiderationTask.state,
+                    triggerExternalEventId:
+                      review.reconsiderationTask.triggerExternalEventId,
+                  },
+                }),
+            reviewedAt: review.reviewedAt,
+          },
+        }),
     suggestionId: evaluation.suggestionId,
   };
 }
@@ -1626,6 +1676,85 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     );
   });
 
+  app.post("/api/v1/decisions/invalidation-review", async (context) => {
+    const request = await parseJson(context, ReviewInvalidationRequestSchema);
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const resolved = await resolvedDecisionMutation(
+      context,
+      runtime,
+      request.value,
+      (event) => event.eventType === "FacilitatorReviewed",
+    );
+    if (resolved.kind !== "resolved") {
+      return resolvedDecisionMutationFailure(context, resolved);
+    }
+    const result = await reviewInvalidation(
+      runtime.decisions,
+      resolved.authorization,
+      {
+        correlationId: context.get("correlationId"),
+        decisionId: request.value.decisionId,
+        disposition: request.value.disposition,
+        expectedPosition: resolved.globalPosition,
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+        reason: request.value.reason,
+        suggestionId: request.value.suggestionId,
+      },
+    );
+    if (result.kind === "failed") {
+      return invalidationReviewFailureResponse(context, result);
+    }
+    const common = {
+      correlationId: result.correlationId,
+      decision: decisionView(
+        result.decision,
+        await decisionMutationOccurredAt(
+          runtime,
+          request.value.meetingId,
+          request.value.idempotencyKey,
+        ),
+      ),
+      disposition: result.disposition,
+      meetingId: request.value.meetingId,
+      position: await participantVisiblePositionAt(
+        runtime,
+        request.value.meetingId,
+        resolved.authorization.participantId,
+        result.position,
+      ),
+      reviewAuditId: `audit-${result.reviewEventId}`,
+      reviewEventId: result.reviewEventId,
+      reviewReason: result.reviewReason,
+      suggestionId: result.suggestionId,
+    };
+    return context.json(
+      ReviewInvalidationResponseSchema.parse(
+        result.kind === "suggestion_rejected"
+          ? common
+          : {
+              ...common,
+              heldActionIds: result.heldActionIds,
+              reconsiderationTask: {
+                affectedActionIds: result.reconsiderationTask.affectedActionIds,
+                affectedPremiseIds:
+                  result.reconsiderationTask.affectedPremiseIds,
+                createdAt: result.reconsiderationTask.createdAt,
+                decisionId: result.reconsiderationTask.decisionId,
+                ownerParticipantId:
+                  result.reconsiderationTask.ownerParticipantId,
+                reconsiderationTaskId: result.reconsiderationTask.id,
+                state: result.reconsiderationTask.state,
+                triggerExternalEventId:
+                  result.reconsiderationTask.triggerExternalEventId,
+              },
+            },
+      ),
+    );
+  });
+
   app.post(
     "/api/v1/webhooks/regulatory-changes/:meetingId/:monitorRegistrationId",
     async (context) => {
@@ -1887,12 +2016,16 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     const entries = records.flatMap(({ event, position }) => {
       if (
         ![
+          "ActionHeld",
           "AssumptionInvalidationSuggested",
           "DecisionCommitted",
           "DecisionDrafted",
           "DecisionMarkedAtRisk",
           "DecisionMarkedReady",
+          "DecisionReviewRequired",
+          "FacilitatorReviewed",
           "MonitoringStarted",
+          "ReconsiderationTaskCreated",
         ].includes(event.eventType)
       ) {
         return [];
@@ -1902,6 +2035,12 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         !(
           (event.eventType === "AssumptionInvalidationSuggested" &&
             String(event.payload.decisionId) ===
+              String(query.data.decisionId)) ||
+          (event.eventType === "ActionHeld" &&
+            String(event.payload.decisionId) ===
+              String(query.data.decisionId)) ||
+          (event.eventType === "ReconsiderationTaskCreated" &&
+            String(event.payload.task.decisionId) ===
               String(query.data.decisionId)) ||
           ("decision" in event.payload &&
             String(event.payload.decision.id) === String(query.data.decisionId))

@@ -35,6 +35,7 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  reviewInvalidation,
   saveDecisionDraft,
   storeSession,
   startDecisionMonitoring,
@@ -401,20 +402,26 @@ function SharedDecisionCard({
   const readinessCount = Object.values(decision.readiness).filter(
     Boolean,
   ).length;
+  const review = invalidation?.review;
+  const activeRisk = decision.status === "AT_RISK";
 
   return (
     <section
       aria-labelledby={`shared-decision-${decision.decisionId}`}
-      className={`shared-decision-card${invalidation === undefined ? "" : " at-risk"}`}
+      className={`shared-decision-card${activeRisk ? " at-risk" : ""}${decision.status === "REVIEW_REQUIRED" ? " review-required" : ""}`}
     >
       <div className="shared-decision-seal" aria-hidden="true">
-        {invalidation === undefined ? "✓" : "!"}
+        {activeRisk ? "!" : decision.status === "REVIEW_REQUIRED" ? "↺" : "✓"}
       </div>
       <div>
         <p className="zone-label shared">
-          {invalidation === undefined
-            ? "Shared · Human committed"
-            : "Shared · AI inferred risk"}
+          {activeRisk
+            ? "Shared · AI inferred risk"
+            : decision.status === "REVIEW_REQUIRED"
+              ? "Shared · Human confirmed review"
+              : review?.disposition === "reject_suggestion"
+                ? "Shared · Facilitator rejected suggestion"
+                : "Shared · Human committed"}
         </p>
         <h2 id={`shared-decision-${decision.decisionId}`}>
           {decision.snapshot.title}
@@ -443,22 +450,45 @@ function SharedDecisionCard({
           <small>
             {invalidation === undefined
               ? "Evaluation pending · Decision remains MONITORING"
-              : "Evaluation recorded · Human review still required"}
+              : activeRisk
+                ? "Evaluation recorded · Human review still required"
+                : review?.disposition === "confirm_invalidation"
+                  ? "Impact confirmed · Decision revision required"
+                  : "Suggestion reviewed · Monitoring continues"}
           </small>
         </div>
       )}
       {invalidation === undefined ? null : (
-        <div className="shared-risk-suggestion" role="status">
-          <span>AT_RISK · AI suggestion</span>
+        <div
+          className={`shared-risk-suggestion${activeRisk ? "" : " reviewed"}`}
+          role="status"
+        >
+          <span>
+            {activeRisk
+              ? "AT_RISK · AI suggestion"
+              : review?.disposition === "confirm_invalidation"
+                ? "REVIEW_REQUIRED · Human confirmed"
+                : "AI suggestion rejected by facilitator"}
+          </span>
           <strong>
             {Math.round(invalidation.confidence * 100)}% confidence
           </strong>
           <p>{invalidation.reason}</p>
           <small>
-            {invalidation.affectedPremiseIds.length} affected premise ·{" "}
-            {invalidation.affectedActionIds.length} affected Action · no
-            automatic review confirmation
+            {review === undefined
+              ? `${invalidation.affectedPremiseIds.length} affected premise · ${invalidation.affectedActionIds.length} affected Action · no automatic review confirmation`
+              : `Facilitator reason: ${review.reason}`}
           </small>
+          {review?.disposition === "confirm_invalidation" ? (
+            <div className="shared-review-outcome">
+              <span>{review.heldActionIds.length} affected Action held</span>
+              <span>
+                Reconsideration task{" "}
+                {review.reconsiderationTask?.state ?? "open"}
+              </span>
+              <span>Committed revision remains immutable</span>
+            </div>
+          ) : null}
         </div>
       )}
     </section>
@@ -504,21 +534,29 @@ function FacilitatorDecisionPanel({
     | "premise-confirmed"
     | "premise-rejected"
     | "ready"
+    | "review-rejected"
+    | "review-required"
+    | "reviewing"
     | "saving"
     | "starting-monitor"
     | "synthesizing"
   >(
-    existingDecision?.status === "AT_RISK"
-      ? "at-risk"
-      : existingDecision?.status === "MONITORING"
-        ? "monitoring"
-        : existingDecision?.status === "COMMITTED"
-          ? "committed"
-          : existingDecision?.status === "DECISION_READY"
-            ? "ready"
-            : existingDecision?.status === "DRAFT"
-              ? "draft"
-              : "idle",
+    existingDecision?.status === "REVIEW_REQUIRED"
+      ? "review-required"
+      : existingDecision?.status === "AT_RISK"
+        ? "at-risk"
+        : existingDecision?.status === "MONITORING" &&
+            existingInvalidation?.review?.disposition === "reject_suggestion"
+          ? "review-rejected"
+          : existingDecision?.status === "MONITORING"
+            ? "monitoring"
+            : existingDecision?.status === "COMMITTED"
+              ? "committed"
+              : existingDecision?.status === "DECISION_READY"
+                ? "ready"
+                : existingDecision?.status === "DRAFT"
+                  ? "draft"
+                  : "idle",
   );
   const [candidate, setCandidate] =
     useState<SharedDecisionSynthesisCandidate>();
@@ -531,6 +569,7 @@ function FacilitatorDecisionPanel({
   const [audit, setAudit] = useState<DecisionAuditResponse>();
   const [externalEvent, setExternalEvent] = useState(existingExternalEvent);
   const [invalidation, setInvalidation] = useState(existingInvalidation);
+  const [reviewReason, setReviewReason] = useState("");
   const [receivingExternalEvent, setReceivingExternalEvent] = useState(false);
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<DecisionDraftForm>({
@@ -553,6 +592,8 @@ function FacilitatorDecisionPanel({
     regulatoryEvent: crypto.randomUUID(),
     ready: crypto.randomUUID(),
     reject: crypto.randomUUID(),
+    riskConfirm: crypto.randomUUID(),
+    riskReject: crypto.randomUUID(),
     save: crypto.randomUUID(),
     synthesize: crypto.randomUUID(),
   });
@@ -561,7 +602,8 @@ function FacilitatorDecisionPanel({
     if (
       existingDecision?.status !== "COMMITTED" &&
       existingDecision?.status !== "MONITORING" &&
-      existingDecision?.status !== "AT_RISK"
+      existingDecision?.status !== "AT_RISK" &&
+      existingDecision?.status !== "REVIEW_REQUIRED"
     ) {
       return;
     }
@@ -920,6 +962,65 @@ function FacilitatorDecisionPanel({
     }
   }
 
+  async function submitInvalidationReview(
+    disposition: "confirm_invalidation" | "reject_suggestion",
+  ) {
+    if (decision === undefined || invalidation === undefined) {
+      return;
+    }
+    const reason = reviewReason.trim();
+    if (reason.length === 0) {
+      setError("Enter a facilitator review reason before choosing an outcome.");
+      return;
+    }
+    setPhase("reviewing");
+    setError(undefined);
+    try {
+      const response = await reviewInvalidation(session, {
+        decisionId: decision.decisionId,
+        disposition,
+        expectedPosition: position,
+        idempotencyKey:
+          disposition === "confirm_invalidation"
+            ? commandKeys.current.riskConfirm
+            : commandKeys.current.riskReject,
+        meetingId: meeting.meetingId,
+        reason,
+        suggestionId: invalidation.suggestionId,
+      });
+      const [evaluationState, decisionState, nextAudit] = await Promise.all([
+        listInvalidationEvaluations(session, meeting.meetingId),
+        listSharedDecisions(session, meeting.meetingId),
+        getDecisionAudit(session, {
+          decisionId: decision.decisionId,
+          meetingId: meeting.meetingId,
+        }),
+      ]);
+      const nextInvalidation = evaluationState.evaluations.at(-1);
+      const nextDecision = decisionState.decisions.at(-1) ?? response.decision;
+      advancePosition(
+        [response.position, evaluationState.position, decisionState.position]
+          .sort((left, right) => left - right)
+          .at(-1) ?? response.position,
+      );
+      setDecision(nextDecision);
+      onDecisionChange(nextDecision);
+      setAudit(nextAudit);
+      if (nextInvalidation !== undefined) {
+        setInvalidation(nextInvalidation);
+        onInvalidationChange(nextInvalidation);
+      }
+      setPhase(
+        disposition === "confirm_invalidation"
+          ? "review-required"
+          : "review-rejected",
+      );
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("at-risk");
+    }
+  }
+
   const premiseCandidate = candidate?.draft.premiseCandidates[0];
   const aiProvenance =
     candidate?.provenance.origin === "ai_assisted"
@@ -1214,22 +1315,37 @@ function FacilitatorDecisionPanel({
 
       {(phase === "committed" ||
         phase === "monitoring" ||
-        phase === "at-risk") &&
+        phase === "at-risk" ||
+        phase === "reviewing" ||
+        phase === "review-required" ||
+        phase === "review-rejected") &&
       decision !== undefined ? (
         <div
-          className={`committed-decision${phase === "at-risk" ? " at-risk" : ""}`}
+          className={`committed-decision${
+            phase === "at-risk" || phase === "reviewing" ? " at-risk" : ""
+          }${phase === "review-required" ? " review-required" : ""}`}
           aria-live="polite"
         >
           <div className="commit-seal" aria-hidden="true">
-            <span>{phase === "at-risk" ? "!" : "✓"}</span>
+            <span>
+              {phase === "at-risk" || phase === "reviewing"
+                ? "!"
+                : phase === "review-required"
+                  ? "↺"
+                  : "✓"}
+            </span>
           </div>
           <div>
             <p className="zone-label shared">
-              {phase === "at-risk"
+              {phase === "at-risk" || phase === "reviewing"
                 ? "AT_RISK · AI suggestion"
-                : phase === "monitoring"
-                  ? "Monitoring active"
-                  : "Human committed"}
+                : phase === "review-required"
+                  ? "REVIEW_REQUIRED · Human confirmed"
+                  : phase === "review-rejected"
+                    ? "Monitoring · AI suggestion rejected"
+                    : phase === "monitoring"
+                      ? "Monitoring active"
+                      : "Human committed"}
             </p>
             <h3>{decision.snapshot.title}</h3>
             <p>{decision.snapshot.outcome}</p>
@@ -1265,7 +1381,10 @@ function FacilitatorDecisionPanel({
             >
               Start Decision monitor
             </button>
-          ) : (
+          ) : phase === "monitoring" ||
+            phase === "at-risk" ||
+            phase === "reviewing" ||
+            phase === "review-rejected" ? (
             <div className="monitor-active">
               <span>◎ Monitoring</span>
               <small>
@@ -1277,7 +1396,7 @@ function FacilitatorDecisionPanel({
                 …
               </small>
             </div>
-          )}
+          ) : null}
           {phase === "monitoring" && externalEvent === undefined ? (
             <div className="demo-event-control">
               <span>Staged demo story</span>
@@ -1310,12 +1429,23 @@ function FacilitatorDecisionPanel({
             </div>
           )}
           {invalidation === undefined ? null : (
-            <div className="invalidation-risk-pulse" role="status">
+            <div
+              className={`invalidation-risk-pulse${
+                invalidation.review === undefined ? "" : " reviewed"
+              }`}
+              role="status"
+            >
               <div className="risk-pulse-orbit" aria-hidden="true">
                 <span>!</span>
               </div>
               <div>
-                <span>AI inferred · Human review required</span>
+                <span>
+                  {invalidation.review === undefined
+                    ? "AI inferred · Human review required"
+                    : invalidation.review.disposition === "confirm_invalidation"
+                      ? "Human reviewed · Impact confirmed"
+                      : "Human reviewed · Suggestion rejected"}
+                </span>
                 <strong>
                   Assumption invalidation suggested ·{" "}
                   {Math.round(invalidation.confidence * 100)}%
@@ -1331,11 +1461,162 @@ function FacilitatorDecisionPanel({
                   </span>
                 </div>
                 <small>
-                  Revision {decision.activeRevision} remains immutable ·
-                  REVIEW_REQUIRED has not been confirmed
+                  Revision {decision.activeRevision} remains immutable ·{" "}
+                  {invalidation.review === undefined
+                    ? "REVIEW_REQUIRED has not been confirmed"
+                    : `Facilitator reason: ${invalidation.review.reason}`}
                 </small>
               </div>
             </div>
+          )}
+          {invalidation === undefined ? null : (
+            <section
+              aria-labelledby="facilitator-risk-review-title"
+              className={`review-workbench${
+                invalidation.review?.disposition === "confirm_invalidation"
+                  ? " review-confirmed"
+                  : invalidation.review?.disposition === "reject_suggestion"
+                    ? " review-rejected"
+                    : ""
+              }`}
+              role="region"
+            >
+              <div className="review-workbench-heading">
+                <div>
+                  <span>Facilitator authority boundary</span>
+                  <h4 id="facilitator-risk-review-title">
+                    Facilitator risk review
+                  </h4>
+                </div>
+                <strong>
+                  {invalidation.review === undefined
+                    ? "Decision pending"
+                    : invalidation.review.disposition === "confirm_invalidation"
+                      ? "Review required"
+                      : "Monitoring resumed"}
+                </strong>
+              </div>
+              <div className="review-reference-grid">
+                <article className="review-reference-card">
+                  <span>External event</span>
+                  <strong>
+                    {externalEvent?.jurisdiction ?? "Staged jurisdiction"}
+                  </strong>
+                  <p>{externalEvent?.description}</p>
+                  <small>
+                    {externalEvent?.source} ·{" "}
+                    {externalEvent?.effectiveAt.slice(0, 10)}
+                  </small>
+                </article>
+                <article
+                  className="review-reference-card"
+                  data-testid="review-affected-premise"
+                >
+                  <span>Affected premise</span>
+                  <strong>{invalidation.affectedPremiseIds[0]}</strong>
+                  <p>{evidence.exactSnippet}</p>
+                </article>
+                <article
+                  className="review-reference-card"
+                  data-testid="review-evidence"
+                >
+                  <span>Reviewed Evidence</span>
+                  <strong>{invalidation.evidenceReferenceIds[0]}</strong>
+                  <p>Exact shared excerpt retained with source provenance.</p>
+                </article>
+                <article
+                  className="review-reference-card"
+                  data-testid="review-affected-action"
+                >
+                  <span>Affected Action</span>
+                  <strong>{invalidation.affectedActionIds[0]}</strong>
+                  <p>
+                    {invalidation.review?.disposition === "confirm_invalidation"
+                      ? "Held pending Decision revision"
+                      : "Active until a facilitator confirms impact"}
+                  </p>
+                </article>
+              </div>
+              <div className="review-model-reason">
+                <span>
+                  AI inferred · {invalidation.model} ·{" "}
+                  {Math.round(invalidation.confidence * 100)}%
+                </span>
+                <p>{invalidation.reason}</p>
+              </div>
+              {invalidation.review === undefined ? (
+                <>
+                  <label className="review-reason-field">
+                    <span>Facilitator review reason</span>
+                    <textarea
+                      disabled={phase === "reviewing"}
+                      onChange={(event) => setReviewReason(event.target.value)}
+                      placeholder="Record why this evidence does or does not change the Decision."
+                      rows={3}
+                      value={reviewReason}
+                    />
+                  </label>
+                  <div className="review-actions">
+                    <button
+                      disabled={phase === "reviewing"}
+                      onClick={() =>
+                        void submitInvalidationReview("confirm_invalidation")
+                      }
+                      type="button"
+                    >
+                      Confirm impact and open review
+                    </button>
+                    <button
+                      className="review-reject-button"
+                      disabled={phase === "reviewing"}
+                      onClick={() =>
+                        void submitInvalidationReview("reject_suggestion")
+                      }
+                      type="button"
+                    >
+                      Reject AI suggestion
+                    </button>
+                  </div>
+                  {phase === "reviewing" ? (
+                    <p className="review-recording" role="status">
+                      Recording facilitator review…
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="review-outcome">
+                  <span>
+                    {invalidation.review.disposition === "confirm_invalidation"
+                      ? "REVIEW_REQUIRED · Human confirmed"
+                      : "AI suggestion rejected by facilitator"}
+                  </span>
+                  <strong>{invalidation.review.reason}</strong>
+                  {invalidation.review.disposition ===
+                  "confirm_invalidation" ? (
+                    <div
+                      className="reconsideration-task-card"
+                      data-testid="reconsideration-task"
+                    >
+                      <span>Reconsideration task</span>
+                      <strong>
+                        {invalidation.review.reconsiderationTask?.state ??
+                          "open"}
+                      </strong>
+                      <small>
+                        {invalidation.review.heldActionIds.length} affected
+                        Action held · revision {decision.activeRevision} remains
+                        immutable
+                      </small>
+                    </div>
+                  ) : (
+                    <small>
+                      No Action held · no reconsideration task · monitor remains
+                      active
+                    </small>
+                  )}
+                </div>
+              )}
+            </section>
           )}
         </div>
       ) : null}
@@ -1837,7 +2118,8 @@ function WorkspaceShell({
             />
           ) : sharedDecision?.status === "COMMITTED" ||
             sharedDecision?.status === "MONITORING" ||
-            sharedDecision?.status === "AT_RISK" ? (
+            sharedDecision?.status === "AT_RISK" ||
+            sharedDecision?.status === "REVIEW_REQUIRED" ? (
             <SharedDecisionCard
               decision={sharedDecision}
               externalEvent={sharedExternalEvent}

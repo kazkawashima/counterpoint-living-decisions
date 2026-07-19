@@ -22,6 +22,7 @@ import {
   type DomainEvent,
   type EventOf,
   type MeetingProjection,
+  type ReconsiderationTask,
 } from "@counterpoint/domain";
 import type {
   Clock,
@@ -130,6 +131,14 @@ export interface InvalidationEvaluationView {
   readonly outputSchemaVersion: string;
   readonly promptVersion: string;
   readonly reason: string;
+  readonly review?: {
+    readonly disposition: "confirm_invalidation" | "reject_suggestion";
+    readonly facilitatorParticipantId: string;
+    readonly heldActionIds: readonly string[];
+    readonly reason: string;
+    readonly reconsiderationTask?: ReconsiderationTask;
+    readonly reviewedAt: string;
+  };
   readonly suggestionId: string;
 }
 
@@ -202,7 +211,23 @@ function failed(
 function evaluationView(
   suggested: EventOf<"AssumptionInvalidationSuggested">,
   markedAtRisk: EventOf<"DecisionMarkedAtRisk">,
+  events: readonly DomainEvent[] = [],
 ): InvalidationEvaluationView {
+  const review = events.find(
+    (event): event is EventOf<"FacilitatorReviewed"> =>
+      event.eventType === "FacilitatorReviewed" &&
+      event.payload.suggestionId === suggested.payload.suggestionId,
+  );
+  const reviewRequired = events.find(
+    (event): event is EventOf<"DecisionReviewRequired"> =>
+      event.eventType === "DecisionReviewRequired" &&
+      event.payload.suggestionId === suggested.payload.suggestionId,
+  );
+  const reconsiderationTask = events.find(
+    (event): event is EventOf<"ReconsiderationTaskCreated"> =>
+      event.eventType === "ReconsiderationTaskCreated" &&
+      event.payload.task.id === reviewRequired?.payload.reconsiderationTaskId,
+  )?.payload.task;
   return {
     affectedActionIds: suggested.payload.affectedActionIds,
     affectedPremiseIds: suggested.payload.affectedPremiseIds,
@@ -217,6 +242,20 @@ function evaluationView(
     outputSchemaVersion: suggested.payload.provenance.outputSchemaVersion,
     promptVersion: suggested.payload.metadata.promptVersion,
     reason: suggested.payload.metadata.reason,
+    ...(review === undefined
+      ? {}
+      : {
+          review: {
+            disposition: review.payload.disposition,
+            facilitatorParticipantId: review.payload.facilitatorParticipantId,
+            heldActionIds: reviewRequired?.payload.heldActionIds ?? [],
+            reason: review.payload.reason,
+            ...(reconsiderationTask === undefined
+              ? {}
+              : { reconsiderationTask }),
+            reviewedAt: review.occurredAt,
+          },
+        }),
     suggestionId: suggested.payload.suggestionId,
   };
 }
@@ -436,7 +475,7 @@ export function listAssumptionInvalidationEvaluations(
       );
       return markedAtRisk === undefined
         ? []
-        : [evaluationView(suggested, markedAtRisk)];
+        : [evaluationView(suggested, markedAtRisk, events)];
     });
 }
 

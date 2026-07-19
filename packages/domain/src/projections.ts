@@ -666,6 +666,7 @@ function reduceSharedEvent(
     case "DecisionCommitted":
     case "MonitoringStarted":
     case "DecisionMarkedAtRisk":
+    case "FacilitatorReviewed":
     case "DecisionReviewRequired":
     case "DecisionRevisionCommitted":
     case "DecisionSuperseded":
@@ -730,7 +731,6 @@ function reduceSharedEvent(
     case "InferenceSuggested":
     case "InferenceRejected":
     case "AssumptionInvalidationSuggested":
-    case "FacilitatorReviewed":
     case "DemoResetRequested":
     case "ApiKeyLeaseUpdated":
     case "ApiKeyLeaseExpired":

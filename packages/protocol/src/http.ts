@@ -19,6 +19,7 @@ import {
   OpaqueIdSchema,
   ParticipantIdSchema,
   PremiseIdSchema,
+  ReconsiderationTaskIdSchema,
   ServerDerivedActorSchema,
   SourceArtifactIdSchema,
   UserIdSchema,
@@ -31,9 +32,15 @@ export const HTTP_API_VERSION_PREFIX = HTTP_API_V1_PREFIX;
 
 const TITLE_MAX_LENGTH = 256;
 const TEXT_MAX_LENGTH = 20 * 1024 * 1024;
+const REVIEW_REASON_MAX_LENGTH = 4096;
 
 const NonEmptyTextSchema = z.string().trim().min(1).max(TEXT_MAX_LENGTH);
 const TitleSchema = z.string().trim().min(1).max(TITLE_MAX_LENGTH);
+const ReviewReasonSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(REVIEW_REASON_MAX_LENGTH);
 const OptionalCorrelationShape = {
   correlationId: CorrelationIdSchema.optional(),
 } as const;
@@ -904,6 +911,16 @@ export const InjectDemoRegulatoryChangeRequestSchema = z.strictObject({
 });
 export const InjectDemoRegulatoryChangeResponseSchema =
   RegulatoryChangeWebhookResponseSchema;
+export const ReconsiderationTaskSchema = z.strictObject({
+  reconsiderationTaskId: ReconsiderationTaskIdSchema,
+  decisionId: DecisionIdSchema,
+  triggerExternalEventId: ExternalEventIdSchema,
+  ownerParticipantId: ParticipantIdSchema,
+  affectedPremiseIds: z.array(PremiseIdSchema).min(1),
+  affectedActionIds: z.array(ActionIdSchema).min(1),
+  state: z.enum(["open", "in_progress", "completed", "cancelled"]),
+  createdAt: UtcIsoTimestampSchema,
+});
 export const InvalidationEvaluationSchema = z.strictObject({
   affectedActionIds: z.array(ActionIdSchema).min(1),
   affectedPremiseIds: z.array(PremiseIdSchema).min(1),
@@ -918,8 +935,72 @@ export const InvalidationEvaluationSchema = z.strictObject({
   outputSchemaVersion: z.literal("1"),
   promptVersion: NonEmptyTextSchema,
   reason: NonEmptyTextSchema,
+  review: z
+    .strictObject({
+      disposition: z.enum(["confirm_invalidation", "reject_suggestion"]),
+      facilitatorParticipantId: ParticipantIdSchema,
+      heldActionIds: z.array(ActionIdSchema),
+      reason: ReviewReasonSchema,
+      reconsiderationTask: ReconsiderationTaskSchema.optional(),
+      reviewedAt: UtcIsoTimestampSchema,
+    })
+    .optional(),
   suggestionId: OpaqueIdSchema,
 });
+export const InvalidationReviewDispositionSchema = z.enum([
+  "confirm_invalidation",
+  "reject_suggestion",
+]);
+export const ReviewInvalidationRequestSchema = z.strictObject({
+  ...MeetingMutationShape,
+  decisionId: DecisionIdSchema,
+  suggestionId: OpaqueIdSchema,
+  disposition: InvalidationReviewDispositionSchema,
+  reason: ReviewReasonSchema,
+});
+
+const ReviewInvalidationResponseShape = {
+  ...MeetingMutationReceiptShape,
+  suggestionId: OpaqueIdSchema,
+  reviewReason: ReviewReasonSchema,
+  reviewEventId: EventIdSchema,
+  reviewAuditId: OpaqueIdSchema,
+} as const;
+const ReviewRequiredDecisionSchema = DecisionSchema.extend({
+  status: z.literal("REVIEW_REQUIRED"),
+  snapshot: DecisionSnapshotSchema.extend({
+    status: z.literal("REVIEW_REQUIRED"),
+  }),
+});
+const MonitoringDecisionSchema = DecisionSchema.extend({
+  status: z.literal("MONITORING"),
+  snapshot: DecisionSnapshotSchema.extend({
+    status: z.literal("MONITORING"),
+  }),
+});
+export const ConfirmInvalidationReviewResponseSchema = z.strictObject({
+  ...ReviewInvalidationResponseShape,
+  disposition: z.literal("confirm_invalidation"),
+  decision: ReviewRequiredDecisionSchema,
+  heldActionIds: z.array(ActionIdSchema).min(1),
+  reconsiderationTask: ReconsiderationTaskSchema,
+});
+export const RejectInvalidationReviewResponseSchema = z.strictObject({
+  ...ReviewInvalidationResponseShape,
+  disposition: z.literal("reject_suggestion"),
+  decision: MonitoringDecisionSchema,
+});
+export const ReviewInvalidationResponseSchema = z.discriminatedUnion(
+  "disposition",
+  [
+    ConfirmInvalidationReviewResponseSchema,
+    RejectInvalidationReviewResponseSchema,
+  ],
+);
+export const FacilitatorInvalidationReviewRequestSchema =
+  ReviewInvalidationRequestSchema;
+export const FacilitatorInvalidationReviewResponseSchema =
+  ReviewInvalidationResponseSchema;
 export const ListInvalidationEvaluationsResponseSchema = z.strictObject({
   ...MeetingMutationReceiptShape,
   evaluations: z.array(InvalidationEvaluationSchema),
@@ -991,6 +1072,24 @@ export type InjectDemoRegulatoryChangeResponse = z.infer<
 export type InvalidationEvaluation = z.infer<
   typeof InvalidationEvaluationSchema
 >;
+export type ReconsiderationTask = z.infer<typeof ReconsiderationTaskSchema>;
+export type InvalidationReviewDisposition = z.infer<
+  typeof InvalidationReviewDispositionSchema
+>;
+export type ReviewInvalidationRequest = z.infer<
+  typeof ReviewInvalidationRequestSchema
+>;
+export type ConfirmInvalidationReviewResponse = z.infer<
+  typeof ConfirmInvalidationReviewResponseSchema
+>;
+export type RejectInvalidationReviewResponse = z.infer<
+  typeof RejectInvalidationReviewResponseSchema
+>;
+export type ReviewInvalidationResponse = z.infer<
+  typeof ReviewInvalidationResponseSchema
+>;
+export type FacilitatorInvalidationReviewRequest = ReviewInvalidationRequest;
+export type FacilitatorInvalidationReviewResponse = ReviewInvalidationResponse;
 export type ListInvalidationEvaluationsResponse = z.infer<
   typeof ListInvalidationEvaluationsResponseSchema
 >;

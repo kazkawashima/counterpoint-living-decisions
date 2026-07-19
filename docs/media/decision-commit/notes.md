@@ -15,10 +15,11 @@ appears in the material.
 | Participant shared Decision and event receipt | Mobile, 390×844, reduced motion | Responsive and accessibility proof for the same state without motion dependence. |
 
 The clip under `docs/media/clips/decision-commit/` records the complete
-candidate-to-AT_RISK interaction, including explicit premise
+candidate-to-REVIEW_REQUIRED interaction, including explicit premise
 confirmation, readiness validation, commitment animation, monitor
 registration, the explicitly staged regulatory event, grounded AI evaluation,
-the red risk pulse, and persistence after reload.
+the red risk pulse, facilitator review reason, Action hold, reconsideration
+task, and persistence after reload.
 
 Useful narration:
 
@@ -28,5 +29,5 @@ Useful narration:
 > Other participants receive the shared result—not the private AI candidate.
 
 Capture date: 2026-07-19. Feature slice: A5 shared Decision synthesis, L6
-deterministic commitment, D1 monitoring, D2/D3 event receipt, and D4
-assumption invalidation.
+deterministic commitment, D1 monitoring, D2/D3 event receipt, D4 assumption
+invalidation, and D5 human review.
