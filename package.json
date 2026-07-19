@@ -19,10 +19,18 @@
     "contract": "vitest run --project contract",
     "compose:config": "docker compose config --quiet",
     "compose:up": "docker compose up --build",
+    "cloudflare:config:check": "node scripts/check-cloudflare-config.mjs",
+    "cloudflare:d1:migrate:local": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler d1 migrations apply DB --local --config wrangler.jsonc",
+    "cloudflare:dry-run": "npm run bundle --workspace @counterpoint/web && CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --config wrangler.jsonc --outdir .wrangler/dry-run",
+    "cloudflare:resources:plan": "bash scripts/cloudflare-preview-resources.sh --plan",
+    "cloudflare:smoke:local": "npm run cloudflare:d1:migrate:local && npm run bundle --workspace @counterpoint/web && node scripts/cloudflare-local-smoke.mjs",
+    "cloudflare:types": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler types apps/worker/src/worker-configuration.d.ts --config wrangler.jsonc --env-interface WorkerBindings --include-runtime false",
+    "cloudflare:types:check": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler types apps/worker/src/worker-configuration.d.ts --config wrangler.jsonc --env-interface WorkerBindings --include-runtime false --check",
     "deploy:smoke": "npm run build && node scripts/deployment-smoke.mjs",
     "dev": "npm run dev --workspace @counterpoint/web",
     "dev:server": "npm run dev --workspace @counterpoint/server",
     "dev:web": "npm run dev --workspace @counterpoint/web",
+    "dev:worker": "npm run bundle --workspace @counterpoint/web && CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler dev --config wrangler.jsonc --ip 0.0.0.0",
     "e2e": "playwright test",
     "env:check": "node scripts/check-environment.mjs",
     "format": "prettier --write .",
@@ -43,6 +51,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20260719.1",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",
     "@types/node": "26.1.1",
@@ -56,6 +65,7 @@
     "typescript": "6.0.2",
     "typescript-eslint": "8.64.0",
     "vite": "8.1.5",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "4.112.0"
   }
 }

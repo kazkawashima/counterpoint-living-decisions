@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "counterpoint-living-decisions",
+  "main": "apps/worker/src/index.ts",
+  "compatibility_date": "2026-07-19",
+  "assets": {
+    "directory": "apps/web/dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/health", "/ready"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "counterpoint-preview",
+      "migrations_dir": "apps/worker/migrations",
+      "migrations_table": "d1_migrations",
+      "remote": false,
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "counterpoint-artifacts-preview",
+      "preview_bucket_name": "counterpoint-artifacts-preview",
+      "remote": false,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MEETINGS",
+        "class_name": "MeetingCoordinator",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MeetingCoordinator"],
+    },
+  ],
+  "vars": {
+    "RUNTIME_MODE": "preview",
+    "OPENAI_MODE": "disabled",
+  },
+}

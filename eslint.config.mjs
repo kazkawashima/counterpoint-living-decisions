@@ -9,6 +9,7 @@ export default defineConfig(
       "**/dist/**",
       "**/coverage/**",
       "**/node_modules/**",
+      ".wrangler/**",
       ".codex/**",
       ".serena/**",
       "playwright-report/**",

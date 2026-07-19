@@ -45,4 +45,16 @@ describe("architecture dependency boundaries", () => {
       "fixture/adapters-openai.ts: adapters-openai cannot import @counterpoint/adapters-node",
     ]);
   });
+
+  it("rejects Node runtime imports from the Cloudflare Worker", () => {
+    expect(
+      findArchitectureViolations({
+        packageName: "worker",
+        source: 'import { createHash } from "node:crypto";',
+        sourcePath: "fixture/worker.ts",
+      }),
+    ).toEqual([
+      "fixture/worker.ts: worker cannot import runtime dependency node:crypto",
+    ]);
+  });
 });

@@ -1,0 +1,8 @@
+# Local Wrangler values only. Copy to .dev.vars if an explicit override is
+# needed; Wrangler development already receives these defaults from
+# wrangler.jsonc.
+RUNTIME_MODE=preview
+OPENAI_MODE=disabled
+
+# Never place OPENAI_API_KEY_JUDGE here. Judge mode uses `wrangler secret put`
+# at the separately approved deployment boundary.

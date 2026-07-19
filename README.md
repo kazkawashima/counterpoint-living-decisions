@@ -93,6 +93,26 @@ Stop the stack without deleting persisted data:
 docker compose down
 ```
 
+## Cloudflare local resource scaffold
+
+Plan 05 C1 provides a local-only Worker shell with React static assets, D1
+migrations, an R2 artifact adapter, and one Durable Object namespace whose
+instances are selected by meeting ID. It does not create Cloudflare resources
+or deploy anything remotely.
+
+```bash
+npm run cloudflare:config:check
+npm run cloudflare:types:check
+npm run cloudflare:smoke:local
+```
+
+The smoke applies D1 migrations to ignored `.wrangler/` state, starts Wrangler
+on `0.0.0.0`, and verifies the app through an external-host-style loopback
+alias. All committed Wrangler commands disable `.env` fallback, so the local
+Node OpenAI key cannot be copied into the Worker environment. See
+[`deploy/cloudflare/README.md`](deploy/cloudflare/README.md) for the guarded
+preview resource plan and remote-mutation boundary.
+
 ## Documentation
 
 Read [`docs/topics/README.md`](docs/topics/README.md) for the Japanese reference

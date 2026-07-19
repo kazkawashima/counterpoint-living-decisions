@@ -18,12 +18,12 @@ parity, persistent data, and completed high-risk security gates.
 
 ### C1 — Cloudflare resource setup
 
-- [ ] Configure Worker static assets and API routes.
-- [ ] Add D1 schema/migrations aligned with SQLite semantics.
-- [ ] Add R2 artifact adapter.
-- [ ] Add one Durable Object per meeting.
-- [ ] Add reproducible preview resource scripts.
-- [ ] Keep all dev/preview servers reachable on `0.0.0.0` where applicable.
+- [x] Configure Worker static assets and API routes.
+- [x] Add D1 schema/migrations aligned with SQLite semantics.
+- [x] Add R2 artifact adapter.
+- [x] Add one Durable Object per meeting.
+- [x] Add reproducible preview resource scripts.
+- [x] Keep all dev/preview servers reachable on `0.0.0.0` where applicable.
 
 ### C2 — Adapter parity
 

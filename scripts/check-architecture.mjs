@@ -40,6 +40,26 @@ const packageRules = new Map([
       allowedExternal: new Set(["openai", "openai/helpers/zod", "zod"]),
     },
   ],
+  [
+    "adapters-cloudflare",
+    {
+      allowedInternal: new Set(["application", "domain", "ports", "protocol"]),
+      allowedExternal: new Set(),
+    },
+  ],
+  [
+    "worker",
+    {
+      allowedInternal: new Set([
+        "adapters-cloudflare",
+        "application",
+        "domain",
+        "ports",
+        "protocol",
+      ]),
+      allowedExternal: new Set(["cloudflare:workers"]),
+    },
+  ],
 ]);
 
 const importPattern = /(?:from\s*|import\s*\(\s*|import\s*)["']([^"']+)["']/gu;
@@ -103,12 +123,10 @@ export async function checkArchitecture(repositoryRoot = rootPath) {
   const violations = [];
 
   for (const packageName of packageRules.keys()) {
-    const sourceDirectory = resolve(
-      repositoryRoot,
-      "packages",
-      packageName,
-      "src",
-    );
+    const sourceDirectory =
+      packageName === "worker"
+        ? resolve(repositoryRoot, "apps", "worker", "src")
+        : resolve(repositoryRoot, "packages", packageName, "src");
     for (const sourceFile of await listSourceFiles(sourceDirectory)) {
       violations.push(
         ...findArchitectureViolations({

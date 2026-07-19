@@ -331,14 +331,30 @@ The canonical implementation-facing artifacts are:
   gate and private exact preview. The displayed locator and fetched body are
   synthetic; the browser substitution and real transport security suite are
   documented separately in the capture notes.
-- The complete verification surface now passes 383 unit/contract/integration
-  tests and all 15 browser E2E scenarios, in addition to build, lint,
-  typecheck, formatting, architecture, environment, and Compose checks.
+- Plan 05 C1 now provides the Worker-first `/api`, `/health`, and `/ready`
+  boundary with React SPA assets, four ordered D1 migrations matching the
+  Node SQLite tables and constraints, a meeting/visibility/owner-partitioned
+  R2 artifact adapter, and one SQLite-backed Durable Object namespace selected
+  with `idFromName(meetingId)`.
+- Preview setup is reproducible without remote mutation: Wrangler bindings and
+  generated types are contract-checked, the resource script defaults to a
+  no-change plan and requires an explicit approval flag to create D1/R2
+  resources, and deploy/secret/remote-migration actions remain deferred.
+- Every committed Wrangler path binds development to `0.0.0.0` where
+  applicable, disables `.env` fallback and telemetry, writes logs only under
+  ignored `.wrangler/`, and keeps the judge secret absent. The local smoke
+  reaches the Worker through `127.0.0.2`, verifies static HTML, health,
+  migration-aware readiness, and protocol-safe API fail-closed behavior, then
+  proves the port is released.
+- The complete verification surface now passes 397 unit/contract/integration
+  tests and all 15 browser E2E scenarios, in addition to Worker dry-run/local
+  smoke, build, lint, typecheck, formatting, architecture, environment, and
+  Compose checks.
 
 ## In progress
 
-- Begin Plan 05 C1 Cloudflare resource setup while preserving the completed
-  local flagship and adapter boundaries.
+- Begin Plan 05 C2 Cloudflare adapter parity while preserving D1 as durable
+  truth and avoiding duplicate Node/Worker HTTP semantics.
 
 ## Not started
 
@@ -348,9 +364,11 @@ The canonical implementation-facing artifacts are:
 
 Continue with Plan 05 in
 [`05-cloudflare-judge-mode-and-security.md`](../05-cloudflare-judge-mode-and-security.md)
-at C1: add the Worker static/API boundary, D1/R2/Durable Object resource
-configuration, reproducible preview setup, and `0.0.0.0`-reachable local
-commands. Preserve the allowlisted judge-managed source and USD 25 rolling
+at C2: implement D1 event/projection repositories, run the existing artifact
+contract against R2, and define the Durable Object coordination contract for
+ordering, resume, idempotency, revocation, and reset. Extract shared HTTP
+transport semantics before wiring the full Worker API so Node and Cloudflare
+cannot drift. Preserve the allowlisted judge-managed source and USD 25 rolling
 24-hour product spend gate for C3/C4; do not deploy or create remote resources
 without an explicit deployment boundary.
 
