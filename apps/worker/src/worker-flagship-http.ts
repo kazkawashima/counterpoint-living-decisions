@@ -12,14 +12,17 @@ import {
   registerPrivateTextSource,
   rejectDisclosure,
   markDecisionReady,
+  injectDemoRegulatoryChange,
   prepareSharedDecisionCandidate,
   saveDecisionDraft,
+  startDecisionMonitoring,
   resolveMeetingAuthorization,
   type DisclosureDependencies,
   type DecisionDependencies,
   type DecisionCandidateDependencies,
   type DecisionCandidateFailure,
   type DecisionFailure,
+  type ExternalEventDependencies,
   type InvalidationEvaluationView,
   type UserAuthorizationContext,
   type UserAuthorizationPolicy,
@@ -91,16 +94,22 @@ import {
   MarkDecisionReadyResponseSchema,
   SaveDecisionDraftRequestSchema,
   SaveDecisionDraftResponseSchema,
+  StartDecisionMonitoringRequestSchema,
+  StartDecisionMonitoringResponseSchema,
   SynthesizeSharedDecisionRequestSchema,
   SynthesizeSharedDecisionResponseSchema,
+  InjectDemoRegulatoryChangeRequestSchema,
+  InjectDemoRegulatoryChangeResponseSchema,
   type CommitDecisionRequest,
   type DispositionSharedDecisionCandidateRequest,
+  type InjectDemoRegulatoryChangeRequest,
   type MarkDecisionReadyRequest,
   type ApproveDisclosureRequest,
   type PreviewDisclosureRequest,
   type ProposeDisclosureRequest,
   type RejectDisclosureRequest,
   type SaveDecisionDraftRequest,
+  type StartDecisionMonitoringRequest,
   type SynthesizeSharedDecisionRequest,
   type RegisterPrivateTextSourceFixtureRequest,
 } from "@counterpoint/protocol";
@@ -110,6 +119,7 @@ export interface WorkerFlagshipHttpDependencies {
   readonly decisionCandidates: DecisionCandidateDependencies;
   readonly decisions: DecisionDependencies;
   readonly disclosures: DisclosureDependencies;
+  readonly externalEvents: ExternalEventDependencies;
   readonly events: EventStore<DomainEvent>;
   readonly identities: IdentityRepository;
   readonly ids: IdGenerator;
@@ -143,7 +153,9 @@ export type WorkerFlagshipOperation =
   | "prepare-decision-candidate"
   | "register-text-source"
   | "reject-disclosure"
-  | "save-decision-draft";
+  | "save-decision-draft"
+  | "start-decision-monitoring"
+  | "inject-demo-regulatory-change";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
 
@@ -245,11 +257,18 @@ export function createWorkerFlagshipDependencies(
     ids,
     projections,
   };
+  const externalEvents: ExternalEventDependencies = {
+    clock,
+    events,
+    ids,
+    projections,
+  };
   return {
     clock,
     decisionCandidates,
     decisions,
     disclosures,
+    externalEvents,
     events,
     identities: new D1IdentityRepository(bindings.DB),
     ids,
@@ -767,10 +786,14 @@ export async function handleWorkerFlagshipHttp(input: {
   let saveDecisionDraftRequest: SaveDecisionDraftRequest | undefined;
   let markDecisionReadyRequest: MarkDecisionReadyRequest | undefined;
   let commitDecisionRequest: CommitDecisionRequest | undefined;
+  let startDecisionMonitoringRequest:
+    StartDecisionMonitoringRequest | undefined;
   let prepareDecisionCandidateRequest:
     SynthesizeSharedDecisionRequest | undefined;
   let dispositionDecisionCandidateRequest:
     DispositionSharedDecisionCandidateRequest | undefined;
+  let injectDemoRegulatoryChangeRequest:
+    InjectDemoRegulatoryChangeRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
 
@@ -923,6 +946,16 @@ export async function handleWorkerFlagshipHttp(input: {
     commitDecisionRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
+  if (operation === "start-decision-monitoring") {
+    const parsed = StartDecisionMonitoringRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    startDecisionMonitoringRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
   if (operation === "prepare-decision-candidate") {
     const parsed = SynthesizeSharedDecisionRequestSchema.safeParse(
       await readJson(request),
@@ -942,6 +975,15 @@ export async function handleWorkerFlagshipHttp(input: {
     }
     dispositionDecisionCandidateRequest = parsed.data;
     meetingId = parsed.data.meetingId;
+  }
+  if (operation === "inject-demo-regulatory-change") {
+    const parsed = InjectDemoRegulatoryChangeRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    injectDemoRegulatoryChangeRequest = parsed.data;
   }
 
   if (meetingId === undefined) {
@@ -1178,6 +1220,93 @@ export async function handleWorkerFlagshipHttp(input: {
         state: result.state,
       }),
       200,
+      correlationId,
+    );
+  }
+
+  if (operation === "start-decision-monitoring") {
+    if (startDecisionMonitoringRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await startDecisionMonitoring(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        ...startDecisionMonitoringRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionFailureResponse(correlationId, result);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      StartDecisionMonitoringResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, dependencies.clock.now()),
+        meetingId,
+        monitorRegistrationId: result.monitorRegistrationId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "inject-demo-regulatory-change") {
+    if (injectDemoRegulatoryChangeRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await injectDemoRegulatoryChange(
+      dependencies.externalEvents,
+      resolved.authorization,
+      {
+        correlationId,
+        idempotencyKey: injectDemoRegulatoryChangeRequest.idempotencyKey,
+        meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      if (result.code === "FORBIDDEN") {
+        return apiErrorResponse("FORBIDDEN", correlationId);
+      }
+      if (result.code === "MONITOR_REGISTRATION_NOT_FOUND") {
+        return apiErrorResponse("INVALID_STATE_TRANSITION", correlationId);
+      }
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId)
+        : result.code === "IDEMPOTENCY_CONFLICT"
+          ? apiErrorResponse("IDEMPOTENCY_CONFLICT", correlationId)
+          : apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      InjectDemoRegulatoryChangeResponseSchema.parse({
+        correlationId: result.correlationId,
+        evaluationStatus: "pending",
+        event: externalEventReceiptView(result.event),
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        receiptStatus: "received",
+        replayed: result.replayed,
+      }),
+      202,
       correlationId,
     );
   }

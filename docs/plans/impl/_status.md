@@ -573,6 +573,12 @@ The canonical implementation-facing artifacts are:
   Actions, after which the same Worker path reaches `DRAFT` → `DECISION_READY`
   → `COMMITTED`. The external-host Cloudflare test covers this full
   source-to-Commitment journey without an OpenAI call.
+- The hosted flagship now also reaches `MONITORING` through the authenticated
+  Worker path. A facilitator-only demo regulatory change can be staged against
+  that registration, its external-event receipt is visible in the shared read
+  model, and the invalidation evaluation remains explicitly `pending` while
+  the provider is disabled. The external-host Cloudflare test covers this
+  post-commit monitoring path without an API call.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call
@@ -583,8 +589,8 @@ The canonical implementation-facing artifacts are:
   content-free operator visibility remain. The managed realtime route adapter
   is covered by three unit cases, a four-case Worker gate suite, and the new
   three-case Cloudflare integration suite; it remains disabled by default.
-  Full hosted flagship mutation parity and structured judge AI remain later
-  slices.
+  Hosted invalidation-provider evaluation, reset/replay proof, and structured
+  judge AI remain later slices.
 - The current regular baseline is 631 Vitest tests, with typecheck, formatting,
   architecture, secret scan, generated Worker types, environment, and
   Cloudflare configuration checks passing. The changed files pass targeted
@@ -610,10 +616,11 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 05 by extending hosted Worker proof to real Durable Object
-lifecycle behavior and the remaining hosted mutation contracts. Then measure
-the flagship to replace full-cap-per-attempt settlement with safe derived
-limits and only then enable the public judge route or switch the judge UI.
+Continue Plan 05 by closing the hosted invalidation-provider boundary and
+reset/replay proof, then extend Worker proof to real Durable Object lifecycle
+behavior. Measure the flagship to replace full-cap-per-attempt settlement with
+safe derived limits and only then enable the public judge route or switch the
+judge UI.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is

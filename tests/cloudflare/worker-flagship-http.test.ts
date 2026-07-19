@@ -8,12 +8,15 @@ import {
   ApproveDisclosureResponseSchema,
   CommitDecisionResponseSchema,
   DispositionSharedDecisionCandidateResponseSchema,
+  InjectDemoRegulatoryChangeResponseSchema,
+  ListSharedExternalEventsResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   SaveDecisionDraftResponseSchema,
   SynthesizeSharedDecisionResponseSchema,
   MarkDecisionReadyResponseSchema,
+  StartDecisionMonitoringResponseSchema,
 } from "@counterpoint/protocol";
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
@@ -457,6 +460,77 @@ describe("Cloudflare Worker hosted flagship API", () => {
     );
     expect(commitBody.decision.status).toBe("COMMITTED");
 
+    const monitoringResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/decisions/monitoring", {
+          body: JSON.stringify({
+            decisionId: commitBody.decision.decisionId,
+            expectedPosition: commitBody.position,
+            idempotencyKey: "worker-flagship-decision-monitoring",
+            meetingId: FLAGSHIP_MEETING_ID,
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(monitoringResponse.status).toBe(200);
+    const monitoringBody = StartDecisionMonitoringResponseSchema.parse(
+      await json(monitoringResponse),
+    );
+    expect(monitoringBody.decision.status).toBe("MONITORING");
+
+    const demoEventResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/regulatory-changes`,
+          {
+            body: JSON.stringify({
+              idempotencyKey: "worker-flagship-regulatory-change",
+            }),
+            headers: { ...authorization, "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(demoEventResponse.status).toBe(202);
+    const demoEventBody = InjectDemoRegulatoryChangeResponseSchema.parse(
+      await json(demoEventResponse),
+    );
+    expect(demoEventBody).toMatchObject({
+      evaluationStatus: "pending",
+      event: {
+        eventType: "regulatory_change",
+        monitorRegistrationId: monitoringBody.monitorRegistrationId,
+      },
+      receiptStatus: "received",
+    });
+
+    const externalEventsResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/external-events`,
+          { headers: authorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(externalEventsResponse.status).toBe(200);
+    const externalEventsBody = ListSharedExternalEventsResponseSchema.parse(
+      await json(externalEventsResponse),
+    );
+    expect(externalEventsBody.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventId: demoEventBody.event.eventId }),
+      ]),
+    );
+
     const projectionAfterSourceResponse = await handler.fetch!(
       workerRequest(
         new Request(
@@ -481,7 +555,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
         decisions: [
           expect.objectContaining({
             decisionId: commitBody.decision.decisionId,
-            status: "COMMITTED",
+            status: "MONITORING",
           }),
         ],
         evidence: [
