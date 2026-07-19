@@ -550,7 +550,8 @@ The canonical implementation-facing artifacts are:
   Cloudflare scrypt authentication, persisted Bearer sessions, assigned
   meetings, and role projection are served by the Worker. Two Cloudflare
   integration cases use external-host-style URLs, and the local Wrangler smoke
-  reaches login, meetings, and projection through `0.0.0.0`.
+  reaches login, meetings, projection, and the four read collections through
+  `0.0.0.0`.
 - The hosted read model now also serves the web client's shared evidence,
   decisions, external-event receipts, and invalidation-evaluation list
   contracts through the same authenticated meeting boundary. The four

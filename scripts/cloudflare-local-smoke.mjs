@@ -151,6 +151,25 @@ try {
       );
     },
   );
+  for (const [route, collection] of [
+    ["evidence", "evidence"],
+    ["decisions", "decisions"],
+    ["external-events", "events"],
+    ["invalidation-evaluations", "evaluations"],
+  ]) {
+    await expectJson(
+      `/api/v1/meetings/meeting-global-ai-rollout/${route}`,
+      200,
+      { headers: authorization },
+      (body) => {
+        expectValue(
+          Array.isArray(body[collection]) &&
+            body.meetingId === "meeting-global-ai-rollout",
+          `Hosted Worker did not expose the ${route} collection contract`,
+        );
+      },
+    );
+  }
 
   const page = await fetch(`${externalHostBaseUrl}/`, {
     signal: AbortSignal.timeout(5_000),
@@ -164,7 +183,7 @@ try {
   );
 
   console.log(
-    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, login, meetings, and projection.`,
+    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, login, meetings, projection, and read collections.`,
   );
 } finally {
   if (worker.exitCode === null) {
