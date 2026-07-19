@@ -5,11 +5,13 @@ import {
   InMemoryArtifactStore,
   InMemoryEventStore,
   InMemoryProjectionStore,
+  InMemorySessionRepository,
 } from "../helpers/in-memory-ports.js";
 import { artifactStoreContract } from "./artifact-store-contract.js";
 import { eventStoreContract } from "./event-store-contract.js";
 import { projectionStoreContract } from "./projection-store-contract.js";
 import { realtimePublisherContract } from "./realtime-publisher-contract.js";
+import { sessionRepositoryContract } from "./session-repository-contract.js";
 
 describe("in-memory test port adapters", () => {
   it("satisfies the reusable event-store contract", async () => {
@@ -18,6 +20,10 @@ describe("in-memory test port adapters", () => {
 
   it("satisfies the reusable projection-store contract", async () => {
     await projectionStoreContract(() => new InMemoryProjectionStore());
+  });
+
+  it("satisfies the reusable session-repository contract", async () => {
+    await sessionRepositoryContract(() => new InMemorySessionRepository());
   });
 
   it("satisfies the reusable artifact-store contract", async () => {

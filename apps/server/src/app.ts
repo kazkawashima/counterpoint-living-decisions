@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { upgradeWebSocket } from "@hono/node-server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { ZodType } from "zod";
@@ -7,6 +8,7 @@ import type { ZodType } from "zod";
 import {
   approveDisclosure,
   authenticateSession,
+  authenticateSessionById,
   commitDecision,
   createMeeting,
   dispositionDecisionCandidate,
@@ -98,6 +100,9 @@ import {
   ProposeDisclosureRequestSchema,
   ProposeDisclosureResponseSchema,
   ReadinessResponseSchema,
+  RealtimeTicketRequestSchema,
+  RealtimeTicketResponseSchema,
+  RealtimeTicketSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RegulatoryChangeWebhookRequestSchema,
@@ -109,6 +114,7 @@ import {
   ReviewInvalidationRequestSchema,
   ReviewInvalidationResponseSchema,
   RoleProjectionQuerySchema,
+  RoleProjectionResponseSchema,
   SaveDecisionDraftRequestSchema,
   SaveDecisionDraftResponseSchema,
   SynthesizeSharedDecisionRequestSchema,
@@ -118,7 +124,12 @@ import {
   type ErrorCode,
 } from "@counterpoint/protocol";
 
+import type { RealtimeTicketRecord } from "./realtime.js";
 import type { ServerRuntime } from "./runtime.js";
+import {
+  realtimeRoleProjectionFor,
+  roleProjectionFor,
+} from "./role-projection.js";
 
 interface AppEnvironment {
   Variables: {
@@ -373,6 +384,33 @@ async function participantVisiblePositionAt(
       (event.visibility === "shared" ||
         event.ownerParticipantId === participantId),
   ).length;
+}
+
+async function realtimeAuthorization(
+  runtime: ServerRuntime,
+  ticket: RealtimeTicketRecord,
+) {
+  const authenticated = await authenticateSessionById(
+    runtime,
+    ticket.sessionId,
+    { touchActivity: false },
+  );
+  if (
+    authenticated.kind !== "authenticated" ||
+    authenticated.session.userId !== ticket.userId
+  ) {
+    return undefined;
+  }
+  const resolved = await resolveMeetingAuthorization(
+    runtime.meetings,
+    authenticated.session,
+    ticket.meetingId,
+  );
+  return resolved.kind === "authorized" &&
+    resolved.authorization.participantId === ticket.participantId &&
+    resolved.authorization.role === ticket.role
+    ? resolved.authorization
+    : undefined;
 }
 
 async function decisionMutationOccurredAt(
@@ -754,8 +792,10 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     const correlationId = runtime.ids.next("correlation");
     context.set("correlationId", correlationId);
     await next();
-    context.header("x-correlation-id", correlationId);
-    context.header("cache-control", "no-store");
+    if (context.req.header("upgrade")?.toLowerCase() !== "websocket") {
+      context.header("x-correlation-id", correlationId);
+      context.header("cache-control", "no-store");
+    }
   });
 
   const health = (context: AppContext) =>
@@ -777,7 +817,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
             ? "available"
             : "unavailable",
         },
-        { name: "realtime", status: "degraded", message: "Not started in M2." },
+        { name: "realtime", status: "available" },
         {
           name: "openai",
           status: runtime.openAiConfigured ? "available" : "not_configured",
@@ -827,6 +867,7 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       return errorResponse(context, authenticated.code);
     }
     await logout(runtime, authenticated.bearerToken);
+    runtime.realtime.closeSession(authenticated.session.sessionId);
     return context.json(
       LogoutResponseSchema.parse({
         correlationId: context.get("correlationId"),
@@ -973,6 +1014,86 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         },
         position,
       }),
+    );
+  });
+
+  app.get("/api/v1/meetings/:meetingId/projection", async (context) => {
+    const query = RoleProjectionQuerySchema.safeParse({
+      meetingId: context.req.param("meetingId"),
+    });
+    if (!query.success) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      query.data.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const projection = await roleProjectionFor(
+      runtime,
+      resolved.authorization,
+      context.get("correlationId"),
+    );
+    return projection === undefined
+      ? errorResponse(context, "FORBIDDEN")
+      : context.json(RoleProjectionResponseSchema.parse(projection));
+  });
+
+  app.post("/api/v1/meetings/:meetingId/realtime/tickets", async (context) => {
+    const request = await parseJson(context, RealtimeTicketRequestSchema);
+    if (
+      request.kind === "rejected" ||
+      request.value.meetingId !== context.req.param("meetingId")
+    ) {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    const currentPosition = await participantVisiblePosition(
+      runtime,
+      request.value.meetingId,
+      resolved.authorization.participantId,
+    );
+    if (request.value.lastSeenPosition > currentPosition) {
+      return errorResponse(context, "CONFLICT", {
+        actualPosition: currentPosition,
+        expectedPosition: request.value.lastSeenPosition,
+      });
+    }
+    const ticket = runtime.realtime.issueTicket({
+      correlationId: context.get("correlationId"),
+      lastSeenPosition: request.value.lastSeenPosition,
+      meetingId: request.value.meetingId,
+      participantId: resolved.authorization.participantId,
+      role: resolved.authorization.role,
+      sessionId: authenticated.session.sessionId,
+      userId: authenticated.session.userId,
+    });
+    return context.json(
+      RealtimeTicketResponseSchema.parse({
+        correlationId: ticket.correlationId,
+        expiresAt: ticket.expiresAt,
+        meetingId: ticket.meetingId,
+        ticket: ticket.ticket,
+      }),
+      201,
     );
   });
 
@@ -2353,6 +2474,78 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       ? context.json(response.data)
       : errorResponse(context, "VALIDATION_FAILED");
   });
+
+  app.get(
+    "/api/v1/realtime",
+    upgradeWebSocket((context) => {
+      const parsedTicket = RealtimeTicketSchema.safeParse(
+        context.req.query("ticket"),
+      );
+      const ticket = parsedTicket.success
+        ? runtime.realtime.consumeTicket(parsedTicket.data)
+        : undefined;
+      let unsubscribe: (() => void) | undefined;
+      return {
+        onOpen(_event, socket) {
+          void (async () => {
+            if (ticket === undefined) {
+              socket.close(4401, "Invalid or expired realtime ticket");
+              return;
+            }
+            const authorization = await realtimeAuthorization(runtime, ticket);
+            if (authorization === undefined) {
+              socket.close(4401, "Session or meeting access expired");
+              return;
+            }
+            const records = await runtime.decisions.events.load(
+              ticket.meetingId,
+            );
+            const currentPosition = records.filter(
+              ({ event }) =>
+                event.visibility === "shared" ||
+                event.ownerParticipantId === ticket.participantId,
+            ).length;
+            if (ticket.lastSeenPosition > currentPosition) {
+              socket.close(4409, "Resume position is ahead of the meeting");
+              return;
+            }
+            unsubscribe = await runtime.realtime.subscribe({
+              close: (code, reason) => socket.close(code, reason),
+              currentPosition,
+              revalidate: async () =>
+                (await realtimeAuthorization(runtime, ticket)) !== undefined,
+              send: (message) => socket.send(JSON.stringify(message)),
+              snapshot: async (correlationId) => {
+                const currentAuthorization = await realtimeAuthorization(
+                  runtime,
+                  ticket,
+                );
+                return currentAuthorization === undefined
+                  ? undefined
+                  : realtimeRoleProjectionFor(
+                      runtime,
+                      currentAuthorization,
+                      correlationId,
+                    );
+              },
+              ticket,
+            });
+          })().catch(() => {
+            socket.close(1011, "Realtime connection failed");
+          });
+        },
+        onClose() {
+          unsubscribe?.();
+        },
+        onError() {
+          unsubscribe?.();
+        },
+        onMessage(_event, socket) {
+          socket.close(4400, "Client messages are not supported");
+        },
+      };
+    }),
+  );
 
   app.notFound((context) => errorResponse(context, "MEETING_NOT_FOUND"));
   app.onError((_error, context) => errorResponse(context, "CONFLICT"));

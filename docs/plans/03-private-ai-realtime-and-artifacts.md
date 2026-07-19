@@ -65,7 +65,7 @@ text/manual degraded path.
 - [ ] Issue channel-scoped short-lived secrets without exposing standard key.
 - [ ] Build direct browser WebRTC connection.
 - [ ] Implement lifecycle, idle close, capped reconnect, and status UI.
-- [ ] Validate session identity for app realtime traffic.
+- [x] Validate session identity for app realtime traffic.
 
 ### A7 — Voice channel interaction
 

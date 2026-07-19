@@ -7,11 +7,11 @@ import type {
   MeetingRepository,
   ParticipantAssignment,
   PasswordVerifier,
-  SessionRecord,
-  SessionRepository,
   SessionToken,
   SessionTokenIssuer,
 } from "../../packages/ports/src/index.js";
+
+export { InMemorySessionRepository } from "./in-memory-ports.js";
 
 export class MutableClock implements Clock {
   #value: string;
@@ -76,43 +76,6 @@ export class InMemoryIdentityRepository implements IdentityRepository {
 
   findByUserId(userId: string): Promise<IdentityRecord | undefined> {
     return Promise.resolve(this.#identities.get(userId));
-  }
-}
-
-export class InMemorySessionRepository implements SessionRepository {
-  readonly #sessions = new Map<string, SessionRecord>();
-
-  findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined> {
-    return Promise.resolve(
-      [...this.#sessions.values()].find(
-        (session) => session.tokenHash === tokenHash,
-      ),
-    );
-  }
-
-  put(session: SessionRecord): Promise<void> {
-    this.#sessions.set(session.sessionId, session);
-    return Promise.resolve();
-  }
-
-  revoke(sessionId: string, revokedAt: string): Promise<void> {
-    const session = this.#sessions.get(sessionId);
-    if (session !== undefined) {
-      this.#sessions.set(sessionId, { ...session, revokedAt });
-    }
-    return Promise.resolve();
-  }
-
-  session(sessionId: string): SessionRecord | undefined {
-    return this.#sessions.get(sessionId);
-  }
-
-  touch(sessionId: string, lastActivityAt: string): Promise<void> {
-    const session = this.#sessions.get(sessionId);
-    if (session !== undefined) {
-      this.#sessions.set(sessionId, { ...session, lastActivityAt });
-    }
-    return Promise.resolve();
   }
 }
 

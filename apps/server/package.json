@@ -16,6 +16,10 @@
     "@counterpoint/ports": "0.0.0",
     "@counterpoint/protocol": "0.0.0",
     "@hono/node-server": "2.0.10",
-    "hono": "4.12.30"
+    "hono": "4.12.30",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
   }
 }

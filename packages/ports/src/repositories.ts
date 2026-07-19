@@ -67,6 +67,7 @@ export interface SessionRecord {
 }
 
 export interface SessionRepository {
+  findById(sessionId: string): Promise<SessionRecord | undefined>;
   findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined>;
   put(session: SessionRecord): Promise<void>;
   revoke(sessionId: string, revokedAt: string): Promise<void>;

@@ -53,6 +53,10 @@ import type {
 } from "@counterpoint/ports";
 
 import type { ServerConfiguration } from "./config.js";
+import {
+  NodeMeetingRealtimeHub,
+  RealtimeNotifyingEventStore,
+} from "./realtime.js";
 
 export interface ServerRuntime {
   readonly artifactStorageAvailable: boolean;
@@ -69,6 +73,7 @@ export interface ServerRuntime {
   readonly migrationsCurrent: boolean;
   readonly openAiConfigured: boolean;
   readonly passwords: PasswordVerifier;
+  readonly realtime: NodeMeetingRealtimeHub;
   readonly sessions: SessionRepository;
   readonly tokens: SessionTokenIssuer;
   readonly webhookVerifier: WebhookVerifier | undefined;
@@ -271,9 +276,10 @@ export async function createLocalServerRuntime(
     const configuredDecisionSynthesizer = decisionSynthesizer(configuration);
     const configuredInvalidationEvaluator =
       invalidationEvaluator(configuration);
-    const events = new SqliteEventStore(
-      database,
-      createJsonCodec(parseStoredDomainEvent),
+    const realtime = new NodeMeetingRealtimeHub(clock, ids);
+    const events = new RealtimeNotifyingEventStore(
+      new SqliteEventStore(database, createJsonCodec(parseStoredDomainEvent)),
+      (records) => realtime.publish(records),
     );
     const projections = new SqliteProjectionStore<MeetingProjection>(
       database,
@@ -315,7 +321,10 @@ export async function createLocalServerRuntime(
     return {
       artifactStorageAvailable,
       clock,
-      close: () => database.close(),
+      close: () => {
+        realtime.close();
+        database.close();
+      },
       decisionCandidates,
       decisions,
       disclosures,
@@ -348,6 +357,7 @@ export async function createLocalServerRuntime(
         CURRENT_SQLITE_MIGRATION_COUNT,
       openAiConfigured: configuration.openAiConfigured,
       passwords: new ScryptPasswordHasher(),
+      realtime,
       sessions: new SqliteSessionRepository(database),
       tokens: new Sha256SessionTokenIssuer(),
       webhookVerifier,

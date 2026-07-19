@@ -6,8 +6,8 @@ Updated: 2026-07-19
 
 **The complete local guided flagship is implemented from private evidence
 through permission, Commitment, external change, human review, revision,
-export, and deterministic meeting reset. Realtime resume and hosted judge mode
-are next.**
+export, deterministic meeting reset, and participant-scoped realtime resume.
+The remaining L3 HTTP surface and hosted judge mode are next.**
 
 The canonical implementation-facing artifacts are:
 
@@ -187,26 +187,44 @@ The canonical implementation-facing artifacts are:
   cleared shared Evidence, participant control absence, desktop, mobile, and
   reduced motion. The rehearsed reel map targets 2 minutes 30 seconds with
   explicit synthetic-story labeling.
+- L3 now exposes a strict role-projection query and a real Node WebSocket hub
+  authenticated by 30-second, one-time, digest-stored tickets. Tickets bind the
+  session, user, meeting, participant, role, and participant-visible resume
+  cursor without placing the Bearer token on the socket URL.
+- Shared changes reach all active meeting members while owner-private changes
+  reach only the matching participant. Realtime source entries contain
+  metadata only; private bodies, storage references, raw event envelopes, and
+  inactive assignments are excluded from the wire projection.
+- Reconnect sends a catch-up projection before `connection.ready` and advances
+  the cursor only after a successful personalized projection send. Session and
+  meeting membership are passively revalidated without extending inactivity;
+  logout closes active sockets and invalidates unused tickets.
+- Durable event append no longer depends on transient socket delivery.
+  Publication receives payload-free notices, runs after a successful append,
+  and can fail without changing the committed command result. The durable
+  participant-visible position remains the recovery source.
+- Real HTTP/WebSocket integration proof covers the `101` upgrade on a
+  `0.0.0.0` server, owner resume, cross-owner withholding followed by shared
+  publication, single-use tickets, and logout revocation. The full suite is
+  242 tests.
 
 ## In progress
 
-- Complete the L3 versioned capability surface, scoped realtime subscriptions,
-  and resume from last-seen meeting position.
+- Complete the remaining L3 versioned HTTP capability surface.
 - Continue the A6 Realtime client-secret path without exposing the standard
   provider key.
 
 ## Not started
 
-- Realtime application hub and resume.
 - Deployment and remaining submission assets.
 
 ## Next executable slice
 
 Continue L3 in
-[`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md): implement
-meeting-scoped realtime projection subscriptions and deterministic resume from
-the last participant-visible position, then connect that hub to A6 without
-changing the completed text flagship semantics.
+[`02-local-flagship-skeleton.md`](../02-local-flagship-skeleton.md): close the
+remaining versioned HTTP capability gaps, then connect the completed
+application realtime hub to A6 without changing the completed text flagship
+semantics.
 
 ## Open gates
 

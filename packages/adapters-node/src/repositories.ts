@@ -241,6 +241,28 @@ export class SqliteSessionRepository implements SessionRepository {
     this.#owner = owner;
   }
 
+  async findById(sessionId: string): Promise<SessionRecord | undefined> {
+    await Promise.resolve();
+    requireNonEmpty(sessionId, "sessionId");
+    const row = this.#owner.database
+      .prepare(
+        `
+          SELECT
+            session_id,
+            token_hash,
+            user_id,
+            created_at,
+            last_activity_at,
+            absolute_expires_at,
+            revoked_at
+          FROM sessions
+          WHERE session_id = ?
+        `,
+      )
+      .get(sessionId) as unknown as SessionRow | undefined;
+    return row === undefined ? undefined : sessionFromRow(row);
+  }
+
   async findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined> {
     await Promise.resolve();
     requireNonEmpty(tokenHash, "tokenHash");

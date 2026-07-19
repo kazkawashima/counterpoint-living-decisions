@@ -119,8 +119,9 @@ export async function resolveMeetingAuthorization(
     }
   | MeetingOperationFailure
 > {
+  const meeting = await meetings.findById(meetingId);
   const assignment = await meetings.findAssignment(meetingId, session.userId);
-  if (!assignment?.active) {
+  if (!meeting?.active || !assignment?.active) {
     return { code: "FORBIDDEN", kind: "rejected" };
   }
 

@@ -6,8 +6,11 @@ import {
   createJsonCodec,
   LocalArtifactStore,
   NodeSqliteDatabase,
+  ScryptPasswordHasher,
+  seedSyntheticUsers,
   SqliteEventStore,
   SqliteProjectionStore,
+  SqliteSessionRepository,
   type JsonCodec,
 } from "@counterpoint/adapters-node";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { artifactStoreContract } from "./artifact-store-contract.js";
 import { eventStoreContract } from "./event-store-contract.js";
 import { projectionStoreContract } from "./projection-store-contract.js";
+import { sessionRepositoryContract } from "./session-repository-contract.js";
 
 interface FixtureEvent {
   readonly type: string;
@@ -95,6 +99,19 @@ describe("SQLite and local-file port adapters", () => {
     await projectionStoreContract(
       () => new SqliteProjectionStore(owner, fixtureProjectionCodec()),
     );
+  });
+
+  it("satisfies the reusable session-repository contract", async () => {
+    const owner = await database();
+    seedSyntheticUsers(owner, [
+      {
+        passwordHash: await new ScryptPasswordHasher().hash(
+          "contract-fixture-password",
+        ),
+        userId: "user-a",
+      },
+    ]);
+    await sessionRepositoryContract(() => new SqliteSessionRepository(owner));
   });
 
   it("satisfies the reusable artifact-store contract", async () => {

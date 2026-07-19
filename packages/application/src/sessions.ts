@@ -60,6 +60,48 @@ function isoTimestamp(milliseconds: number): string {
   return new Date(milliseconds).toISOString();
 }
 
+type SessionAuthenticationDependencies = Pick<
+  SessionDependencies,
+  "clock" | "sessions"
+>;
+
+async function authenticateStoredSession(
+  dependencies: SessionAuthenticationDependencies,
+  session: SessionRecord | undefined,
+  options: { readonly touchActivity: boolean },
+): Promise<SessionAuthenticationResult> {
+  if (session === undefined || session.revokedAt !== undefined) {
+    return {
+      code: "AUTHENTICATION_REQUIRED",
+      kind: "rejected",
+    };
+  }
+
+  const now = dependencies.clock.now();
+  const nowMs = timestampMs(now);
+  const expired =
+    nowMs >= timestampMs(session.absoluteExpiresAt) ||
+    nowMs - timestampMs(session.lastActivityAt) >= SESSION_INACTIVITY_MS;
+  if (expired) {
+    await dependencies.sessions.revoke(session.sessionId, now);
+    return {
+      code: "SESSION_EXPIRED",
+      kind: "rejected",
+    };
+  }
+
+  if (options.touchActivity) {
+    await dependencies.sessions.touch(session.sessionId, now);
+  }
+  return {
+    kind: "authenticated",
+    session: {
+      ...session,
+      lastActivityAt: options.touchActivity ? now : session.lastActivityAt,
+    },
+  };
+}
+
 export async function login(
   dependencies: SessionDependencies,
   input: {
@@ -116,34 +158,27 @@ export async function authenticateSession(
 
   const tokenHash = await dependencies.tokens.digest(bearerToken);
   const session = await dependencies.sessions.findByTokenHash(tokenHash);
-  if (session === undefined || session.revokedAt !== undefined) {
+  return authenticateStoredSession(dependencies, session, {
+    touchActivity: true,
+  });
+}
+
+export async function authenticateSessionById(
+  dependencies: SessionAuthenticationDependencies,
+  sessionId: string,
+  options: { readonly touchActivity?: boolean } = {},
+): Promise<SessionAuthenticationResult> {
+  if (sessionId.length === 0) {
     return {
       code: "AUTHENTICATION_REQUIRED",
       kind: "rejected",
     };
   }
 
-  const now = dependencies.clock.now();
-  const nowMs = timestampMs(now);
-  const expired =
-    nowMs >= timestampMs(session.absoluteExpiresAt) ||
-    nowMs - timestampMs(session.lastActivityAt) >= SESSION_INACTIVITY_MS;
-  if (expired) {
-    await dependencies.sessions.revoke(session.sessionId, now);
-    return {
-      code: "SESSION_EXPIRED",
-      kind: "rejected",
-    };
-  }
-
-  await dependencies.sessions.touch(session.sessionId, now);
-  return {
-    kind: "authenticated",
-    session: {
-      ...session,
-      lastActivityAt: now,
-    },
-  };
+  const session = await dependencies.sessions.findById(sessionId);
+  return authenticateStoredSession(dependencies, session, {
+    touchActivity: options.touchActivity ?? true,
+  });
 }
 
 export async function logout(

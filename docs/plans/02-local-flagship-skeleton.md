@@ -37,8 +37,8 @@ ports.
 
 - [ ] Implement versioned HTTP capability surface.
 - [x] Implement safe error mapping and correlation IDs.
-- [ ] Implement scoped realtime projection subscriptions.
-- [ ] Handle resume from last-seen meeting position.
+- [x] Implement scoped realtime projection subscriptions.
+- [x] Handle resume from last-seen meeting position.
 - [x] Bind server to `0.0.0.0`.
 
 ### L4 — Web shell and role surfaces

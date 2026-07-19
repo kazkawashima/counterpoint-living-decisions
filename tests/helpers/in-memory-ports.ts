@@ -11,6 +11,8 @@ import type {
   ProjectionStore,
   RealtimeMessage,
   RealtimePublisher,
+  SessionRecord,
+  SessionRepository,
 } from "../../packages/ports/src/index.js";
 
 function projectionKey(scope: ProjectionScope): string {
@@ -137,6 +139,47 @@ export class InMemoryProjectionStore<
 
   put(scope: ProjectionScope, value: TProjection): Promise<void> {
     this.#projections.set(projectionKey(scope), value);
+    return Promise.resolve();
+  }
+}
+
+export class InMemorySessionRepository implements SessionRepository {
+  readonly #sessions = new Map<string, SessionRecord>();
+
+  findById(sessionId: string): Promise<SessionRecord | undefined> {
+    return Promise.resolve(this.#sessions.get(sessionId));
+  }
+
+  findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined> {
+    return Promise.resolve(
+      [...this.#sessions.values()].find(
+        (session) => session.tokenHash === tokenHash,
+      ),
+    );
+  }
+
+  put(session: SessionRecord): Promise<void> {
+    this.#sessions.set(session.sessionId, session);
+    return Promise.resolve();
+  }
+
+  revoke(sessionId: string, revokedAt: string): Promise<void> {
+    const session = this.#sessions.get(sessionId);
+    if (session !== undefined && session.revokedAt === undefined) {
+      this.#sessions.set(sessionId, { ...session, revokedAt });
+    }
+    return Promise.resolve();
+  }
+
+  session(sessionId: string): SessionRecord | undefined {
+    return this.#sessions.get(sessionId);
+  }
+
+  touch(sessionId: string, lastActivityAt: string): Promise<void> {
+    const session = this.#sessions.get(sessionId);
+    if (session !== undefined && session.revokedAt === undefined) {
+      this.#sessions.set(sessionId, { ...session, lastActivityAt });
+    }
     return Promise.resolve();
   }
 }

@@ -145,6 +145,7 @@ export {
   SESSION_ABSOLUTE_MS,
   SESSION_INACTIVITY_MS,
   authenticateSession,
+  authenticateSessionById,
   capabilitiesForRole,
   isUserAuthorizationContext,
   login,
