@@ -550,13 +550,18 @@ The canonical implementation-facing artifacts are:
   Cloudflare scrypt authentication, persisted Bearer sessions, assigned
   meetings, and role projection are served by the Worker. Two Cloudflare
   integration cases use external-host-style URLs, and the local Wrangler smoke
-  reaches login, meetings, projection, and the four read collections through
-  `0.0.0.0`.
+  reaches login, meetings, projection, private text, and the four read
+  collections through `0.0.0.0`.
 - The hosted read model now also serves the web client's shared evidence,
   decisions, external-event receipts, and invalidation-evaluation list
   contracts through the same authenticated meeting boundary. The four
   collection routes are covered by the external-host-style Cloudflare
-  flagship test and remain read-only until hosted mutation parity is complete.
+  flagship test and remain read-only.
+- The first hosted mutation is now wired for private text sources: the Worker
+  validates the authenticated meeting boundary, writes the source to R2,
+  appends the D1 event, refreshes the projection, and returns the protocol
+  receipt without exposing storage credentials. The Cloudflare flagship test
+  covers the 201 receipt and source visibility after projection reload.
 - The enabled managed Realtime Worker route now has one Cloudflare integration
   proof covering judge authentication, cross-meeting isolation, turn and
   transcript forwarding, termination settlement, and the next-call

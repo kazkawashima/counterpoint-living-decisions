@@ -4,7 +4,9 @@ import {
   listAssignedMeetings,
   login,
   logout,
+  registerPrivateTextSource,
   resolveMeetingAuthorization,
+  type DisclosureDependencies,
   type InvalidationEvaluationView,
   type UserAuthorizationContext,
   type UserAuthorizationPolicy,
@@ -16,12 +18,15 @@ import {
   replayMeeting,
   type ExternalEvent as DomainExternalEvent,
   type DomainEvent,
+  type MeetingProjection,
 } from "@counterpoint/domain";
 import {
   D1EventStore,
   D1IdentityRepository,
   D1MeetingRepository,
+  D1ProjectionStore,
   D1SessionRepository,
+  R2ArtifactStore,
   ScryptPasswordVerifier,
   WebCryptoSessionTokenIssuer,
   createJsonCodec,
@@ -52,11 +57,15 @@ import {
   LoginResponseSchema,
   LogoutRequestSchema,
   LogoutResponseSchema,
+  RegisterPrivateTextSourceFixtureRequestSchema,
+  RegisterPrivateTextSourceFixtureResponseSchema,
   RoleProjectionQuerySchema,
+  type RegisterPrivateTextSourceFixtureRequest,
 } from "@counterpoint/protocol";
 
 export interface WorkerFlagshipHttpDependencies {
   readonly clock: Clock;
+  readonly disclosures: DisclosureDependencies;
   readonly events: EventStore<DomainEvent>;
   readonly identities: IdentityRepository;
   readonly ids: IdGenerator;
@@ -68,6 +77,7 @@ export interface WorkerFlagshipHttpDependencies {
 }
 
 export interface WorkerFlagshipD1Bindings {
+  readonly ARTIFACTS: R2Bucket;
   readonly DB: D1Database;
 }
 
@@ -79,7 +89,8 @@ export type WorkerFlagshipOperation =
   | "login"
   | "logout"
   | "meetings"
-  | "projection";
+  | "projection"
+  | "register-text-source";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
 
@@ -125,17 +136,53 @@ function randomIds(): IdGenerator {
   return { next: (namespace) => `${namespace}-${crypto.randomUUID()}` };
 }
 
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+}
+
 export function createWorkerFlagshipDependencies(
   bindings: WorkerFlagshipD1Bindings,
 ): WorkerFlagshipHttpDependencies {
+  const clock = nowClock();
+  const events = new D1EventStore(
+    bindings.DB,
+    createJsonCodec(parseStoredDomainEvent),
+  );
+  const projections = new D1ProjectionStore<MeetingProjection>(
+    bindings.DB,
+    createJsonCodec((input) => input as MeetingProjection),
+  );
+  const ids = randomIds();
+  const hash = {
+    async hash(value: string): Promise<string> {
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(value),
+      );
+      return `sha256:${toBase64Url(new Uint8Array(digest))}`;
+    },
+  };
+  const disclosures: DisclosureDependencies = {
+    artifacts: new R2ArtifactStore(bindings.ARTIFACTS),
+    clock,
+    events,
+    hash,
+    ids,
+    projections,
+  };
   return {
-    clock: nowClock(),
-    events: new D1EventStore(
-      bindings.DB,
-      createJsonCodec(parseStoredDomainEvent),
-    ),
+    clock,
+    disclosures,
+    events,
     identities: new D1IdentityRepository(bindings.DB),
-    ids: randomIds(),
+    ids,
     meetings: new D1MeetingRepository(bindings.DB),
     passwords: new ScryptPasswordVerifier(),
     sessions: new D1SessionRepository(bindings.DB),
@@ -179,11 +226,13 @@ async function authenticatedSession(
 function visiblePosition(
   events: readonly DomainEvent[],
   participantId: string,
+  throughPosition?: number,
 ): number {
   return events.filter(
     (event) =>
-      event.visibility === "shared" ||
-      event.ownerParticipantId === participantId,
+      (throughPosition === undefined || event.position <= throughPosition) &&
+      (event.visibility === "shared" ||
+        event.ownerParticipantId === participantId),
   ).length;
 }
 
@@ -355,6 +404,38 @@ async function roleProjection(
     ({ ownerParticipantId }) =>
       ownerParticipantId === authorization.participantId,
   );
+  const privateSources = await Promise.all(
+    events.flatMap((event) =>
+      event.eventType === "ArtifactRegistered" &&
+      event.visibility === "private" &&
+      event.ownerParticipantId === authorization.participantId &&
+      event.payload.artifact.artifactType === "text"
+        ? [
+            dependencies.disclosures.artifacts
+              .get({
+                artifactId: event.payload.artifact.id,
+                meetingId: authorization.meetingId,
+                ownerParticipantId: authorization.participantId,
+                visibility: "private",
+              })
+              .then((bytes) =>
+                bytes === undefined
+                  ? undefined
+                  : {
+                      createdAt: event.occurredAt,
+                      sourceArtifactId: event.payload.artifact.id,
+                      text: new TextDecoder().decode(bytes),
+                      title: "Registered private text source",
+                    },
+              ),
+          ]
+        : [],
+    ),
+  ).then((sources) =>
+    sources.filter(
+      (source): source is NonNullable<typeof source> => source !== undefined,
+    ),
+  );
 
   return GetRoleProjectionResponseSchema.parse({
     capabilities: publicCapabilities(authorization.capabilities),
@@ -373,7 +454,7 @@ async function roleProjection(
       artifacts: [],
       disclosureCandidates: [],
       inferenceSuggestions: [],
-      sources: [],
+      sources: privateSources,
       utterances: (privateWorkspace?.utterances ?? []).map(utteranceView),
     },
     shared: {
@@ -460,7 +541,16 @@ export async function handleWorkerFlagshipHttp(input: {
   readonly operation: WorkerFlagshipOperation;
   readonly request: Request;
 }): Promise<Response> {
-  const { correlationId, dependencies, meetingId, operation, request } = input;
+  const {
+    correlationId,
+    dependencies,
+    meetingId: requestedMeetingId,
+    operation,
+    request,
+  } = input;
+  let meetingId = requestedMeetingId;
+  let registerTextSourceRequest:
+    RegisterPrivateTextSourceFixtureRequest | undefined;
 
   if (operation === "login") {
     const parsed = LoginRequestSchema.safeParse(await readJson(request));
@@ -531,6 +621,17 @@ export async function handleWorkerFlagshipHttp(input: {
     );
   }
 
+  if (operation === "register-text-source") {
+    const parsed = RegisterPrivateTextSourceFixtureRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    registerTextSourceRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+
   if (meetingId === undefined) {
     return apiErrorResponse("VALIDATION_FAILED", correlationId);
   }
@@ -546,6 +647,48 @@ export async function handleWorkerFlagshipHttp(input: {
   );
   if (resolved.kind === "rejected") {
     return apiErrorResponse(resolved.code, correlationId);
+  }
+
+  if (operation === "register-text-source") {
+    if (registerTextSourceRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await registerPrivateTextSource(
+      dependencies.disclosures,
+      resolved.authorization,
+      {
+        ...registerTextSourceRequest,
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      RegisterPrivateTextSourceFixtureResponseSchema.parse({
+        correlationId: result.correlationId,
+        meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        source: result.source,
+      }),
+      201,
+      correlationId,
+    );
   }
 
   if (operation === "evidence" || operation === "decisions") {

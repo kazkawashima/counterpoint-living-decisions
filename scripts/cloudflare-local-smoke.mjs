@@ -139,15 +139,40 @@ try {
       );
     },
   );
+  let projectedPosition;
   await expectJson(
     "/api/v1/meetings/meeting-global-ai-rollout/projection",
     200,
     { headers: authorization },
     (body) => {
+      projectedPosition = body.shared?.position;
       expectValue(
         body.meeting?.purpose?.includes("Work & Productivity") === true &&
-          body.participant?.userId === "product",
+          body.participant?.userId === "product" &&
+          Number.isSafeInteger(projectedPosition),
         "Hosted Worker did not expose the flagship projection",
+      );
+    },
+  );
+  await expectJson(
+    "/api/v1/disclosures/sources/text",
+    201,
+    {
+      body: JSON.stringify({
+        expectedPosition: projectedPosition,
+        idempotencyKey: "cloudflare-local-smoke-text-source",
+        meetingId: "meeting-global-ai-rollout",
+        text: "The local smoke path confirms private text can be staged.",
+        title: "Local smoke source",
+      }),
+      headers: { ...authorization, "content-type": "application/json" },
+      method: "POST",
+    },
+    (body) => {
+      expectValue(
+        body.source?.text ===
+          "The local smoke path confirms private text can be staged.",
+        "Hosted Worker did not accept the private text source mutation",
       );
     },
   );
@@ -183,7 +208,7 @@ try {
   );
 
   console.log(
-    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, login, meetings, projection, and read collections.`,
+    `Cloudflare local smoke passed via ${externalHostBaseUrl}: static, health, readiness, login, meetings, projection, private text, and read collections.`,
   );
 } finally {
   if (worker.exitCode === null) {

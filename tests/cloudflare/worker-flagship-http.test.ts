@@ -125,6 +125,54 @@ describe("Cloudflare Worker hosted flagship API", () => {
         position: 0,
       });
     }
+
+    const sourceResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/disclosures/sources/text", {
+          body: JSON.stringify({
+            expectedPosition: 0,
+            idempotencyKey: "worker-flagship-text-source",
+            meetingId: FLAGSHIP_MEETING_ID,
+            text: "The rollout needs a staged pilot and an explicit owner.",
+            title: "Rollout pilot note",
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(sourceResponse.status).toBe(201);
+    await expect(json(sourceResponse)).resolves.toMatchObject({
+      meetingId: FLAGSHIP_MEETING_ID,
+      position: 1,
+      source: {
+        text: "The rollout needs a staged pilot and an explicit owner.",
+        title: "Rollout pilot note",
+      },
+    });
+
+    const projectionAfterSourceResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+          { headers: authorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(projectionAfterSourceResponse.status).toBe(200);
+    await expect(json(projectionAfterSourceResponse)).resolves.toMatchObject({
+      privateWorkspace: {
+        sources: [
+          expect.objectContaining({
+            text: "The rollout needs a staged pilot and an explicit owner.",
+          }),
+        ],
+      },
+    });
   });
 
   it("keeps the hosted meeting and projection routes authenticated", async () => {
