@@ -53,3 +53,9 @@ export type {
   SessionRepository,
 } from "./repositories.js";
 export type { RealtimeMessage, RealtimePublisher } from "./realtime.js";
+export type {
+  UrlFetcher,
+  UrlFetchFailureReason,
+  UrlFetchRequest,
+  UrlFetchResult,
+} from "./url-fetch.js";

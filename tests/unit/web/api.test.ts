@@ -2,6 +2,7 @@ import {
   acquireSharedFloor,
   captureUtterance,
   getRoleProjection,
+  registerPrivateUrlArtifact,
   releaseSharedFloor,
   type StoredSession,
 } from "../../../apps/web/src/api.js";
@@ -229,5 +230,43 @@ describe("A7 browser API helpers", () => {
         utteranceId: "utterance-1",
       }),
     ).rejects.toThrow();
+  });
+
+  it("registers a public document URL without client-selected authority", async () => {
+    const input = {
+      idempotencyKey: "url-ingestion-1",
+      meetingId: "meeting-1",
+      url: "https://public.example/synthetic-note.md",
+    } as const;
+    const response = {
+      artifact: {
+        contentType: "text/markdown",
+        createdAt: "2026-07-19T12:00:00.000Z",
+        derivedArtifactId: "artifact-derived-1",
+        derivedContentHash: `sha256:${"2".repeat(64)}`,
+        derivedSizeBytes: 48,
+        filename: "synthetic-note.md",
+        ingestionMethod: "url",
+        processingState: "processed",
+        sizeBytes: 52,
+        sourceArtifactId: "artifact-source-1",
+        sourceContentHash: `sha256:${"1".repeat(64)}`,
+      },
+      correlationId: "correlation-url-1",
+      meetingId: "meeting-1",
+      position: 2,
+    } as const;
+    const fetchMock = fetchMockFor(response, 201);
+
+    await expect(registerPrivateUrlArtifact(session, input)).resolves.toEqual(
+      response,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/artifacts/url",
+      expect.any(Object),
+    );
+    expectAuthenticatedJsonRequest(fetchMock, "POST");
+    expect(requestBody(fetchMock)).toEqual(input);
+    expect(requestBody(fetchMock)).not.toHaveProperty("participantId");
   });
 });

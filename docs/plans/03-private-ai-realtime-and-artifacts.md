@@ -27,11 +27,11 @@ text/manual degraded path.
 
 ### A2 — SSRF-safe URL adapter
 
-- [ ] Implement scheme allowlist and destination classification.
-- [ ] Resolve/re-check each redirect.
-- [ ] Bound redirects, bytes, timeout, and content type.
-- [ ] Add DNS/redirect/private-network attack fixtures.
-- [ ] Treat fetched text as untrusted model data.
+- [x] Implement scheme allowlist and destination classification.
+- [x] Resolve/re-check each redirect.
+- [x] Bound redirects, bytes, timeout, and content type.
+- [x] Add DNS/redirect/private-network attack fixtures.
+- [x] Treat fetched text as untrusted model data.
 
 ### A3 — OpenAI structured-output adapter
 

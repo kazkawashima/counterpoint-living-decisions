@@ -7,13 +7,13 @@ Updated: 2026-07-19
 **The complete local guided flagship is implemented from private evidence
 through permission, Commitment, external change, human review, revision,
 export, deterministic meeting reset, and participant-scoped realtime resume.
-The revocable read-only shared display, A1 validated artifact ingestion, A6
-transient BYOK/client-secret path, A7 shared-floor speech controls, and A8
-durable degraded mode are also complete. OpenAI, Realtime, and BYOK loss now
-leave state reads, manual text, human-authored Decisions, audit, and export
-usable through explicit bounded recovery UI. Plan 03 SSRF-safe URL ingestion
-is the next remaining local slice before hosted Cloudflare parity and judge
-mode.**
+The revocable read-only shared display, A1 validated artifact ingestion, A2
+SSRF-safe URL ingestion, A6 transient BYOK/client-secret path, A7 shared-floor
+speech controls, and A8 durable degraded mode are also complete. OpenAI,
+Realtime, and BYOK loss leave state reads, manual text, human-authored
+Decisions, audit, and export usable through explicit bounded recovery UI. The
+remaining implementation phase is hosted Cloudflare parity, judge mode,
+security hardening, and submission packaging.**
 
 The canonical implementation-facing artifacts are:
 
@@ -317,14 +317,28 @@ The canonical implementation-facing artifacts are:
   source/derived controls, and private activation before exact preview. Three
   synthetic screenshots and one clip record desktop processing/preview and a
   reduced-motion cross-owner empty state.
-- The complete verification surface now passes 322 unit/contract/integration
-  tests and all 14 browser E2E scenarios, in addition to build, lint,
+- A2 accepts only credential-free HTTP/HTTPS on default ports. It requires
+  every DNS answer to be globally routable, pins the socket to a checked IP,
+  re-resolves every redirect, and fails closed after three redirects, ten
+  seconds, 20 MiB, unsupported content types, or any content encoding.
+- URL locators are normalized and persisted only as hashes. Source bodies and
+  prompt-injection text remain owner-private, enter the same separately hashed
+  derivative/disclosure path as uploads, and never auto-publish. Fifty-five
+  deterministic adapter fixtures cover IPv4/IPv6, metadata, mixed DNS,
+  rebinding-resistant pinning, redirects, timeout, bytes, encoding, type, and
+  safe filename handling.
+- A2 visual proof adds two screenshots and one clip for the public-URL safety
+  gate and private exact preview. The displayed locator and fetched body are
+  synthetic; the browser substitution and real transport security suite are
+  documented separately in the capture notes.
+- The complete verification surface now passes 383 unit/contract/integration
+  tests and all 15 browser E2E scenarios, in addition to build, lint,
   typecheck, formatting, architecture, environment, and Compose checks.
 
 ## In progress
 
-- Continue Plan 03 A2 SSRF-safe URL ingestion while preserving the completed
-  artifact, disclosure, AI, Realtime, and degraded-mode boundaries.
+- Begin Plan 05 C1 Cloudflare resource setup while preserving the completed
+  local flagship and adapter boundaries.
 
 ## Not started
 
@@ -332,13 +346,13 @@ The canonical implementation-facing artifacts are:
 
 ## Next executable slice
 
-Continue Plan 03 in
-[`03-private-ai-realtime-and-artifacts.md`](../03-private-ai-realtime-and-artifacts.md)
-at A2: add scheme/destination/redirect revalidation, bounded bytes/timeouts,
-DNS rebinding and private-network attack fixtures, owner-private retrieval,
-browser E2E, and visual evidence for URL ingestion. Then move to Plan 05;
-preserve the allowlisted judge-managed source and USD 25 rolling 24-hour
-product spend gate for H3/H4.
+Continue with Plan 05 in
+[`05-cloudflare-judge-mode-and-security.md`](../05-cloudflare-judge-mode-and-security.md)
+at C1: add the Worker static/API boundary, D1/R2/Durable Object resource
+configuration, reproducible preview setup, and `0.0.0.0`-reachable local
+commands. Preserve the allowlisted judge-managed source and USD 25 rolling
+24-hour product spend gate for C3/C4; do not deploy or create remote resources
+without an explicit deployment boundary.
 
 ## Open gates
 

@@ -6,6 +6,7 @@ import {
   createJsonCodec,
   LocalArtifactStore,
   NodeArtifactTextExtractor,
+  NodeSafeUrlFetcher,
   NodeMeetingApiKeyLeaseStore,
   NodeSqliteDatabase,
   NodeHmacWebhookVerifier,
@@ -33,13 +34,13 @@ import {
   OpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
 import type {
-  ArtifactIngestionDependencies,
   DecisionCandidateDependencies,
   DecisionDependencies,
   DisclosureDependencies,
   ExternalEventDependencies,
   InvalidationEvaluationDependencies,
   RealtimeSecretDependencies,
+  UrlArtifactIngestionDependencies,
 } from "@counterpoint/application";
 import {
   domainEventTypes,
@@ -64,7 +65,7 @@ import {
 } from "./realtime.js";
 
 export interface ServerRuntime {
-  readonly artifactIngestion: ArtifactIngestionDependencies;
+  readonly artifactIngestion: UrlArtifactIngestionDependencies;
   readonly artifactStorageAvailable: boolean;
   readonly clock: Clock;
   readonly decisionCandidates: DecisionCandidateDependencies;
@@ -326,7 +327,7 @@ export async function createLocalServerRuntime(
         : { candidateProposer: configuredCandidateProposer }),
       ...decisions,
     };
-    const artifactIngestion: ArtifactIngestionDependencies = {
+    const artifactIngestion: UrlArtifactIngestionDependencies = {
       artifacts,
       clock,
       events,
@@ -334,6 +335,7 @@ export async function createLocalServerRuntime(
       hashBytes: sha256Bytes,
       ids,
       projections,
+      urls: new NodeSafeUrlFetcher(),
     };
     const webhookVerifier =
       configuration.regulatoryWebhookSecret === undefined

@@ -2777,7 +2777,7 @@ function WorkspaceShell({
               <span className="source-type">
                 {uploadedPrivateSource === undefined
                   ? "Synthetic source"
-                  : "Uploaded private source"}
+                  : "Registered private source"}
               </span>
               <h2>
                 {uploadedPrivateSource?.filename ??
@@ -2844,7 +2844,7 @@ function WorkspaceShell({
             <label htmlFor="private-note">
               {uploadedPrivateSource === undefined
                 ? "Staged private note"
-                : "Active uploaded source · derived text"}
+                : "Active private source · derived text"}
             </label>
             <textarea
               id="private-note"

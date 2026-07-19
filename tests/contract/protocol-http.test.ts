@@ -43,6 +43,7 @@ import {
   ReadinessResponseSchema,
   RegulatoryChangeWebhookRequestSchema,
   RegulatoryChangeWebhookResponseSchema,
+  RegisterPrivateUrlArtifactRequestSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RejectDecisionRequestSchema,
   RejectDecisionResponseSchema,
@@ -1571,6 +1572,21 @@ describe("strict v1 HTTP protocol", () => {
     } as const;
     const parsedFields = UploadPrivateArtifactFieldsSchema.parse(fields);
     expectTypeOf(parsedFields).toEqualTypeOf<UploadPrivateArtifactFields>();
+    expect(
+      RegisterPrivateUrlArtifactRequestSchema.parse({
+        ...fields,
+        url: "https://public.example/synthetic-readiness.md",
+      }),
+    ).toMatchObject({
+      meetingId: "meeting-1",
+      url: "https://public.example/synthetic-readiness.md",
+    });
+    expect(
+      RegisterPrivateUrlArtifactRequestSchema.safeParse({
+        ...fields,
+        url: "not-a-url",
+      }).success,
+    ).toBe(false);
 
     const artifact = {
       sourceArtifactId: "artifact-source-1",
@@ -1581,6 +1597,7 @@ describe("strict v1 HTTP protocol", () => {
       derivedContentHash: `sha256:${"2".repeat(64)}`,
       sizeBytes: 128,
       derivedSizeBytes: 112,
+      ingestionMethod: "upload",
       processingState: "processed",
       createdAt: "2026-07-19T12:00:00.000Z",
     } as const;

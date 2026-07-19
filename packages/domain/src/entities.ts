@@ -134,6 +134,7 @@ export type SourceArtifact = DomainRecord<{
   readonly derivedSizeBytes?: number;
   readonly derivedStorageReference?: NonEmptyText;
   readonly originalFilename?: NonEmptyText;
+  readonly sourceLocatorHash?: ContentHash;
   readonly sizeBytes: number;
   readonly processingState: ArtifactProcessingState;
 }>;

@@ -30,6 +30,7 @@ import {
   MarkDecisionReadyResponseSchema,
   PreviewDisclosureResponseSchema,
   ProposeDisclosureResponseSchema,
+  RegisterPrivateUrlArtifactResponseSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
   RejectDisclosureResponseSchema,
   ReleaseSharedFloorRequestSchema,
@@ -75,6 +76,7 @@ import {
   type MarkDecisionReadyResponse,
   type PreviewDisclosureResponse,
   type ProposeDisclosureResponse,
+  type RegisterPrivateUrlArtifactResponse,
   type RegisterPrivateTextSourceFixtureResponse,
   type RejectDisclosureResponse,
   type ReleaseSharedFloorRequest,
@@ -434,6 +436,25 @@ export async function uploadPrivateArtifact(
     session,
   );
   return UploadPrivateArtifactResponseSchema.parse(body);
+}
+
+export async function registerPrivateUrlArtifact(
+  session: StoredSession,
+  input: {
+    readonly idempotencyKey: string;
+    readonly meetingId: string;
+    readonly url: string;
+  },
+): Promise<RegisterPrivateUrlArtifactResponse> {
+  const body = await request(
+    "/api/v1/artifacts/url",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+    session,
+  );
+  return RegisterPrivateUrlArtifactResponseSchema.parse(body);
 }
 
 export async function downloadPrivateArtifact(

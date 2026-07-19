@@ -251,6 +251,7 @@ export const PrivateArtifactSchema = z.strictObject({
   sourceArtifactId: SourceArtifactIdSchema,
   derivedArtifactId: SourceArtifactIdSchema.optional(),
   filename: TitleSchema,
+  ingestionMethod: z.enum(["upload", "url"]),
   contentType: z.string().trim().min(1).max(256),
   sourceContentHash: ContentHashSchema,
   derivedContentHash: ContentHashSchema.optional(),
@@ -697,6 +698,14 @@ export const UploadPrivateArtifactResponseSchema = z.strictObject({
   ...MeetingMutationReceiptShape,
   artifact: PrivateArtifactSchema,
 });
+export const RegisterPrivateUrlArtifactRequestSchema = z.strictObject({
+  meetingId: MeetingIdSchema,
+  idempotencyKey: IdempotencyKeySchema,
+  url: z.string().trim().min(1).max(2048).url(),
+  ...OptionalCorrelationShape,
+});
+export const RegisterPrivateUrlArtifactResponseSchema =
+  UploadPrivateArtifactResponseSchema;
 export const DownloadPrivateArtifactQuerySchema = z.strictObject({
   artifactId: SourceArtifactIdSchema,
   meetingId: MeetingIdSchema,
@@ -722,6 +731,12 @@ export type UploadPrivateArtifactFields = z.infer<
 >;
 export type UploadPrivateArtifactResponse = z.infer<
   typeof UploadPrivateArtifactResponseSchema
+>;
+export type RegisterPrivateUrlArtifactRequest = z.infer<
+  typeof RegisterPrivateUrlArtifactRequestSchema
+>;
+export type RegisterPrivateUrlArtifactResponse = z.infer<
+  typeof RegisterPrivateUrlArtifactResponseSchema
 >;
 export type DownloadPrivateArtifactQuery = z.infer<
   typeof DownloadPrivateArtifactQuerySchema

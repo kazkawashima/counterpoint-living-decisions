@@ -131,6 +131,20 @@ URL fetch:
 5. Do not execute fetched content.
 6. Treat all source text as untrusted data, not model instructions.
 
+MVP URL-fetch policy is deliberately closed:
+
+- reject URL user information and ports other than HTTP 80 or HTTPS 443
+- require every A/AAAA answer to be globally routable, then pin the socket to
+  one of the checked answers so DNS cannot change the destination after review
+- follow at most three redirects and repeat the complete URL, DNS, and
+  destination check at every hop
+- enforce one 10-second overall deadline and a 20 MiB received-body limit,
+  including streaming responses without a trustworthy `Content-Length`
+- accept only identity/no content encoding and the same PDF, Markdown,
+  plain-text, and JSON content-type/extension/parser matrix as file upload
+- persist only a hash of the normalized source locator, never URL credentials,
+  query text, or the raw locator in events, responses, errors, or logs
+
 ## Prompt-injection boundary
 
 - Private retrieval results never enter shared model context automatically.

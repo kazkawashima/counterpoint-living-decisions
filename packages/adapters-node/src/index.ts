@@ -31,5 +31,14 @@ export {
   NodeHmacWebhookVerifier,
   type NodeHmacWebhookVerifierOptions,
 } from "./webhook-verifier.js";
+export {
+  NodeSafeUrlFetcher,
+  type NodeSafeUrlFetcherOptions,
+  type ResolvedUrlAddress,
+  type SafeUrlTransport,
+  type SafeUrlTransportRequest,
+  type SafeUrlTransportResponse,
+  type UrlAddressResolver,
+} from "./safe-url-fetcher.js";
 
 export const adaptersNodePackage = "@counterpoint/adapters-node";

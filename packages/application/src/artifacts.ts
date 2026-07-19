@@ -27,6 +27,7 @@ import type {
   EventStore,
   IdGenerator,
   ProjectionStore,
+  UrlFetcher,
 } from "@counterpoint/ports";
 
 import { authorize, type UserAuthorizationContext } from "./authorization.js";
@@ -54,6 +55,10 @@ export interface ArtifactIngestionDependencies {
   readonly projections: ProjectionStore<MeetingProjection>;
 }
 
+export interface UrlArtifactIngestionDependencies extends ArtifactIngestionDependencies {
+  readonly urls: UrlFetcher;
+}
+
 export interface UploadPrivateArtifactInput {
   readonly bytes: Uint8Array;
   readonly contentType: string;
@@ -62,6 +67,14 @@ export interface UploadPrivateArtifactInput {
   readonly filename: string;
   readonly idempotencyKey: string;
   readonly meetingId: string;
+  readonly sourceLocatorHash?: string;
+}
+
+export interface RegisterPrivateUrlArtifactInput {
+  readonly correlationId?: string;
+  readonly idempotencyKey: string;
+  readonly meetingId: string;
+  readonly url: string;
 }
 
 export interface PrivateArtifactView {
@@ -72,6 +85,7 @@ export interface PrivateArtifactView {
   readonly derivedSizeBytes?: number;
   readonly failureCode?: string;
   readonly filename: string;
+  readonly ingestionMethod: "upload" | "url";
   readonly processingState: "failed" | "processed";
   readonly sizeBytes: number;
   readonly sourceArtifactId: string;
@@ -91,6 +105,7 @@ export type ArtifactIngestionFailure =
         | "ARTIFACT_TYPE_UNSUPPORTED"
         | "FORBIDDEN"
         | "IDEMPOTENCY_CONFLICT"
+        | "URL_BLOCKED"
         | "VALIDATION_FAILED";
       readonly kind: "failed";
     };
@@ -104,6 +119,8 @@ export type UploadPrivateArtifactResult =
       readonly replayed: boolean;
     }
   | ArtifactIngestionFailure;
+
+export type RegisterPrivateUrlArtifactResult = UploadPrivateArtifactResult;
 
 export type GetPrivateArtifactResult =
   | {
@@ -213,6 +230,8 @@ function artifactView(
       ? {}
       : { failureCode: processed.payload.failureCode }),
     filename: artifact.originalFilename ?? "artifact",
+    ingestionMethod:
+      artifact.sourceLocatorHash === undefined ? "upload" : "url",
     processingState:
       processed?.payload.processingState === "processed"
         ? "processed"
@@ -311,7 +330,8 @@ export async function uploadPrivateArtifact(
       artifact.contentHash !== sourceHash ||
       artifact.contentType !== normalizedContentType ||
       artifact.originalFilename !== input.filename ||
-      artifact.sizeBytes !== input.bytes.byteLength
+      artifact.sizeBytes !== input.bytes.byteLength ||
+      artifact.sourceLocatorHash !== input.sourceLocatorHash
     ) {
       return failed("IDEMPOTENCY_CONFLICT");
     }
@@ -414,7 +434,11 @@ export async function uploadPrivateArtifact(
     payload: {
       artifact: createSourceArtifact({
         artifactType:
-          normalizedContentType === "text/plain" ? "text" : "document",
+          input.sourceLocatorHash !== undefined
+            ? "url"
+            : normalizedContentType === "text/plain"
+              ? "text"
+              : "document",
         confirmationStatus: "not_applicable",
         contentHash: contentHash(sourceHash),
         contentType: nonEmptyText(normalizedContentType),
@@ -424,6 +448,9 @@ export async function uploadPrivateArtifact(
         meetingId: meetingId(input.meetingId),
         origin: "source_artifact",
         originalFilename: nonEmptyText(input.filename),
+        ...(input.sourceLocatorHash === undefined
+          ? {}
+          : { sourceLocatorHash: contentHash(input.sourceLocatorHash) }),
         ownerParticipantId: participantId(context.participantId),
         processingState: "processing",
         revision: revisionNumber(1),
@@ -479,6 +506,7 @@ export async function uploadPrivateArtifact(
       input.filename,
       normalizedContentType,
       sourceHash,
+      input.sourceLocatorHash ?? "",
     ].join("\u0000"),
     trustPayloadFingerprintForReplay: true,
   });
@@ -524,6 +552,101 @@ export async function uploadPrivateArtifact(
     position: persistedProcessing?.position ?? persistedRegistration.position,
     replayed: appended.kind === "replayed",
   };
+}
+
+export async function registerPrivateUrlArtifact(
+  dependencies: UrlArtifactIngestionDependencies,
+  context: UserAuthorizationContext,
+  input: RegisterPrivateUrlArtifactInput,
+): Promise<RegisterPrivateUrlArtifactResult> {
+  const authorized = authorize(context, {
+    capability: "artifact:create-own",
+    meetingId: input.meetingId,
+    ownerParticipantId: context.participantId,
+  });
+  if (authorized.kind !== "authorized") {
+    return failed("FORBIDDEN");
+  }
+  if (
+    input.url.length === 0 ||
+    input.url.length > 2048 ||
+    input.url.trim() !== input.url
+  ) {
+    return failed("URL_BLOCKED");
+  }
+
+  let normalizedUrl: string;
+  let locatorHash: string;
+  try {
+    const parsed = new URL(input.url);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username.length > 0 ||
+      parsed.password.length > 0 ||
+      parsed.port.length > 0
+    ) {
+      return failed("URL_BLOCKED");
+    }
+    parsed.hash = "";
+    normalizedUrl = parsed.toString();
+    locatorHash = await hashBytes(
+      dependencies.hashBytes,
+      new TextEncoder().encode(normalizedUrl),
+    );
+    idempotencyKey(input.idempotencyKey);
+  } catch {
+    return failed("URL_BLOCKED");
+  }
+
+  const records = await dependencies.events.load(input.meetingId);
+  const events = normalizeRecords(records);
+  const existing = events.find(
+    (event): event is EventOf<"ArtifactRegistered"> =>
+      event.eventType === "ArtifactRegistered" &&
+      event.idempotencyKey === input.idempotencyKey,
+  );
+  if (existing !== undefined) {
+    if (
+      existing.visibility !== "private" ||
+      existing.ownerParticipantId !== context.participantId ||
+      existing.payload.artifact.sourceLocatorHash !== locatorHash
+    ) {
+      return failed("IDEMPOTENCY_CONFLICT");
+    }
+    const processed = processedEventFor(events, existing.payload.artifact.id);
+    return {
+      artifact: artifactView(existing, processed),
+      correlationId: existing.correlationId,
+      kind: "registered",
+      position: processed?.position ?? existing.position,
+      replayed: true,
+    };
+  }
+
+  const projection = replayMeeting(meetingId(input.meetingId), events);
+  const ownerWorkspace = projection.privateWorkspaces.find(
+    ({ ownerParticipantId }) => ownerParticipantId === context.participantId,
+  );
+  if ((ownerWorkspace?.artifacts.length ?? 0) >= ARTIFACT_MAX_OWNER_ITEMS) {
+    return failed("ARTIFACT_TOO_LARGE");
+  }
+
+  const fetched = await dependencies.urls.fetch({ url: normalizedUrl });
+  if (fetched.kind === "failed") {
+    return failed("URL_BLOCKED");
+  }
+  return uploadPrivateArtifact(dependencies, context, {
+    bytes: fetched.bytes,
+    contentType: fetched.contentType,
+    ...(input.correlationId === undefined
+      ? {}
+      : { correlationId: input.correlationId }),
+    expectedPosition: await dependencies.events.position(input.meetingId),
+    filename: fetched.filename,
+    idempotencyKey: input.idempotencyKey,
+    meetingId: input.meetingId,
+    sourceLocatorHash: locatorHash,
+  });
 }
 
 export async function getPrivateArtifact(

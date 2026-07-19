@@ -12,6 +12,7 @@ import {
   ApiError,
   downloadPrivateArtifact,
   getRoleProjection,
+  registerPrivateUrlArtifact,
   uploadPrivateArtifact,
   type StoredSession,
 } from "./api.js";
@@ -39,6 +40,8 @@ function safeMessage(cause: unknown): string {
         return "This file exceeds an owner or meeting artifact limit.";
       case "ARTIFACT_TYPE_UNSUPPORTED":
         return "Use PDF, Markdown, plain text, or JSON with a matching file type.";
+      case "URL_BLOCKED":
+        return "That URL did not pass the public-destination and document safety checks.";
       default:
         return cause.message;
     }
@@ -63,7 +66,9 @@ export function ArtifactPanel({
   const [error, setError] = useState<string>();
   const [file, setFile] = useState<File>();
   const [state, setState] = useState<UploadState>("idle");
+  const [url, setUrl] = useState("");
   const commandKey = useRef(crypto.randomUUID());
+  const urlCommandKey = useRef(crypto.randomUUID());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -120,6 +125,54 @@ export function ArtifactPanel({
       if (response.artifact.processingState === "failed") {
         setError(
           "The source is stored privately, but safe text extraction failed.",
+        );
+      }
+    } catch (cause) {
+      setState("failed");
+      setError(safeMessage(cause));
+    }
+  }
+
+  async function submitUrl(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      setError("Enter a complete public HTTP or HTTPS URL.");
+      setState("failed");
+      return;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      setError("Only public HTTP and HTTPS URLs are supported.");
+      setState("failed");
+      return;
+    }
+    setState("processing");
+    setError(undefined);
+    try {
+      const response = await registerPrivateUrlArtifact(session, {
+        idempotencyKey: urlCommandKey.current,
+        meetingId,
+        url: parsed.toString(),
+      });
+      onPositionChange(response.position);
+      setArtifacts((current) => [
+        ...current.filter(
+          ({ sourceArtifactId }) =>
+            sourceArtifactId !== response.artifact.sourceArtifactId,
+        ),
+        response.artifact,
+      ]);
+      setUrl("");
+      setState(
+        response.artifact.processingState === "processed"
+          ? "processed"
+          : "failed",
+      );
+      if (response.artifact.processingState === "failed") {
+        setError(
+          "The fetched source is stored privately, but safe text extraction failed.",
         );
       }
     } catch (cause) {
@@ -221,6 +274,36 @@ export function ArtifactPanel({
           Content is treated as untrusted data.
         </p>
       </form>
+      <form
+        className="artifact-url-import"
+        onSubmit={(event) => void submitUrl(event)}
+      >
+        <label htmlFor={`${inputId}-url`}>Or fetch a public document URL</label>
+        <div>
+          <input
+            id={`${inputId}-url`}
+            onChange={(event) => {
+              setUrl(event.target.value);
+              setError(undefined);
+              setState("validating");
+              urlCommandKey.current = crypto.randomUUID();
+            }}
+            placeholder="https://public.example/note.md"
+            type="url"
+            value={url}
+          />
+          <button
+            disabled={url.trim().length === 0 || state === "processing"}
+            type="submit"
+          >
+            Fetch through safety gate
+          </button>
+        </div>
+        <small>
+          DNS and every redirect are re-checked. Private networks, oversized
+          responses, and unsupported types fail closed.
+        </small>
+      </form>
       {error === undefined ? null : (
         <p className="artifact-error" role="alert">
           {error}
@@ -238,7 +321,11 @@ export function ArtifactPanel({
               key={artifact.sourceArtifactId}
             >
               <span className="artifact-file-mark" aria-hidden="true">
-                {artifact.contentType === "application/pdf" ? "PDF" : "TXT"}
+                {artifact.ingestionMethod === "url"
+                  ? "URL"
+                  : artifact.contentType === "application/pdf"
+                    ? "PDF"
+                    : "TXT"}
               </span>
               <div>
                 <strong>{artifact.filename}</strong>

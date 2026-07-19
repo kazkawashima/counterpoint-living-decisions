@@ -265,6 +265,8 @@ function privateArtifacts(
           ? {}
           : { failureCode: processed.payload.failureCode }),
         filename: artifact.originalFilename,
+        ingestionMethod:
+          artifact.sourceLocatorHash === undefined ? "upload" : "url",
         processingState: artifact.processingState,
         sizeBytes: artifact.sizeBytes,
         sourceArtifactId: artifact.id,

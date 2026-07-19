@@ -4,9 +4,11 @@ import {
   ARTIFACT_MAX_FILE_BYTES,
   ARTIFACT_MAX_MEETING_BYTES,
   getPrivateArtifact,
+  registerPrivateUrlArtifact,
   uploadPrivateArtifact,
   type ArtifactIngestionDependencies,
   type UploadPrivateArtifactInput,
+  type UrlArtifactIngestionDependencies,
 } from "../../../packages/application/src/artifacts.js";
 import { userAuthorizationContext } from "../../../packages/application/src/sessions.js";
 import {
@@ -26,7 +28,10 @@ import {
   type EventOf,
   type MeetingProjection,
 } from "../../../packages/domain/src/index.js";
-import type { ArtifactTextExtractor } from "../../../packages/ports/src/index.js";
+import type {
+  ArtifactTextExtractor,
+  UrlFetcher,
+} from "../../../packages/ports/src/index.js";
 import {
   MutableClock,
   SequenceIdGenerator,
@@ -94,6 +99,26 @@ function fixture(): {
       projections: new InMemoryProjectionStore<MeetingProjection>(),
     },
     extractor,
+  };
+}
+
+function urlFixture(): {
+  readonly dependencies: UrlArtifactIngestionDependencies;
+  readonly fetchUrl: ReturnType<typeof vi.fn<UrlFetcher["fetch"]>>;
+} {
+  const base = fixture();
+  const fetchUrl = vi.fn<UrlFetcher["fetch"]>().mockResolvedValue({
+    bytes: SOURCE_BYTES,
+    contentType: "text/markdown",
+    filename: "synthetic-launch-plan.md",
+    kind: "fetched",
+  });
+  return {
+    dependencies: {
+      ...base.dependencies,
+      urls: { fetch: fetchUrl },
+    },
+    fetchUrl,
   };
 }
 
@@ -166,6 +191,139 @@ async function seedRegistrations(
 }
 
 describe("private artifact application invariants", () => {
+  it("fetches a normalized URL into the same owner-private source and derived pipeline", async () => {
+    const { dependencies, fetchUrl } = urlFixture();
+
+    const result = await registerPrivateUrlArtifact(
+      dependencies,
+      ownerContext(),
+      {
+        idempotencyKey: "register-synthetic-url",
+        meetingId: MEETING_ID,
+        url: "https://public.example/synthetic-launch-plan.md#private-view",
+      },
+    );
+
+    expect(result).toMatchObject({
+      artifact: {
+        filename: "synthetic-launch-plan.md",
+        ingestionMethod: "url",
+        processingState: "processed",
+      },
+      kind: "registered",
+      position: 2,
+      replayed: false,
+    });
+    expect(fetchUrl).toHaveBeenCalledWith({
+      url: "https://public.example/synthetic-launch-plan.md",
+    });
+    const records = await dependencies.events.load(MEETING_ID);
+    expect(records[0]?.event).toMatchObject({
+      eventType: "ArtifactRegistered",
+      payload: {
+        artifact: {
+          artifactType: "url",
+          sourceLocatorHash: fixtureHash(
+            new TextEncoder().encode(
+              "https://public.example/synthetic-launch-plan.md",
+            ),
+          ),
+        },
+      },
+    });
+    const serialized = JSON.stringify(records);
+    expect(serialized).not.toContain("public.example");
+    expect(serialized).not.toContain("private-view");
+  });
+
+  it("replays the same URL without a second network fetch and rejects a changed locator", async () => {
+    const { dependencies, fetchUrl } = urlFixture();
+    const input = {
+      idempotencyKey: "register-synthetic-url-replay",
+      meetingId: MEETING_ID,
+      url: "https://public.example/synthetic-launch-plan.md",
+    } as const;
+
+    const first = await registerPrivateUrlArtifact(
+      dependencies,
+      ownerContext(),
+      input,
+    );
+    const replay = await registerPrivateUrlArtifact(
+      dependencies,
+      ownerContext(),
+      input,
+    );
+    const conflict = await registerPrivateUrlArtifact(
+      dependencies,
+      ownerContext(),
+      {
+        ...input,
+        url: "https://other.example/synthetic-launch-plan.md",
+      },
+    );
+
+    expect(first.kind).toBe("registered");
+    expect(replay).toMatchObject({
+      kind: "registered",
+      replayed: true,
+    });
+    expect(conflict).toEqual({
+      code: "IDEMPOTENCY_CONFLICT",
+      kind: "failed",
+    });
+    expect(fetchUrl).toHaveBeenCalledOnce();
+  });
+
+  it("maps every safe-fetch refusal to one content-free URL_BLOCKED result", async () => {
+    const { dependencies, fetchUrl } = urlFixture();
+    fetchUrl.mockResolvedValue({
+      kind: "failed",
+      reason: "unsafe_destination",
+    });
+    const put = vi.spyOn(dependencies.artifacts, "put");
+
+    const result = await registerPrivateUrlArtifact(
+      dependencies,
+      ownerContext(),
+      {
+        idempotencyKey: "register-blocked-url",
+        meetingId: MEETING_ID,
+        url: "http://metadata.invalid/latest",
+      },
+    );
+
+    expect(result).toEqual({ code: "URL_BLOCKED", kind: "failed" });
+    expect(JSON.stringify(result)).not.toContain("metadata");
+    expect(put).not.toHaveBeenCalled();
+    expect(await dependencies.events.load(MEETING_ID)).toEqual([]);
+  });
+
+  it("checks authorization and owner capacity before any outbound URL request", async () => {
+    const { dependencies, fetchUrl } = urlFixture();
+    const input = {
+      idempotencyKey: "register-prefetch-gate-url",
+      meetingId: MEETING_ID,
+      url: "https://public.example/synthetic-launch-plan.md",
+    } as const;
+
+    expect(
+      await registerPrivateUrlArtifact(
+        dependencies,
+        ownerContext(OTHER_MEETING_ID),
+        input,
+      ),
+    ).toEqual({ code: "FORBIDDEN", kind: "failed" });
+    await seedRegistrations(
+      dependencies,
+      Array.from({ length: 10 }, () => 1),
+    );
+    expect(
+      await registerPrivateUrlArtifact(dependencies, ownerContext(), input),
+    ).toEqual({ code: "ARTIFACT_TOO_LARGE", kind: "failed" });
+    expect(fetchUrl).not.toHaveBeenCalled();
+  });
+
   it("stores distinct source and derived markdown artifacts and projects their metadata", async () => {
     const { dependencies, extractor } = fixture();
 
@@ -184,6 +342,7 @@ describe("private artifact application invariants", () => {
         derivedContentHash: fixtureHash(new TextEncoder().encode(DERIVED_TEXT)),
         derivedSizeBytes: new TextEncoder().encode(DERIVED_TEXT).byteLength,
         filename: "synthetic-launch-plan.md",
+        ingestionMethod: "upload",
         processingState: "processed",
         sizeBytes: SOURCE_BYTES.byteLength,
         sourceContentHash: fixtureHash(SOURCE_BYTES),

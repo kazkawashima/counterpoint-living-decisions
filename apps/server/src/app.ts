@@ -34,6 +34,7 @@ import {
   prepareSharedDecisionCandidate,
   proposeDisclosure,
   registerPrivateTextSource,
+  registerPrivateUrlArtifact,
   rejectDisclosure,
   releaseSharedFloor,
   receiveRegulatoryChange,
@@ -139,6 +140,8 @@ import {
   RevokeDisplayTokenResponseSchema,
   RegisterPrivateTextSourceFixtureRequestSchema,
   RegisterPrivateTextSourceFixtureResponseSchema,
+  RegisterPrivateUrlArtifactRequestSchema,
+  RegisterPrivateUrlArtifactResponseSchema,
   RegulatoryChangeWebhookRequestSchema,
   RegulatoryChangeWebhookResponseSchema,
   RejectDisclosureRequestSchema,
@@ -1930,6 +1933,58 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
         position: await participantVisiblePositionAt(
           runtime,
           fields.data.meetingId,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+      }),
+      201,
+    );
+  });
+
+  app.post("/api/v1/artifacts/url", async (context) => {
+    const request = await parseJson(
+      context,
+      RegisterPrivateUrlArtifactRequestSchema,
+    );
+    if (request.kind === "rejected") {
+      return errorResponse(context, "VALIDATION_FAILED");
+    }
+    const authenticated = await authenticatedSession(context, runtime);
+    if (authenticated.kind === "rejected") {
+      return errorResponse(context, authenticated.code);
+    }
+    const resolved = await resolveMeetingAuthorization(
+      runtime.meetings,
+      authenticated.session,
+      request.value.meetingId,
+    );
+    if (resolved.kind === "rejected") {
+      return errorResponse(context, resolved.code);
+    }
+    if (!runtime.artifactStorageAvailable) {
+      return errorResponse(context, "ARTIFACT_STORAGE_UNAVAILABLE");
+    }
+    const result = await registerPrivateUrlArtifact(
+      runtime.artifactIngestion,
+      resolved.authorization,
+      {
+        correlationId: context.get("correlationId"),
+        idempotencyKey: request.value.idempotencyKey,
+        meetingId: request.value.meetingId,
+        url: request.value.url,
+      },
+    );
+    if (result.kind === "failed") {
+      return artifactIngestionFailureResponse(context, result);
+    }
+    return context.json(
+      RegisterPrivateUrlArtifactResponseSchema.parse({
+        artifact: result.artifact,
+        correlationId: result.correlationId,
+        meetingId: request.value.meetingId,
+        position: await participantVisiblePositionAt(
+          runtime,
+          request.value.meetingId,
           resolved.authorization.participantId,
           result.position,
         ),

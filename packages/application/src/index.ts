@@ -3,14 +3,18 @@ export {
   ARTIFACT_MAX_MEETING_BYTES,
   ARTIFACT_MAX_OWNER_ITEMS,
   getPrivateArtifact,
+  registerPrivateUrlArtifact,
   uploadPrivateArtifact,
   type ArtifactByteHashFunction,
   type ArtifactIngestionDependencies,
   type ArtifactIngestionFailure,
   type GetPrivateArtifactResult,
   type PrivateArtifactView,
+  type RegisterPrivateUrlArtifactInput,
+  type RegisterPrivateUrlArtifactResult,
   type UploadPrivateArtifactInput,
   type UploadPrivateArtifactResult,
+  type UrlArtifactIngestionDependencies,
 } from "./artifacts.js";
 export {
   authorize,
