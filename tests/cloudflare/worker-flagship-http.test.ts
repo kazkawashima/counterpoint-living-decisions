@@ -14,6 +14,7 @@ import type {
 } from "@counterpoint/adapters-openai";
 import {
   ApproveDisclosureResponseSchema,
+  CaptureUtteranceResponseSchema,
   CommitDecisionResponseSchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
@@ -1404,6 +1405,143 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
   beforeEach(async () => {
     await env.DB.prepare("DELETE FROM judge_managed_ai_operation_claims").run();
     await env.DB.prepare("DELETE FROM judge_usage_reservations").run();
+  });
+
+  it("captures private text through the Worker with replay and owner-only projection semantics", async () => {
+    const handler = createWorkerHandler();
+    const environment = workerEnv();
+    const bearerToken = await login(handler, environment);
+    const authorization = `Bearer ${bearerToken}`;
+    await resetFlagship({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: `worker-private-utterance-reset-${crypto.randomUUID()}`,
+    });
+
+    const utterance = {
+      capturedAt: "2026-07-20T12:34:56.000Z",
+      channel: "private" as const,
+      meetingId: FLAGSHIP_MEETING_ID,
+      text: "Private Worker text remains durable without a provider.",
+      utteranceId: `utterance-worker-private-${crypto.randomUUID()}`,
+    };
+    const captureRequest = (body: object, meetingId = FLAGSHIP_MEETING_ID) =>
+      handler.fetch!(
+        workerRequest(
+          new Request(
+            `https://203.0.113.40/api/v1/meetings/${meetingId}/utterances`,
+            {
+              body: JSON.stringify(body),
+              headers: {
+                authorization,
+                "content-type": "application/json",
+              },
+              method: "POST",
+            },
+          ),
+        ),
+        environment,
+        {} as ExecutionContext,
+      );
+
+    const mismatchResponse = await captureRequest(
+      utterance,
+      "meeting-path-mismatch",
+    );
+    expect(mismatchResponse.status).toBe(400);
+    await expect(json(mismatchResponse)).resolves.toMatchObject({
+      code: "VALIDATION_FAILED",
+    });
+
+    const firstResponse = await captureRequest(utterance);
+    expect(firstResponse.status).toBe(201);
+    const first = CaptureUtteranceResponseSchema.parse(
+      await json(firstResponse),
+    );
+    expect(first).toMatchObject({
+      meetingId: FLAGSHIP_MEETING_ID,
+      replayed: false,
+      utterance: {
+        channel: "private",
+        participantId: "participant-product",
+        text: utterance.text,
+        utteranceId: utterance.utteranceId,
+      },
+    });
+    expect(first.position).toBeGreaterThan(0);
+
+    const replayResponse = await captureRequest(utterance);
+    expect(replayResponse.status).toBe(200);
+    const replay = CaptureUtteranceResponseSchema.parse(
+      await json(replayResponse),
+    );
+    expect(replay).toEqual({ ...first, replayed: true });
+
+    const conflictResponse = await captureRequest({
+      ...utterance,
+      text: "Changed text cannot reuse the utterance id.",
+    });
+    expect(conflictResponse.status).toBe(409);
+    await expect(json(conflictResponse)).resolves.toMatchObject({
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+
+    const ownerProjectionResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.40/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+          {
+            headers: { authorization },
+            method: "GET",
+          },
+        ),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(ownerProjectionResponse.status).toBe(200);
+    const ownerProjection = await json(ownerProjectionResponse);
+    expect(ownerProjection).toMatchObject({
+      privateWorkspace: {
+        utterances: [
+          expect.objectContaining({
+            text: utterance.text,
+            utteranceId: utterance.utteranceId,
+          }),
+        ],
+      },
+      shared: { position: first.position, utterances: [] },
+    });
+
+    const participantToken = await login(
+      handler,
+      environment,
+      "safety",
+      "counterpoint-safety",
+    );
+    const participantProjectionResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.40/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+          {
+            headers: { authorization: `Bearer ${participantToken}` },
+            method: "GET",
+          },
+        ),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(participantProjectionResponse.status).toBe(200);
+    const participantProjection = await json(participantProjectionResponse);
+    expect(participantProjection).toMatchObject({
+      privateWorkspace: { utterances: [] },
+      shared: { utterances: [] },
+    });
+    expect(
+      (participantProjection.shared as { position: number }).position,
+    ).toBeLessThan(first.position);
   });
 
   it("settles metered judge usage without persisting private content", async () => {

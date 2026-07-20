@@ -430,6 +430,8 @@ export function createWorkerHandler(
       }
       const flagshipProjectionRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/projection$/u.exec(url.pathname);
+      const flagshipUtteranceRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/utterances$/u.exec(url.pathname);
       const flagshipCollectionRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/(evidence|decisions|external-events|invalidation-evaluations)$/u.exec(
           url.pathname,
@@ -465,65 +467,76 @@ export function createWorkerHandler(
             : request.method === "POST" &&
                 url.pathname === "/api/v1/disclosures/sources/text"
               ? "register-text-source"
-              : request.method === "POST" &&
-                  url.pathname === "/api/v1/disclosures/proposals"
-                ? "propose-disclosure"
+              : request.method === "POST" && flagshipUtteranceRoute !== null
+                ? "capture-utterance"
                 : request.method === "POST" &&
-                    url.pathname === "/api/v1/disclosures/preview"
-                  ? "preview-disclosure"
+                    url.pathname === "/api/v1/disclosures/proposals"
+                  ? "propose-disclosure"
                   : request.method === "POST" &&
-                      url.pathname === "/api/v1/disclosures/approve"
-                    ? "approve-disclosure"
+                      url.pathname === "/api/v1/disclosures/preview"
+                    ? "preview-disclosure"
                     : request.method === "POST" &&
-                        url.pathname === "/api/v1/disclosures/reject"
-                      ? "reject-disclosure"
+                        url.pathname === "/api/v1/disclosures/approve"
+                      ? "approve-disclosure"
                       : request.method === "POST" &&
-                          url.pathname === "/api/v1/decisions/drafts"
-                        ? "save-decision-draft"
+                          url.pathname === "/api/v1/disclosures/reject"
+                        ? "reject-disclosure"
                         : request.method === "POST" &&
-                            url.pathname === "/api/v1/decisions/ready"
-                          ? "mark-decision-ready"
+                            url.pathname === "/api/v1/decisions/drafts"
+                          ? "save-decision-draft"
                           : request.method === "POST" &&
-                              url.pathname === "/api/v1/decisions/commit"
-                            ? "commit-decision"
+                              url.pathname === "/api/v1/decisions/ready"
+                            ? "mark-decision-ready"
                             : request.method === "POST" &&
-                                url.pathname === "/api/v1/decisions/monitoring"
-                              ? "start-decision-monitoring"
+                                url.pathname === "/api/v1/decisions/commit"
+                              ? "commit-decision"
                               : request.method === "POST" &&
                                   url.pathname ===
-                                    "/api/v1/decisions/candidates"
-                                ? "prepare-decision-candidate"
+                                    "/api/v1/decisions/monitoring"
+                                ? "start-decision-monitoring"
                                 : request.method === "POST" &&
                                     url.pathname ===
-                                      "/api/v1/decisions/candidates/disposition"
-                                  ? "disposition-decision-candidate"
+                                      "/api/v1/decisions/candidates"
+                                  ? "prepare-decision-candidate"
                                   : request.method === "POST" &&
-                                      flagshipDemoRegulatoryRoute !== null
-                                    ? "inject-demo-regulatory-change"
+                                      url.pathname ===
+                                        "/api/v1/decisions/candidates/disposition"
+                                    ? "disposition-decision-candidate"
                                     : request.method === "POST" &&
-                                        url.pathname ===
-                                          "/api/v1/decisions/invalidation-review"
-                                      ? "review-invalidation"
+                                        flagshipDemoRegulatoryRoute !== null
+                                      ? "inject-demo-regulatory-change"
                                       : request.method === "POST" &&
-                                          flagshipDemoResetRoute !== null
-                                        ? "reset-demo"
-                                        : request.method === "GET" &&
-                                            url.pathname === "/api/v1/meetings"
-                                          ? "meetings"
+                                          url.pathname ===
+                                            "/api/v1/decisions/invalidation-review"
+                                        ? "review-invalidation"
+                                        : request.method === "POST" &&
+                                            flagshipDemoResetRoute !== null
+                                          ? "reset-demo"
                                           : request.method === "GET" &&
-                                              flagshipProjectionRoute !== null
-                                            ? "projection"
+                                              url.pathname ===
+                                                "/api/v1/meetings"
+                                            ? "meetings"
                                             : request.method === "GET" &&
-                                                flagshipCollectionOperation !==
-                                                  undefined
-                                              ? flagshipCollectionOperation
-                                              : undefined;
+                                                flagshipProjectionRoute !== null
+                                              ? "projection"
+                                              : request.method === "GET" &&
+                                                  flagshipCollectionOperation !==
+                                                    undefined
+                                                ? flagshipCollectionOperation
+                                                : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;
         if (flagshipProjectionRoute !== null) {
           try {
             meetingId = decodeURIComponent(flagshipProjectionRoute[1] ?? "");
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipUtteranceRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(flagshipUtteranceRoute[1] ?? "");
           } catch {
             return apiErrorResponse("VALIDATION_FAILED", correlationId);
           }

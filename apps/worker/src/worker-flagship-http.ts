@@ -1,6 +1,7 @@
 import {
   approveDisclosure,
   authenticateSession,
+  captureUtterance,
   commitDecision,
   dispositionDecisionCandidate,
   evaluateAssumptionInvalidation,
@@ -29,6 +30,7 @@ import {
   type InvalidationEvaluationDependencies,
   type InvalidationEvaluationView,
   type InvalidationReviewFailure,
+  type UtteranceFailure,
   type UserAuthorizationContext,
   type UserAuthorizationPolicy,
 } from "@counterpoint/application";
@@ -91,6 +93,8 @@ import {
   ApproveDisclosureResponseSchema,
   CommitDecisionRequestSchema,
   CommitDecisionResponseSchema,
+  CaptureUtteranceRequestSchema,
+  CaptureUtteranceResponseSchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   GetRoleProjectionResponseSchema,
@@ -127,6 +131,7 @@ import {
   ReviewInvalidationRequestSchema,
   ReviewInvalidationResponseSchema,
   type CommitDecisionRequest,
+  type CaptureUtteranceRequest,
   type DispositionSharedDecisionCandidateRequest,
   type FacilitatorDemoResetRequest,
   type InjectDemoRegulatoryChangeRequest,
@@ -173,6 +178,7 @@ export interface WorkerFlagshipD1Bindings {
 
 export type WorkerFlagshipOperation =
   | "approve-disclosure"
+  | "capture-utterance"
   | "commit-decision"
   | "decisions"
   | "disposition-decision-candidate"
@@ -674,6 +680,18 @@ function invalidationReviewFailureResponse(
       : apiErrorResponse("VALIDATION_FAILED", correlationId);
 }
 
+function utteranceFailureResponse(
+  correlationId: string,
+  failure: UtteranceFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? apiErrorResponse("CONFLICT", correlationId, {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : apiErrorResponse(failure.code, correlationId);
+}
+
 type InvalidationUsageLimit = Extract<
   UsageDecision,
   { kind: "denied" }
@@ -948,6 +966,7 @@ export async function handleWorkerFlagshipHttp(input: {
   } = input;
   let meetingId = requestedMeetingId;
   let approveDisclosureRequest: ApproveDisclosureRequest | undefined;
+  let captureUtteranceRequest: CaptureUtteranceRequest | undefined;
   let previewDisclosureRequest: PreviewDisclosureRequest | undefined;
   let proposeDisclosureRequest: ProposeDisclosureRequest | undefined;
   let rejectDisclosureRequest: RejectDisclosureRequest | undefined;
@@ -1044,6 +1063,20 @@ export async function handleWorkerFlagshipHttp(input: {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
     registerTextSourceRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "capture-utterance") {
+    const parsed = CaptureUtteranceRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (
+      !parsed.success ||
+      (requestedMeetingId !== undefined &&
+        parsed.data.meetingId !== requestedMeetingId)
+    ) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    captureUtteranceRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
   if (operation === "propose-disclosure") {
@@ -1232,6 +1265,40 @@ export async function handleWorkerFlagshipHttp(input: {
       }),
       201,
       correlationId,
+    );
+  }
+
+  if (operation === "capture-utterance") {
+    if (captureUtteranceRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const result = await captureUtterance(
+      dependencies.decisions,
+      resolved.authorization,
+      captureUtteranceRequest,
+    );
+    if (result.kind === "failed") {
+      return utteranceFailureResponse(correlationId, result);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const events = records.map(({ event, position }) => ({
+      ...event,
+      position: meetingPosition(position),
+    }));
+    return apiJsonResponse(
+      CaptureUtteranceResponseSchema.parse({
+        correlationId: result.correlationId,
+        meetingId: result.meetingId,
+        position: visiblePosition(
+          events,
+          resolved.authorization.participantId,
+          result.position,
+        ),
+        replayed: result.replayed,
+        utterance: result.utterance,
+      }),
+      result.replayed ? 200 : 201,
+      result.correlationId,
     );
   }
 
