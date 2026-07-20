@@ -22,6 +22,9 @@ import {
 } from "../../../apps/worker/src/judge-private-disclosure.js";
 import type { JudgeManagedStructuredAiUsageLimiter } from "../../../apps/worker/src/judge-managed-structured-ai.js";
 import {
+  PRIVATE_DISCLOSURE_MODEL,
+  PRIVATE_DISCLOSURE_OPERATION,
+  PRIVATE_DISCLOSURE_PRICING_VERSION,
   PRIVATE_DISCLOSURE_RESERVED_USAGE,
   calculatePrivateDisclosureActualUsage,
 } from "../../../apps/worker/src/judge-structured-ai.js";
@@ -66,6 +69,20 @@ function stableHash(value: string): string {
     hash = Math.imul(hash, 16_777_619);
   }
   return `fixture-${(hash >>> 0).toString(16)}`;
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    Uint8Array.from(bytes).buffer,
+  );
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function sha256Fields(fields: readonly string[]): Promise<string> {
+  return sha256Bytes(new TextEncoder().encode(JSON.stringify(fields)));
 }
 
 function baseDependencies(): DisclosureDependencies {
@@ -840,5 +857,54 @@ describe("judge private-disclosure orchestration", () => {
       },
       PRIVATE_DISCLOSURE_RESERVED_USAGE,
     );
+  });
+
+  it("binds the production claim fingerprint to model and pricing version without changing its claim key", async () => {
+    const fixtureValue = fixture();
+    const sourceArtifactId = await registerSource(fixtureValue.dependencies);
+
+    await execute(fixtureValue, sourceArtifactId);
+
+    const claimInput = fixtureValue.claim.mock.calls[0]?.[0] as
+      | {
+          claimKeyHash: string;
+          requestFingerprint: string;
+        }
+      | undefined;
+    if (claimInput === undefined) {
+      throw new Error("Expected a production claim input");
+    }
+    const sourceContentHash = await sha256Bytes(
+      new TextEncoder().encode(SOURCE_TEXT),
+    );
+    const expectedClaimKeyHash = await sha256Fields([
+      PRIVATE_DISCLOSURE_OPERATION,
+      MEETING_ID,
+      "judge-disclosure-proposal",
+    ]);
+    const oldRequestFingerprint = await sha256Fields([
+      PRIVATE_DISCLOSURE_OPERATION,
+      USER_ID,
+      PARTICIPANT_ID,
+      MEETING_ID,
+      "judge-disclosure-proposal",
+      sourceArtifactId,
+      sourceContentHash,
+    ]);
+    const versionBoundRequestFingerprint = await sha256Fields([
+      PRIVATE_DISCLOSURE_OPERATION,
+      PRIVATE_DISCLOSURE_MODEL,
+      PRIVATE_DISCLOSURE_PRICING_VERSION,
+      USER_ID,
+      PARTICIPANT_ID,
+      MEETING_ID,
+      "judge-disclosure-proposal",
+      sourceArtifactId,
+      sourceContentHash,
+    ]);
+
+    expect(claimInput.claimKeyHash).toBe(expectedClaimKeyHash);
+    expect(claimInput.requestFingerprint).toBe(versionBoundRequestFingerprint);
+    expect(claimInput.requestFingerprint).not.toBe(oldRequestFingerprint);
   });
 });

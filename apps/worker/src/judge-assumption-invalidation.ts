@@ -166,8 +166,7 @@ export async function runJudgeAssumptionInvalidation<T>(input: {
 function invalidationDescriptor(canonicalizationVersion: string) {
   const descriptor =
     JUDGE_STRUCTURED_AI_DESCRIPTORS[ASSUMPTION_INVALIDATION_OPERATION];
-  const suffix = `+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
-  if (!descriptor.pricingVersion.endsWith(suffix)) {
+  if (descriptor.pricingVersion !== ASSUMPTION_INVALIDATION_PRICING_VERSION) {
     throw new JudgeAssumptionInvalidationError("OPENAI_UNAVAILABLE");
   }
   return {
@@ -176,7 +175,10 @@ function invalidationDescriptor(canonicalizationVersion: string) {
       canonicalizationVersion ===
       JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION
         ? ASSUMPTION_INVALIDATION_PRICING_VERSION
-        : `${descriptor.pricingVersion.slice(0, -suffix.length)}+${canonicalizationVersion}`,
+        : `${ASSUMPTION_INVALIDATION_PRICING_VERSION.slice(
+            0,
+            -JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION.length,
+          )}${canonicalizationVersion}`,
   };
 }
 

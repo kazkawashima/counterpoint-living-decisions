@@ -15,6 +15,11 @@ import {
   buildMarkSettledStatement,
   buildReleaseReservedStatement,
 } from "../../packages/adapters-cloudflare/src/judge-structured-ai-reconciliation.js";
+import {
+  JUDGE_STRUCTURED_AI_DESCRIPTORS,
+  PRIVATE_DISCLOSURE_MODEL,
+  PRIVATE_DISCLOSURE_OPERATION,
+} from "../../apps/worker/src/judge-structured-ai.js";
 
 const shellUrl = new URL(
   "../../scripts/reconcile-judge-structured-ai.sh",
@@ -154,19 +159,22 @@ describe("judge structured-AI reconciliation command", () => {
 
   it("full-finalizes provider-started work without issuing release SQL", async () => {
     const sql: string[] = [];
+    const descriptor =
+      JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION];
+    expect(descriptor.pricingVersion).toMatch(/^[0-9A-Za-z._:/-]{1,256}$/u);
     const row = {
       claim_key_hash: `sha256:${"a".repeat(64)}`,
       created_at_epoch: 100,
       lease_expires_at_epoch: 150,
-      model: "gpt-5.6",
-      operation: "private_disclosure",
-      pricing_version: "pricing-v1",
+      model: PRIVATE_DISCLOSURE_MODEL,
+      operation: descriptor.operation,
+      pricing_version: descriptor.pricingVersion,
       request_fingerprint: `sha256:${"b".repeat(64)}`,
       reservation_id: "judge-ai:reservation",
       status: "provider_started",
-      usage_model: "gpt-5.6",
-      usage_operation: "private_disclosure",
-      usage_pricing_version: "pricing-v1",
+      usage_model: PRIVATE_DISCLOSURE_MODEL,
+      usage_operation: descriptor.operation,
+      usage_pricing_version: descriptor.pricingVersion,
       usage_request_fingerprint: `sha256:${"b".repeat(64)}`,
       usage_status: "reserved",
     };

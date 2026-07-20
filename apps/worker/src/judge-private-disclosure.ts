@@ -18,6 +18,7 @@ import {
   PRIVATE_DISCLOSURE_MAX_SOURCE_BYTES,
   PRIVATE_DISCLOSURE_MODEL,
   PRIVATE_DISCLOSURE_OPERATION,
+  PRIVATE_DISCLOSURE_PRICING_VERSION,
   calculatePrivateDisclosureActualUsage,
 } from "./judge-structured-ai.js";
 
@@ -201,6 +202,8 @@ async function prepareSource(
     providerInputBytes: bytes.byteLength,
     requestFingerprint: await sha256([
       PRIVATE_DISCLOSURE_OPERATION,
+      PRIVATE_DISCLOSURE_MODEL,
+      PRIVATE_DISCLOSURE_PRICING_VERSION,
       input.authorization.userId,
       input.authorization.participantId,
       input.request.meetingId,

@@ -20,6 +20,7 @@ import {
   JUDGE_STRUCTURED_AI_DESCRIPTORS,
   PRIVATE_DISCLOSURE_MODEL,
   PRIVATE_DISCLOSURE_OPERATION,
+  type JudgeStructuredAiDescriptor,
 } from "../../../apps/worker/src/judge-structured-ai.js";
 
 const NOW_EPOCH = 1_753_011_200;
@@ -260,6 +261,7 @@ function run<T = { readonly value: string }>(
   fixture: Harness,
   options: {
     readonly actualUsage?: () => UsageRequest;
+    readonly descriptor?: JudgeStructuredAiDescriptor;
     readonly nowEpoch?: number | (() => number);
     readonly provider?: () => Promise<T>;
     readonly providerInputBytes?: number;
@@ -271,7 +273,7 @@ function run<T = { readonly value: string }>(
     actualUsage: options.actualUsage ?? (() => ACTUAL),
     claimKeyHash: CLAIM_KEY_HASH,
     claims: fixture.claims,
-    descriptor: DESCRIPTOR,
+    descriptor: options.descriptor ?? DESCRIPTOR,
     model: PRIVATE_DISCLOSURE_MODEL,
     nextReservationId: () => RESERVATION_ID,
     nowEpoch: () =>
@@ -310,6 +312,27 @@ describe("judge managed structured-AI lifecycle", () => {
         reconcile,
       }),
     ).rejects.toEqual(new JudgeManagedStructuredAiError("VALIDATION_FAILED"));
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(fixture.reserveClaim).not.toHaveBeenCalled();
+    expect(fixture.reserveWithId).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid descriptor pricing before reconciliation or any D1 mutation", async () => {
+    const fixture = harness();
+    const reconcile = vi.fn();
+    const provider = vi.fn();
+
+    await expect(
+      run(fixture, {
+        descriptor: {
+          ...DESCRIPTOR,
+          pricingVersion: "invalid+pricing-version",
+        },
+        provider,
+        reconcile,
+      }),
+    ).rejects.toEqual(new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE"));
     expect(reconcile).not.toHaveBeenCalled();
     expect(fixture.reserveClaim).not.toHaveBeenCalled();
     expect(fixture.reserveWithId).not.toHaveBeenCalled();
@@ -831,6 +854,53 @@ describe("judge managed structured-AI reconciliation", () => {
     } satisfies JudgeManagedStructuredAiUsageLimiter;
     return { calls, claims, usage };
   }
+
+  it("reconciles the exact production pricing identity written to claim and ledger", async () => {
+    const lifecycle = harness();
+    await run(lifecycle);
+    const claimInput = lifecycle.reserveClaim.mock.calls[0]?.[0] as
+      ManagedAiOperationReserveClaim | undefined;
+    if (claimInput === undefined) {
+      throw new Error("Expected a production claim input");
+    }
+    const row = {
+      ...stale("t", "provider_started", NOW_EPOCH - 1),
+      claimKeyHash: claimInput.claimKeyHash,
+      createdAtEpoch: claimInput.createdAtEpoch,
+      model: claimInput.model,
+      operation: claimInput.operation,
+      pricingVersion: claimInput.pricingVersion,
+      requestFingerprint: claimInput.requestFingerprint,
+      reservationId: claimInput.reservationId,
+    } satisfies ManagedAiOperationStaleClaim;
+    const fixture = reconciliationHarness([row], {
+      [row.reservationId]: reservation({
+        activeUntilEpoch: NOW_EPOCH - 1,
+        model: PRIVATE_DISCLOSURE_MODEL,
+        operation: PRIVATE_DISCLOSURE_OPERATION,
+        pricingVersion: DESCRIPTOR.pricingVersion,
+        requestFingerprint: row.requestFingerprint,
+        reservationId: row.reservationId,
+      }),
+    });
+
+    await expect(
+      reconcileJudgeManagedStructuredAiOperations({
+        claims: fixture.claims,
+        limit: 20,
+        nowEpoch: NOW_EPOCH,
+        retentionSeconds: DESCRIPTOR.retentionSeconds,
+        usage: fixture.usage,
+      }),
+    ).resolves.toEqual({
+      attempted: 1,
+      failed: 0,
+      released: 0,
+      settled: 1,
+    });
+    expect(claimInput.pricingVersion).toBe(DESCRIPTOR.pricingVersion);
+    expect(claimInput.pricingVersion).toMatch(/^[0-9A-Za-z._:/-]{1,256}$/u);
+  });
 
   it("processes at most twenty stale rows in repository order", async () => {
     const rows = Array.from({ length: 20 }, (_, index) =>

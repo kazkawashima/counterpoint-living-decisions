@@ -16,6 +16,8 @@ import type { JudgeStructuredAiDescriptor } from "./judge-structured-ai.js";
 
 type UsageLimit = Extract<D1NamedUsageDecision, { kind: "denied" }>["limit"];
 
+const OPAQUE_METADATA_PATTERN = /^[0-9A-Za-z._:/-]{1,256}$/u;
+
 export type JudgeManagedStructuredAiErrorCode =
   | "IDEMPOTENCY_CONFLICT"
   | "OPENAI_UNAVAILABLE"
@@ -266,6 +268,7 @@ interface JudgeManagedStructuredAiOperationInput<T> {
 export async function runJudgeManagedStructuredAiOperation<T>(
   input: JudgeManagedStructuredAiOperationInput<T>,
 ): Promise<T> {
+  validateDescriptorPricingVersion(input.descriptor);
   validateProviderInput(input.providerInputBytes, input.descriptor);
   const nowEpoch = validatedEpoch(input.nowEpoch());
   await infrastructure(() => input.reconcile({ limit: 20, nowEpoch }));
@@ -299,9 +302,7 @@ async function reserveClaim<T>(
       leaseExpiresAtEpoch: nowEpoch + input.descriptor.claimLeaseSeconds,
       model: input.model,
       operation: input.descriptor.operation,
-      pricingVersion: opaqueClaimPricingVersion(
-        input.descriptor.pricingVersion,
-      ),
+      pricingVersion: input.descriptor.pricingVersion,
       requestFingerprint: input.requestFingerprint,
       reservationId,
     });
@@ -656,24 +657,19 @@ function validateProviderInput(
   }
 }
 
+function validateDescriptorPricingVersion(
+  descriptor: JudgeStructuredAiDescriptor,
+): void {
+  if (!OPAQUE_METADATA_PATTERN.test(descriptor.pricingVersion)) {
+    throw new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE");
+  }
+}
+
 function validatedEpoch(value: number): number {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE");
   }
   return value;
-}
-
-function opaqueClaimPricingVersion(value: string): string {
-  if (/^[0-9A-Za-z._:/-]{1,256}$/u.test(value)) {
-    return value;
-  }
-  const encoded = `hex:${Array.from(new TextEncoder().encode(value), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("")}`;
-  if (encoded.length > 256) {
-    throw new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE");
-  }
-  return encoded;
 }
 
 async function infrastructure<T>(operation: () => Promise<T>): Promise<T> {

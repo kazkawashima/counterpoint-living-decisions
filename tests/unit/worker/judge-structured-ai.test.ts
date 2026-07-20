@@ -63,7 +63,8 @@ describe("judge structured AI limits", () => {
     expect(PRIVATE_DISCLOSURE_OPERATION).toBe("private_evidence_disclosure");
     expect(PRIVATE_DISCLOSURE_MODEL).toBe("gpt-5.6");
     expect(PRIVATE_DISCLOSURE_PRICING_VERSION).toBe(
-      "openai-gpt-5.6-conservative-2026-07-20+judge-structured-input-v1",
+      JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION]
+        .pricingVersion,
     );
     expect(PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS).toBe(120);
     expect(PRIVATE_DISCLOSURE_MAX_ATTEMPTS).toBe(2);

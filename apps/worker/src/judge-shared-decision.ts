@@ -174,8 +174,7 @@ export async function runJudgeSharedDecision<T>(input: {
 function decisionDescriptor(canonicalizationVersion: string) {
   const descriptor =
     JUDGE_STRUCTURED_AI_DESCRIPTORS[DECISION_SYNTHESIS_OPERATION];
-  const suffix = `+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
-  if (!descriptor.pricingVersion.endsWith(suffix)) {
+  if (descriptor.pricingVersion !== DECISION_SYNTHESIS_PRICING_VERSION) {
     throw new JudgeSharedDecisionError("OPENAI_UNAVAILABLE");
   }
   return {
@@ -184,7 +183,10 @@ function decisionDescriptor(canonicalizationVersion: string) {
       canonicalizationVersion ===
       JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION
         ? DECISION_SYNTHESIS_PRICING_VERSION
-        : `${descriptor.pricingVersion.slice(0, -suffix.length)}+${canonicalizationVersion}`,
+        : `${DECISION_SYNTHESIS_PRICING_VERSION.slice(
+            0,
+            -JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION.length,
+          )}${canonicalizationVersion}`,
   };
 }
 
