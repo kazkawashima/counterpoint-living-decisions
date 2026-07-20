@@ -77,7 +77,13 @@ import type {
   PasswordVerifier,
   SessionRepository,
   SessionTokenIssuer,
+  UsageDecision,
 } from "@counterpoint/ports";
+import {
+  JudgeAssumptionInvalidationError,
+  runJudgeAssumptionInvalidation,
+  type JudgeAssumptionInvalidationRuntimeDependencies,
+} from "./judge-assumption-invalidation.js";
 import {
   JudgePrivateDisclosureError,
   runJudgePrivateDisclosure,
@@ -161,6 +167,7 @@ export interface WorkerFlagshipHttpDependencies {
   readonly authorizationPolicy?: UserAuthorizationPolicy;
   readonly deterministicPrivateDisclosureEnabled?: boolean;
   readonly deterministicSharedDecisionEnabled?: boolean;
+  readonly judgeAssumptionInvalidation?: JudgeAssumptionInvalidationRuntimeDependencies;
   readonly judgePrivateDisclosure?: JudgePrivateDisclosureRuntimeDependencies;
   readonly judgeSharedDecision?: JudgeSharedDecisionRuntimeDependencies;
 }
@@ -679,21 +686,70 @@ function invalidationReviewFailureResponse(
       : apiErrorResponse("VALIDATION_FAILED", correlationId);
 }
 
+type InvalidationUsageLimit = Extract<
+  UsageDecision,
+  { kind: "denied" }
+>["limit"];
+
+export type WorkerInvalidationEvaluationAttemptResult =
+  | { readonly kind: "attempted" }
+  | { readonly kind: "pending" }
+  | {
+      readonly kind: "usage_denied";
+      readonly limit: InvalidationUsageLimit;
+    };
+
 async function attemptInvalidationEvaluation(
   dependencies: WorkerFlagshipHttpDependencies,
+  authorization: UserAuthorizationContext,
   correlationId: string,
   externalEventId: string,
   meetingId: string,
-): Promise<void> {
+): Promise<WorkerInvalidationEvaluationAttemptResult> {
   try {
-    await evaluateAssumptionInvalidation(dependencies.invalidationEvaluations, {
-      correlationId,
-      externalEventId,
-      meetingId,
-    });
-  } catch {
+    const execute = (
+      invalidationDependencies: InvalidationEvaluationDependencies,
+    ) =>
+      evaluateAssumptionInvalidation(invalidationDependencies, {
+        correlationId,
+        externalEventId,
+        meetingId,
+      });
+    const managed = dependencies.judgeAssumptionInvalidation;
+    if (
+      managed !== undefined &&
+      authorization.capabilities.has("judge:managed-ai")
+    ) {
+      await runJudgeAssumptionInvalidation({
+        authorization,
+        claims: managed.claims,
+        clock: dependencies.clock,
+        dependencies: dependencies.invalidationEvaluations,
+        evaluator: managed.evaluator,
+        execute,
+        ipAddress: managed.ipAddress,
+        nextReservationId: managed.nextReservationId,
+        reconcile: managed.reconcile,
+        usage: managed.usage,
+      });
+    } else {
+      await execute(dependencies.invalidationEvaluations);
+    }
+    return { kind: "attempted" };
+  } catch (error) {
+    if (
+      error instanceof JudgeAssumptionInvalidationError &&
+      error.code === "USAGE_LIMIT_REACHED" &&
+      error.details.limit !== undefined
+    ) {
+      return {
+        kind: "usage_denied",
+        limit: error.details.limit,
+      };
+    }
     // The receipt is durable even when a provider is unavailable or fails.
     // The shared read model remains in MONITORING/pending until retried.
+    return { kind: "pending" };
   }
 }
 
@@ -1506,12 +1562,18 @@ export async function handleWorkerFlagshipHttp(input: {
           ? apiErrorResponse("IDEMPOTENCY_CONFLICT", correlationId)
           : apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
-    await attemptInvalidationEvaluation(
+    const evaluationAttempt = await attemptInvalidationEvaluation(
       dependencies,
+      resolved.authorization,
       result.correlationId,
       result.event.id,
       meetingId,
     );
+    if (evaluationAttempt.kind === "usage_denied") {
+      return apiErrorResponse("USAGE_LIMIT_REACHED", correlationId, {
+        limit: evaluationAttempt.limit,
+      });
+    }
     const records = await dependencies.events.load(meetingId);
     const events = records.map(({ event, position }) => ({
       ...event,

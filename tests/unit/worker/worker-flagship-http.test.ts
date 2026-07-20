@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ASSUMPTION_INVALIDATION_OPERATION,
   OpenAiCandidateError,
+  type AssumptionInvalidationEvaluation,
   type PrivateDisclosureProposal,
   type SharedDecisionSynthesis,
 } from "@counterpoint/adapters-openai";
@@ -14,7 +16,19 @@ import {
   type DecisionCandidateDependencies,
   type DisclosureDependencies,
 } from "@counterpoint/application";
-import type { DomainEvent, MeetingProjection } from "@counterpoint/domain";
+import {
+  createDecisionRevision,
+  createPremise,
+  meetingId as domainMeetingId,
+  monitorRegistrationId,
+  nonEmptyText,
+  revisionNumber,
+  suggestionId,
+  timestamp,
+  transitionDecision,
+  type DomainEvent,
+  type MeetingProjection,
+} from "@counterpoint/domain";
 import type {
   SessionRecord,
   UsageRequest,
@@ -25,6 +39,7 @@ import {
   handleWorkerFlagshipHttp,
   type WorkerFlagshipHttpDependencies,
 } from "../../../apps/worker/src/worker-flagship-http.js";
+import type { JudgeAssumptionInvalidationRuntimeDependencies } from "../../../apps/worker/src/judge-assumption-invalidation.js";
 import type { JudgePrivateDisclosureRuntimeDependencies } from "../../../apps/worker/src/judge-private-disclosure.js";
 import type { JudgeSharedDecisionRuntimeDependencies } from "../../../apps/worker/src/judge-shared-decision.js";
 import {
@@ -42,6 +57,14 @@ import {
   InMemoryProjectionStore,
 } from "../../helpers/in-memory-ports.js";
 import { userAuthorizationContext } from "../../../packages/application/src/sessions.js";
+import {
+  action,
+  firstRevision,
+  flagshipDecision,
+  ids,
+  sharedEvent,
+  sharedEvidence,
+} from "../domain/fixtures.js";
 
 const MEETING_ID = "meeting-worker-disclosure";
 const PARTICIPANT_ID = "participant-worker-disclosure";
@@ -218,6 +241,107 @@ function managedDecisionRuntime(input: {
                 reservedAtEpoch: nowEpoch,
               };
         },
+      ),
+    },
+  };
+}
+
+function invalidationEvaluation(): AssumptionInvalidationEvaluation {
+  const suggestion = {
+    affectedActionIds: [ids.actionEurope],
+    affectedPremiseIds: [ids.premiseEurope],
+    confidence: 0.91,
+    evidenceReferenceIds: [
+      ids.evidence,
+      "demo://regulatory-change/eu-approval-gate",
+    ],
+    reason: "The synthetic regulation invalidates the monitored premise.",
+  };
+  return {
+    ai: {
+      candidates: [suggestion],
+      generatedAt: NOW,
+      inputReferenceIds: [
+        "demo-regulator:worker-invalidation",
+        String(firstRevision("COMMITTED").id),
+        ids.premiseEurope,
+        ids.actionEurope,
+        ids.evidence,
+        "demo://regulatory-change/eu-approval-gate",
+      ],
+      model: "gpt-5.6",
+      operation: ASSUMPTION_INVALIDATION_OPERATION,
+      promptVersion: "assumption-invalidation-v1",
+      schemaVersion: "1",
+    },
+    billing: {
+      attemptCount: 1,
+      attempts: [{ inputTokens: 180, model: "gpt-5.6", outputTokens: 55 }],
+      inputTokens: 180,
+      outputTokens: 55,
+    },
+    suggestion,
+  };
+}
+
+function managedInvalidationRuntime(input: {
+  readonly claim: (
+    input: ManagedAiOperationReserveClaim,
+  ) => Promise<"claimed" | "conflict" | "replayed">;
+  readonly evaluate: JudgeAssumptionInvalidationRuntimeDependencies["evaluator"]["evaluate"];
+  readonly reserve: (
+    subject: UsageSubject,
+    request: UsageRequest,
+  ) => Promise<D1NamedUsageDecision>;
+}): JudgeAssumptionInvalidationRuntimeDependencies {
+  return {
+    claims: {
+      abandonReserved: vi.fn(() => Promise.resolve("abandoned" as const)),
+      markProviderStarted: vi.fn(() => Promise.resolve("started" as const)),
+      markSettled: vi.fn(() => Promise.resolve("settled" as const)),
+      releaseOrphanedReservation: vi.fn(() =>
+        Promise.resolve("unavailable" as const),
+      ),
+      reserveClaim: vi.fn(
+        async (claimInput: ManagedAiOperationReserveClaim) => {
+          const result = await input.claim(claimInput);
+          if (result === "conflict") {
+            return { kind: "conflict" as const };
+          }
+          return {
+            claim: {
+              ...claimInput,
+              providerStartedAtEpoch: undefined,
+              reuseAfterEpoch: undefined,
+              settledAtEpoch: undefined,
+              status: "reserved" as const,
+            },
+            kind:
+              result === "replayed"
+                ? ("replayed" as const)
+                : ("reserved" as const),
+          };
+        },
+      ),
+      takeOverReserved: vi.fn(() => Promise.resolve("taken_over" as const)),
+    },
+    evaluator: { evaluate: input.evaluate },
+    ipAddress: "203.0.113.74",
+    nextReservationId: () => "reservation-worker-invalidation",
+    reconcile: vi.fn(() => Promise.resolve()),
+    usage: {
+      finalize: vi.fn(() => Promise.resolve()),
+      findReservation: vi.fn(() => Promise.resolve(undefined)),
+      release: vi.fn(() => Promise.resolve()),
+      reserveWithId: vi.fn(
+        (
+          _identity: {
+            readonly requestFingerprint: string;
+            readonly reservationId: string;
+          },
+          subject: UsageSubject,
+          requestValue: UsageRequest,
+        ) => input.reserve(subject, requestValue),
       ),
     },
   };
@@ -426,6 +550,147 @@ async function decisionFixture(
   };
 }
 
+async function invalidationFixture() {
+  const fixtureValue = await fixture();
+  const scope = domainMeetingId(MEETING_ID);
+  const clock = new MutableClock(NOW);
+  const projections = new InMemoryProjectionStore<MeetingProjection>();
+  let generatedId = 0;
+  const generator = {
+    next(namespace: string) {
+      generatedId += 1;
+      return `worker-invalidation-${namespace}-${String(generatedId)}`;
+    },
+  };
+  const premise = createPremise({
+    confirmationStatus: "confirmed",
+    createdAt: timestamp("2026-07-19T00:01:00.000Z"),
+    createdBy: ids.facilitator,
+    dependencyScope: [nonEmptyText("Europe rollout")],
+    id: ids.premiseEurope,
+    meetingId: scope,
+    monitorCondition: {
+      description: nonEmptyText("Monitor European regulatory changes"),
+    },
+    origin: "ai_inference",
+    revision: revisionNumber(1),
+    statement: nonEmptyText(
+      "The current European rollout remains legally permitted",
+    ),
+    visibility: "shared",
+  });
+  const rolloutAction = action(
+    ids.actionEurope,
+    ids.premiseEurope,
+    "Europe rollout",
+    { meetingId: scope },
+  );
+  const committedDecision = flagshipDecision("COMMITTED", {
+    actionIds: [ids.actionEurope],
+    dissentIds: [],
+    meetingId: scope,
+  });
+  const monitoringDecision = transitionDecision(committedDecision, {
+    authority: { kind: "system" },
+    monitorRegistrationId: monitorRegistrationId(
+      "monitor-worker-invalidation",
+    ),
+    to: "MONITORING",
+  });
+  const baseRevision = firstRevision("COMMITTED");
+  const committedRevision = createDecisionRevision({
+    ...baseRevision,
+    meetingId: scope,
+    snapshot: {
+      ...baseRevision.snapshot,
+      actionIds: [ids.actionEurope],
+      dissentIds: [],
+    },
+  });
+  const events = [
+    {
+      ...sharedEvent("EvidenceShared", 2, {
+        evidence: { ...sharedEvidence(), meetingId: scope },
+      }),
+      meetingId: scope,
+    },
+    {
+      ...sharedEvent("InferenceConfirmed", 3, {
+        confirmedBy: ids.facilitator,
+        result: { entity: premise, kind: "premise" },
+        suggestionId: suggestionId("suggestion-worker-premise"),
+      }),
+      meetingId: scope,
+    },
+    {
+      ...sharedEvent("InferenceConfirmed", 4, {
+        confirmedBy: ids.facilitator,
+        result: { entity: rolloutAction, kind: "action" },
+        suggestionId: suggestionId("suggestion-worker-action"),
+      }),
+      meetingId: scope,
+    },
+    {
+      ...sharedEvent("DecisionCommitted", 5, {
+        decision: committedDecision,
+        revision: committedRevision,
+      }),
+      meetingId: scope,
+    },
+    {
+      ...sharedEvent("MonitoringStarted", 6, {
+        decision: monitoringDecision,
+        monitorRegistrationId: monitorRegistrationId(
+          "monitor-worker-invalidation",
+        ),
+      }),
+      meetingId: scope,
+    },
+  ] as readonly DomainEvent[];
+  const seeded = await fixtureValue.dependencies.events.append({
+    events,
+    expectedPosition: 1,
+    meetingId: MEETING_ID,
+  });
+  if (seeded.kind !== "appended") {
+    throw new Error("Worker invalidation fixture failed");
+  }
+  return {
+    ...fixtureValue,
+    clock,
+    committedRevision,
+    dependencies: {
+      ...fixtureValue.dependencies,
+      clock,
+      externalEvents: {
+        clock,
+        events: fixtureValue.dependencies.events,
+        ids: generator,
+        projections,
+      },
+      invalidationEvaluations: {
+        clock,
+        events: fixtureValue.dependencies.events,
+        hash: stableHash,
+        ids: generator,
+        projections,
+      },
+      ids: generator,
+      meetings: {
+        ...fixtureValue.dependencies.meetings,
+        findAssignment: () =>
+          Promise.resolve({
+            active: true,
+            meetingId: MEETING_ID,
+            participantId: FACILITATOR_ID,
+            role: "facilitator" as const,
+            userId: USER_ID,
+          }),
+      },
+    },
+  };
+}
+
 function request(
   sourceArtifactId: string,
   assistance: "ai_preferred" | "manual",
@@ -498,6 +763,22 @@ function decisionRequest(assistance: "ai_preferred" | "manual"): Request {
     },
     method: "POST",
   });
+}
+
+function invalidationRequest(): Request {
+  return new Request(
+    "https://counterpoint.test/api/v1/demo/regulatory-change",
+    {
+      body: JSON.stringify({
+        idempotencyKey: "worker-invalidation",
+      }),
+      headers: {
+        authorization: `Bearer ${BEARER}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    },
+  );
 }
 
 async function responseBody(
@@ -994,5 +1275,208 @@ describe("Worker shared Decision boundary", () => {
     expect(claim).not.toHaveBeenCalled();
     expect(reserve).not.toHaveBeenCalled();
     expect(synthesize).not.toHaveBeenCalled();
+  });
+});
+
+describe("Worker assumption invalidation boundary", () => {
+  it("keeps the external receipt durable before managed usage denial returns typed 429", async () => {
+    const fixtureValue = await invalidationFixture();
+    const evaluate = vi.fn(() => Promise.resolve(invalidationEvaluation()));
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-invalidation-denied",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        authorizationPolicy: {
+          judgeManagedAiUserIds: new Set([USER_ID]),
+        },
+        judgeAssumptionInvalidation: managedInvalidationRuntime({
+          claim: vi.fn(() => Promise.resolve("claimed" as const)),
+          evaluate,
+          reserve: vi.fn(() =>
+            Promise.resolve({
+              kind: "denied" as const,
+              limit: "cost" as const,
+            }),
+          ),
+        }),
+      },
+      meetingId: MEETING_ID,
+      operation: "inject-demo-regulatory-change",
+      request: invalidationRequest(),
+    });
+
+    expect(response.status).toBe(429);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      code: "USAGE_LIMIT_REACHED",
+      details: { limit: "cost" },
+    });
+    const records = await fixtureValue.dependencies.events.load(MEETING_ID);
+    expect(
+      records.filter(
+        ({ event }) => event.eventType === "ExternalEventReceived",
+      ),
+    ).toHaveLength(1);
+    expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("keeps provider failure as a durable 202 pending receipt", async () => {
+    const fixtureValue = await invalidationFixture();
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-invalidation-provider-failure",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        authorizationPolicy: {
+          judgeManagedAiUserIds: new Set([USER_ID]),
+        },
+        judgeAssumptionInvalidation: managedInvalidationRuntime({
+          claim: vi.fn(() => Promise.resolve("claimed" as const)),
+          evaluate: vi.fn(() =>
+            Promise.reject(new Error("sensitive provider failure")),
+          ),
+          reserve: vi.fn(() =>
+            Promise.resolve({
+              activeUntilEpoch: Date.parse(NOW) / 1_000 + 120,
+              kind: "allowed" as const,
+              reservationId: "reservation-worker-invalidation",
+              reservedAtEpoch: Date.parse(NOW) / 1_000,
+            }),
+          ),
+        }),
+      },
+      meetingId: MEETING_ID,
+      operation: "inject-demo-regulatory-change",
+      request: invalidationRequest(),
+    });
+
+    expect(response.status).toBe(202);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      evaluationStatus: "pending",
+      receiptStatus: "received",
+    });
+    expect(
+      (await fixtureValue.dependencies.events.load(MEETING_ID)).filter(
+        ({ event }) => event.eventType === "ExternalEventReceived",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("retries after retention with the original durable receipt and revision identity", async () => {
+    const fixtureValue = await invalidationFixture();
+    const claims: ManagedAiOperationReserveClaim[] = [];
+    const evaluatorInputs: unknown[] = [];
+    let attempt = 0;
+    let retentionElapsed = false;
+    const runtime = managedInvalidationRuntime({
+      claim: vi.fn((input: ManagedAiOperationReserveClaim) => {
+        if (attempt > 0 && !retentionElapsed) {
+          return Promise.resolve("replayed" as const);
+        }
+        claims.push(input);
+        return Promise.resolve("claimed" as const);
+      }),
+      evaluate: vi.fn((input) => {
+        evaluatorInputs.push(structuredClone(input));
+        attempt += 1;
+        return attempt === 1
+          ? Promise.reject(new Error("first provider failure"))
+          : Promise.resolve(invalidationEvaluation());
+      }),
+      reserve: vi.fn(() =>
+        Promise.resolve({
+          activeUntilEpoch: Date.parse(NOW) / 1_000 + 120,
+          kind: "allowed" as const,
+          reservationId: "reservation-worker-invalidation",
+          reservedAtEpoch: Date.parse(NOW) / 1_000,
+        }),
+      ),
+    });
+    const dependencies: WorkerFlagshipHttpDependencies = {
+      ...fixtureValue.dependencies,
+      authorizationPolicy: {
+        judgeManagedAiUserIds: new Set([USER_ID]),
+      },
+      judgeAssumptionInvalidation: runtime,
+    };
+
+    const first = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-invalidation-retry-first",
+      dependencies,
+      meetingId: MEETING_ID,
+      operation: "inject-demo-regulatory-change",
+      request: invalidationRequest(),
+    });
+    retentionElapsed = true;
+    const retry = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-invalidation-retry-second",
+      dependencies,
+      meetingId: MEETING_ID,
+      operation: "inject-demo-regulatory-change",
+      request: invalidationRequest(),
+    });
+
+    expect(first.status).toBe(202);
+    expect(retry.status).toBe(202);
+    expect(claims).toHaveLength(2);
+    expect(claims[1]?.claimKeyHash).toBe(claims[0]?.claimKeyHash);
+    expect(claims[1]?.requestFingerprint).toBe(
+      claims[0]?.requestFingerprint,
+    );
+    expect(evaluatorInputs).toHaveLength(2);
+    expect(evaluatorInputs[1]).toEqual(evaluatorInputs[0]);
+    expect(evaluatorInputs[0]).toMatchObject({
+      decision: {
+        revision: fixtureValue.committedRevision.version,
+        revisionId: fixtureValue.committedRevision.id,
+      },
+      externalEvent: {
+        externalEventId: "demo-regulator:worker-invalidation",
+      },
+    });
+    expect(
+      (await fixtureValue.dependencies.events.load(MEETING_ID)).filter(
+        ({ event }) => event.eventType === "ExternalEventReceived",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("keeps ordinary deterministic evaluation outside the managed lifecycle", async () => {
+    const fixtureValue = await invalidationFixture();
+    const claim = vi.fn(() =>
+      Promise.reject(new Error("ordinary path touched claim")),
+    );
+    const reserve = vi.fn(() =>
+      Promise.reject(new Error("ordinary path touched ledger")),
+    );
+    const managedEvaluate = vi.fn(() =>
+      Promise.reject(new Error("ordinary path touched managed provider")),
+    );
+    const deterministicEvaluate = vi.fn(() =>
+      Promise.resolve(invalidationEvaluation()),
+    );
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-invalidation-deterministic",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        invalidationEvaluations: {
+          ...fixtureValue.dependencies.invalidationEvaluations,
+          evaluator: { evaluate: deterministicEvaluate },
+        },
+        judgeAssumptionInvalidation: managedInvalidationRuntime({
+          claim,
+          evaluate: managedEvaluate,
+          reserve,
+        }),
+      },
+      meetingId: MEETING_ID,
+      operation: "inject-demo-regulatory-change",
+      request: invalidationRequest(),
+    });
+
+    expect(response.status).toBe(202);
+    expect(deterministicEvaluate).toHaveBeenCalledTimes(1);
+    expect(claim).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(managedEvaluate).not.toHaveBeenCalled();
   });
 });

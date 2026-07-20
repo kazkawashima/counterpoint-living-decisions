@@ -494,4 +494,38 @@ describe("assumption invalidation evaluation application flow", () => {
       ),
     ).toHaveLength(2);
   });
+
+  it("keeps concrete billing metadata out of Node application contracts", async () => {
+    const fixtureState = await fixture();
+    const concreteEvaluator = {
+      async evaluate(input: AssumptionInvalidationEvaluationInput) {
+        const result = await fixtureState.evaluator.evaluate(input);
+        return {
+          ...result,
+          billing: {
+            attemptCount: 1,
+            attempts: [
+              { inputTokens: 100, model: "gpt-5.6", outputTokens: 40 },
+            ],
+            inputTokens: 100,
+            outputTokens: 40,
+          },
+        };
+      },
+    };
+
+    const result = await evaluateAssumptionInvalidation(
+      {
+        ...fixtureState.dependencies,
+        evaluator: concreteEvaluator,
+      },
+      evaluationInput,
+    );
+
+    expect(result).toMatchObject({ kind: "evaluated" });
+    expect(result).not.toHaveProperty("billing");
+    expect(
+      JSON.stringify(await fixtureState.events.load(ids.meeting)),
+    ).not.toContain('"billing"');
+  });
 });
