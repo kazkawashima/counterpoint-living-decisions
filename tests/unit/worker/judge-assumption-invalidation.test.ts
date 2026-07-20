@@ -225,16 +225,15 @@ function fixture(
             }),
     ),
   };
-  const provider = vi.fn<
-    ConcreteAssumptionInvalidationEvaluator["evaluate"]
-  >(() =>
-    options.providerError === undefined
-      ? Promise.resolve(options.result ?? evaluation())
-      : Promise.reject(
-          options.providerError instanceof Error
-            ? options.providerError
-            : new Error("Synthetic provider failure"),
-        ),
+  const provider = vi.fn<ConcreteAssumptionInvalidationEvaluator["evaluate"]>(
+    () =>
+      options.providerError === undefined
+        ? Promise.resolve(options.result ?? evaluation())
+        : Promise.reject(
+            options.providerError instanceof Error
+              ? options.providerError
+              : new Error("Synthetic provider failure"),
+          ),
   );
   return {
     claims,
@@ -357,9 +356,9 @@ describe("judge assumption invalidation decorator", () => {
         },
       },
     });
-    expect(
-      changedEvent.reserveClaim.mock.calls[0]?.[0]?.claimKeyHash,
-    ).not.toBe(first?.claimKeyHash);
+    expect(changedEvent.reserveClaim.mock.calls[0]?.[0]?.claimKeyHash).not.toBe(
+      first?.claimKeyHash,
+    );
 
     const changedRevisionIdentity = fixture();
     await run(changedRevisionIdentity, {

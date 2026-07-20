@@ -286,10 +286,13 @@ describe("judge structured AI limits", () => {
   });
 
   it("accepts JSON objects with a null prototype", () => {
-    const value = Object.assign(Object.create(null) as Record<string, unknown>, {
-      first: true,
-      second: "value",
-    });
+    const value = Object.assign(
+      Object.create(null) as Record<string, unknown>,
+      {
+        first: true,
+        second: "value",
+      },
+    );
 
     expect(canonicalizeJudgeStructuredInput(value)).toBe(
       '{"first":true,"second":"value"}',
@@ -414,10 +417,7 @@ describe("judge structured AI limits", () => {
       }),
     ).not.toBe(first);
     expect(
-      await fingerprintJudgeStructuredInput(
-        right,
-        "judge-structured-input-v2",
-      ),
+      await fingerprintJudgeStructuredInput(right, "judge-structured-input-v2"),
     ).not.toBe(first);
   });
 
@@ -541,9 +541,7 @@ describe("judge structured AI limits", () => {
       "mismatched attempt totals",
       "gpt-5.6-sol",
       billing({
-        attempts: [
-          { inputTokens: 2, model: "gpt-5.6-sol", outputTokens: 1 },
-        ],
+        attempts: [{ inputTokens: 2, model: "gpt-5.6-sol", outputTokens: 1 }],
         inputTokens: 1,
       }),
     ],
@@ -558,9 +556,7 @@ describe("judge structured AI limits", () => {
       pricePrivateDisclosureUsageMicroUsd(
         "gpt-5.6-unsupported",
         billing({
-          attempts: [
-            { inputTokens: 1, model: "gpt-5.6-sol", outputTokens: 1 },
-          ],
+          attempts: [{ inputTokens: 1, model: "gpt-5.6-sol", outputTokens: 1 }],
         }),
       ),
     ).toThrowError(/Unsupported structured AI response model/u);
@@ -599,9 +595,7 @@ describe("judge structured AI limits", () => {
       calculatePrivateDisclosureActualUsage(
         "gpt-5.6-unsupported",
         billing({
-          attempts: [
-            { inputTokens: 1, model: "gpt-5.6-sol", outputTokens: 1 },
-          ],
+          attempts: [{ inputTokens: 1, model: "gpt-5.6-sol", outputTokens: 1 }],
         }),
       ),
     ).toThrowError(/Unsupported structured AI response model/u);

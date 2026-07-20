@@ -197,7 +197,9 @@ function harness(
   const releaseOrphanedReservation = vi.fn(() => {
     order.push("release-orphan");
     return Promise.resolve(
-      firstClaim === undefined ? ("released" as const) : ("unavailable" as const),
+      firstClaim === undefined
+        ? ("released" as const)
+        : ("unavailable" as const),
     );
   });
   const reserveWithId = vi.fn(() => {

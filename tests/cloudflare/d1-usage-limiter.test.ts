@@ -202,10 +202,7 @@ function failAfterCommittedReservationInsert(): D1Database {
       get(target, property, receiver) {
         if (property === "bind") {
           return (...values: unknown[]) =>
-            wrapStatement(
-              target.bind(...values),
-              isReservationInsert,
-            );
+            wrapStatement(target.bind(...values), isReservationInsert);
         }
         if (property === "run" && isReservationInsert) {
           return async () => {
@@ -448,14 +445,10 @@ describe("D1UsageLimiter", () => {
       ),
     ).resolves.toMatchObject({ kind: "allowed" });
     await expect(
-      usageLimiter.reserveWithId(
-        identity,
-        subject("named-collision"),
-        {
-          ...DEFAULT_REQUEST,
-          estimatedOutputTokens: DEFAULT_REQUEST.estimatedOutputTokens + 1,
-        },
-      ),
+      usageLimiter.reserveWithId(identity, subject("named-collision"), {
+        ...DEFAULT_REQUEST,
+        estimatedOutputTokens: DEFAULT_REQUEST.estimatedOutputTokens + 1,
+      }),
     ).rejects.toThrow("immutable fields");
     await expect(
       usageLimiter.reserveWithId(
@@ -489,17 +482,13 @@ describe("D1UsageLimiter", () => {
       meetingId: "meeting-find-owner",
     });
 
-    await usageLimiter.reserveWithId(
-      identity,
-      scopedSubject,
-      {
-        estimatedCostUsd: 0.25,
-        estimatedInputTokens: 11,
-        estimatedOutputTokens: 7,
-        generationCount: 2,
-        realtimeSeconds: 3,
-      },
-    );
+    await usageLimiter.reserveWithId(identity, scopedSubject, {
+      estimatedCostUsd: 0.25,
+      estimatedInputTokens: 11,
+      estimatedOutputTokens: 7,
+      generationCount: 2,
+      realtimeSeconds: 3,
+    });
 
     const found = await usageLimiter.findReservation(identity.reservationId);
     expect(found).toMatchObject({
@@ -538,16 +527,12 @@ describe("D1UsageLimiter", () => {
       reservationId: "caller-reservation-settlement",
     };
     const scopedSubject = subject("named-settlement");
-    const reserved = await usageLimiter.reserveWithId(
-      identity,
-      scopedSubject,
-      {
-        ...DEFAULT_REQUEST,
-        estimatedCostUsd: 0.8,
-        estimatedInputTokens: 20,
-        estimatedOutputTokens: 10,
-      },
-    );
+    const reserved = await usageLimiter.reserveWithId(identity, scopedSubject, {
+      ...DEFAULT_REQUEST,
+      estimatedCostUsd: 0.8,
+      estimatedInputTokens: 20,
+      estimatedOutputTokens: 10,
+    });
     if (reserved.kind !== "allowed") {
       throw new Error("Expected named reservation");
     }
@@ -560,16 +545,12 @@ describe("D1UsageLimiter", () => {
     clock.advanceSeconds(60);
 
     await expect(
-      usageLimiter.reserveWithId(
-        identity,
-        scopedSubject,
-        {
-          ...DEFAULT_REQUEST,
-          estimatedCostUsd: 0.8,
-          estimatedInputTokens: 20,
-          estimatedOutputTokens: 10,
-        },
-      ),
+      usageLimiter.reserveWithId(identity, scopedSubject, {
+        ...DEFAULT_REQUEST,
+        estimatedCostUsd: 0.8,
+        estimatedInputTokens: 20,
+        estimatedOutputTokens: 10,
+      }),
     ).resolves.toEqual(reserved);
     await expect(
       usageLimiter.findReservation(identity.reservationId),
@@ -608,11 +589,7 @@ describe("D1UsageLimiter", () => {
     await usageLimiter.release(identity.reservationId);
 
     await expect(
-      usageLimiter.reserveWithId(
-        identity,
-        scopedSubject,
-        DEFAULT_REQUEST,
-      ),
+      usageLimiter.reserveWithId(identity, scopedSubject, DEFAULT_REQUEST),
     ).rejects.toThrow("Released usage reservation cannot be recovered");
     const rows = await env.DB.withSession("first-primary")
       .prepare(

@@ -351,9 +351,7 @@ export class OpenAiAssumptionInvalidationEvaluator {
         ) {
           break;
         }
-        await this.#delay(
-          fullJitterBackoffMilliseconds(attempt, this.#random),
-        );
+        await this.#delay(fullJitterBackoffMilliseconds(attempt, this.#random));
       }
     }
 

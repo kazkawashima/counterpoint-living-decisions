@@ -1108,10 +1108,7 @@ describe("D1 managed-AI operation claims", () => {
       "abandoned",
     );
     await expect(
-      repository.releaseOrphanedReservation(
-        mutation,
-        input.createdAtEpoch - 1,
-      ),
+      repository.releaseOrphanedReservation(mutation, input.createdAtEpoch - 1),
     ).resolves.toBe("released");
     await expect(
       env.DB.prepare(

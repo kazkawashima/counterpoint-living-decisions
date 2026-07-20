@@ -115,8 +115,7 @@ export async function runJudgeAssumptionInvalidation<T>(input: {
                   result.billing,
                 ),
           claimKeyHash: await fingerprintJudgeStructuredInput({
-            externalEventId:
-              evaluationInput.externalEvent.externalEventId,
+            externalEventId: evaluationInput.externalEvent.externalEventId,
             meetingId: evaluationInput.meetingId,
             operation: ASSUMPTION_INVALIDATION_OPERATION,
             revisionId: evaluationInput.decision.revisionId,

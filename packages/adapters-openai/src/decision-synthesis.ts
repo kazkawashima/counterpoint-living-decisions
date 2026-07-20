@@ -341,9 +341,7 @@ export class OpenAiSharedDecisionSynthesizer {
         ) {
           break;
         }
-        await this.#delay(
-          fullJitterBackoffMilliseconds(attempt, this.#random),
-        );
+        await this.#delay(fullJitterBackoffMilliseconds(attempt, this.#random));
       }
     }
 

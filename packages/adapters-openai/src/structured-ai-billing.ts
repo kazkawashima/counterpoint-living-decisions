@@ -33,7 +33,10 @@ export class StructuredAiBillingAccumulator {
       return;
     }
 
-    if (!isTrustworthyResponseModel(responseModel) || !isTrustworthyUsage(usage)) {
+    if (
+      !isTrustworthyResponseModel(responseModel) ||
+      !isTrustworthyUsage(usage)
+    ) {
       this.invalidate();
       return;
     }

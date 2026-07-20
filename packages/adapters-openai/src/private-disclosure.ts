@@ -371,9 +371,7 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
         if (!canRetry) {
           break;
         }
-        await this.#delay(
-          fullJitterBackoffMilliseconds(attempt, this.#random),
-        );
+        await this.#delay(fullJitterBackoffMilliseconds(attempt, this.#random));
       }
     }
 
@@ -572,11 +570,7 @@ export function fullJitterBackoffMilliseconds(
     throw new RangeError("Retry attempt must be a positive safe integer.");
   }
   const randomValue = (random ?? secureRandomFraction)();
-  if (
-    !Number.isFinite(randomValue) ||
-    randomValue < 0 ||
-    randomValue >= 1
-  ) {
+  if (!Number.isFinite(randomValue) || randomValue < 0 || randomValue >= 1) {
     throw new RangeError("Random source must return a value from 0 through 1.");
   }
   const inclusiveMaximum = Math.min(1_000, 100 * 2 ** (attempt - 1));

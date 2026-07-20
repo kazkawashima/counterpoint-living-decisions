@@ -220,10 +220,7 @@ describe("OpenAiAssumptionInvalidationEvaluator", () => {
       evidenceReferenceIds: string[];
     };
     output.evidenceReferenceIds = ["evidence-invented"];
-    const model = new QueueModel([
-      { ...invalid, output },
-      validResult(),
-    ]);
+    const model = new QueueModel([{ ...invalid, output }, validResult()]);
     const evaluator = new OpenAiAssumptionInvalidationEvaluator({
       delay: () => Promise.resolve(),
       modelAdapter: model,

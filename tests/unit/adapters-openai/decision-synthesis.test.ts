@@ -183,10 +183,7 @@ describe("OpenAiSharedDecisionSynthesizer", () => {
       action: { ownerParticipantId: string };
     };
     output.action.ownerParticipantId = "participant-outsider";
-    const model = new QueueModel([
-      { ...invalid, output },
-      modelResult(),
-    ]);
+    const model = new QueueModel([{ ...invalid, output }, modelResult()]);
     const synthesizer = new OpenAiSharedDecisionSynthesizer({
       delay: () => Promise.resolve(),
       modelAdapter: model,

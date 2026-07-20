@@ -279,10 +279,7 @@ function requireNonEmpty(
 }
 
 function requireOpaqueReservationId(value: unknown, label: string): string {
-  if (
-    typeof value !== "string" ||
-    !OPAQUE_RESERVATION_ID_PATTERN.test(value)
-  ) {
+  if (typeof value !== "string" || !OPAQUE_RESERVATION_ID_PATTERN.test(value)) {
     throw new TypeError(
       `${label} must be 1..256 opaque metadata characters [0-9A-Za-z._:/-]`,
     );
@@ -292,9 +289,7 @@ function requireOpaqueReservationId(value: unknown, label: string): string {
 
 function requireRequestFingerprint(value: unknown, label: string): string {
   if (typeof value !== "string" || !REQUEST_FINGERPRINT_PATTERN.test(value)) {
-    throw new TypeError(
-      `${label} must be a lowercase sha256 digest`,
-    );
+    throw new TypeError(`${label} must be a lowercase sha256 digest`);
   }
   return value;
 }
@@ -634,10 +629,7 @@ export class D1UsageLimiter implements UsageLimiter {
     request: UsageRequest,
   ): Promise<UsageDecision> {
     const reservationId = nextId(this.#ids, RESERVATION_ID_NAMESPACE);
-    const requestIdentity = nextId(
-      this.#ids,
-      REQUEST_FINGERPRINT_NAMESPACE,
-    );
+    const requestIdentity = nextId(this.#ids, REQUEST_FINGERPRINT_NAMESPACE);
     const requestFingerprint = await sha256Fingerprint(requestIdentity);
     const decision = await this.reserveWithId(
       {
@@ -693,10 +685,7 @@ export class D1UsageLimiter implements UsageLimiter {
 
     const cutoff = now - ROLLING_WINDOW_SECONDS;
     const session = this.#session;
-    const existing = await this.#reservation(
-      session,
-      identity.reservationId,
-    );
+    const existing = await this.#reservation(session, identity.reservationId);
     if (existing !== undefined) {
       return this.#recoverNamedReservation(
         existing,
@@ -799,10 +788,7 @@ export class D1UsageLimiter implements UsageLimiter {
     reservationId: string,
   ): Promise<ManagedUsageReservation | undefined> {
     requireNonEmpty(reservationId, "reservationId");
-    const row = await this.#reservation(
-      this.#session,
-      reservationId,
-    );
+    const row = await this.#reservation(this.#session, reservationId);
     return row === undefined ? undefined : managedReservation(row);
   }
 

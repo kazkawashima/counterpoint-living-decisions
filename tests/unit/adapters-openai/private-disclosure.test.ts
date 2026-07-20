@@ -115,9 +115,9 @@ describe("OpenAiPrivateDisclosureProposer", () => {
     });
 
     expect(delay).toHaveBeenCalledExactlyOnceWith(50);
-    expect(fullJitterBackoffMilliseconds(20, () => 0.999_999)).toBeLessThanOrEqual(
-      1_000,
-    );
+    expect(
+      fullJitterBackoffMilliseconds(20, () => 0.999_999),
+    ).toBeLessThanOrEqual(1_000);
   });
 
   it("rejects a third provider attempt before any proposal work can start", () => {
