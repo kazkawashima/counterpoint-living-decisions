@@ -44,6 +44,7 @@ const expectedMigrationNames = [
   "0009_judge_managed_realtime_start_claims.sql",
   "0010_judge_managed_ai_operation_claims.sql",
   "0011_judge_managed_ai_operation_lifecycle.sql",
+  "0012_judge_usage_active_request_fingerprints.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -154,6 +155,23 @@ const expectedTablesAfterMigration = [
     "event_appends",
     "events",
     "judge_managed_ai_operation_claims",
+    "judge_managed_realtime_calls",
+    "judge_managed_realtime_start_claims",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_ai_operation_claims",
+    "judge_managed_ai_operation_lifecycle",
     "judge_managed_realtime_calls",
     "judge_managed_realtime_start_claims",
     "judge_usage_reservations",
@@ -708,6 +726,19 @@ describe("Cloudflare D1 migrations", () => {
         "participant_assignments_user",
         "sessions_user_activity",
       ]);
+      const requestIndex = database
+        .prepare(
+          `
+            SELECT sql
+            FROM sqlite_schema
+            WHERE type = 'index'
+              AND name = 'judge_usage_reservations_request'
+          `,
+        )
+        .get() as { readonly sql: string } | undefined;
+      expect(requestIndex?.sql.replaceAll(/\s+/gu, " ").trim()).toContain(
+        "WHERE status = 'reserved'",
+      );
       expect(triggerNames(database)).toEqual([
         "event_appends_complete_range",
         "events_contiguous_position",

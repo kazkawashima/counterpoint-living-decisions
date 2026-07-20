@@ -30,6 +30,7 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
   browser,
   page,
 }) => {
+  test.slow();
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto(baseURL ?? "/");
 

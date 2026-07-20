@@ -370,6 +370,20 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("Cloudflare Worker hosted flagship API", () => {
+  it("reports ready after the exact current D1 migration set is applied", async () => {
+    const response = await createWorkerHandler().fetch!(
+      workerRequest(new Request("https://192.0.2.10/ready")),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(json(response)).resolves.toMatchObject({
+      migrationsCurrent: true,
+      status: "ready",
+    });
+  });
+
   it("shows the seeded Work & Productivity meeting through an external-host-style URL", async () => {
     const handler = providerFreeWorkerHandler();
     const loginResponse = await handler.fetch!(

@@ -430,6 +430,68 @@ describe("D1UsageLimiter", () => {
     });
   });
 
+  it("rejects a second active reservation with the same logical fingerprint", async () => {
+    const usageLimiter = limiter(new MutableClock());
+    const scopedSubject = subject("named-active-duplicate");
+    const firstIdentity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-active-first",
+    };
+
+    await expect(
+      usageLimiter.reserveWithId(firstIdentity, scopedSubject, DEFAULT_REQUEST),
+    ).resolves.toMatchObject({ kind: "allowed" });
+    await expect(
+      usageLimiter.reserveWithId(
+        {
+          ...firstIdentity,
+          reservationId: "caller-reservation-active-second",
+        },
+        scopedSubject,
+        DEFAULT_REQUEST,
+      ),
+    ).rejects.toThrow(
+      "UNIQUE constraint failed: judge_usage_reservations.request_fingerprint",
+    );
+  });
+
+  it("allows a new named reservation with the same logical fingerprint after retained usage leaves the window", async () => {
+    const clock = new MutableClock();
+    const usageLimiter = limiter(clock);
+    const scopedSubject = subject("named-retained-reuse");
+    const firstIdentity = {
+      requestFingerprint: SYNTHETIC_REQUEST_FINGERPRINT,
+      reservationId: "caller-reservation-retained-first",
+    };
+
+    await expect(
+      usageLimiter.reserveWithId(firstIdentity, scopedSubject, DEFAULT_REQUEST),
+    ).resolves.toMatchObject({ kind: "allowed" });
+    await usageLimiter.finalize(firstIdentity.reservationId, DEFAULT_REQUEST);
+    clock.advanceSeconds(25 * 60 * 60 + 1);
+
+    await expect(
+      usageLimiter.reserveWithId(
+        {
+          ...firstIdentity,
+          reservationId: "caller-reservation-retained-second",
+        },
+        scopedSubject,
+        DEFAULT_REQUEST,
+      ),
+    ).resolves.toMatchObject({
+      kind: "allowed",
+      reservationId: "caller-reservation-retained-second",
+    });
+    const count = await env.DB.withSession("first-primary")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM judge_usage_reservations WHERE request_fingerprint = ?",
+      )
+      .bind(firstIdentity.requestFingerprint)
+      .first<{ count: number }>();
+    expect(count?.count).toBe(2);
+  });
+
   it("rejects a same-ID immutable-field collision", async () => {
     const usageLimiter = limiter(new MutableClock());
     const identity = {

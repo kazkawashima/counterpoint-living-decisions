@@ -89,6 +89,7 @@ const EXPECTED_D1_MIGRATIONS = [
   "0009_judge_managed_realtime_start_claims.sql",
   "0010_judge_managed_ai_operation_claims.sql",
   "0011_judge_managed_ai_operation_lifecycle.sql",
+  "0012_judge_usage_active_request_fingerprints.sql",
 ] as const;
 
 interface JudgeWorkerBindings {
