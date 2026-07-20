@@ -36,7 +36,7 @@ lightweight verification evidence in the meantime.
 
 - [ ] Keyboard and focus audit of all flagship controls.
 - [ ] Contrast, labels, target size, live-region, and reduced-motion audit.
-- [ ] Empty/loading/error/degraded/limit states.
+- [x] Empty/loading/success/error/offline/degraded/limit states.
 - [ ] Remove placeholder copy and any unsupported product claims.
 - [x] Confirm English primary UI and synthetic data consistency.
 

@@ -743,6 +743,15 @@ The canonical implementation-facing artifacts are:
   serious or critical WCAG 2 A/AA/2.1 AA violations in the exercised login,
   meeting-list, workspace, and mobile reduced-motion states. The horizontally
   scrollable mobile progress rail is now keyboard-focusable.
+- Focused browser proof now holds the assigned-meeting GET long enough to
+  observe `aria-busy=true` and the loading skeleton before normal completion.
+  It also runs Axe's WCAG 2.2 `target-size` rule against the meeting list and
+  checks computed reduced-motion animation, iteration, and transition values. A
+  controlled durable-projection 503 renders explicit `Offline` and
+  reconnection copy, then returns to `Live` after the route recovers. Together
+  with the existing empty, success, error, degraded, and limit journeys, this
+  closes the explicit async-state checklist. The broader all-control keyboard,
+  focus, contrast, label, and live-region audit remains open.
 - Normal E2E writes screenshots and clips under `test-results/evidence/`.
   `npm run e2e:capture` is the explicit path for intentional updates under
   `docs/media/`, preventing CI and verification reruns from silently replacing
@@ -754,25 +763,38 @@ The canonical implementation-facing artifacts are:
   bundle review. Project metadata remains `UNLICENSED` until the product owner
   makes the final public-license decision.
 - The fresh Compose smoke uses only an isolated `counterpoint-smoke-*` project,
-  clears inherited provider credentials, reaches an external-style host,
-  creates an owner-private source, force-recreates the app container, reuses
-  the same Bearer session and source, then removes only its exact temporary
-  project and volume.
+  clears inherited provider credentials, reaches an external-style host, and
+  creates a new three-user meeting. It uploads and processes a Markdown
+  artifact, records a separately authenticated owner-private source, approves
+  exact shared Evidence, and human-confirms a Decision through DRAFT revision
+  1 and COMMITTED revision 2. After force-recreating only the app container,
+  the same Bearer session verifies the created meeting projection, private
+  source identity, artifact metadata, both Decision revisions, JSON export/audit
+  lineage, and byte-accurate source plus normalized derived downloads. A fresh
+  headless Playwright session then logs in through the served UI, opens the newly
+  persisted meeting, and observes its processed artifact, shared Evidence,
+  Decision title, and `Revision 2 · COMMITTED` marker before the harness removes
+  only the exact temporary project and volume.
 - Cloudflare preview resource creation now requires an exact 32-character
   account ID and an account-bound confirmation value. It lists D1/R2 first and
   skips exact-name existing resources, allowing a partial create to resume
   without mutating existing state. No remote resource, migration, Secret, or
   deployment was created in this closeout.
-- Fresh verification passes 73 Vitest files and 814 tests, the focused security
-  matrix's 296 tests, the Cloudflare pool's 11 files and 141 tests, all 22 Node
+- Fresh verification passes 73 Vitest files and 817 tests, the focused security
+  matrix's 296 tests, the Cloudflare pool's 11 files and 141 tests, all 26 Node
   browser E2E cases, and both real-Wrangler browser cases. Environment,
   generated notices/media, formatting, architecture, ESLint, typecheck, build,
   secret scan, Worker bindings, Cloudflare configuration, shell syntax,
   deployment plans, and Worker dry-run also pass.
-- AC-03, AC-11, and AC-13 now have direct browser proof. AC-12 remains partial:
-  the Compose smoke proves authenticated source persistence, while a single
-  restart journey covering Decision revisions/history and downloadable
-  artifacts plus hosted D1/DO proof remains outstanding.
+- Fresh specification and code-quality reviews report no remaining Critical or
+  Important findings for the Compose persistence and focused accessibility
+  closeout.
+- AC-03, AC-11, and AC-13 have direct browser proof. AC-12 is now locally
+  proven by one restart journey covering the newly created meeting,
+  authenticated private source, uploaded source/derived artifact, committed
+  Decision revisions/history, audit export, downloads, and a post-restart
+  browser rendering of those durable records. Hosted D1/DO migration and
+  deployment proof remains the remote residual.
 
 ## Not started
 
