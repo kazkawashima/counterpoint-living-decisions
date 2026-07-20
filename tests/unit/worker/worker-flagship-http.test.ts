@@ -9,6 +9,7 @@ import {
 } from "@counterpoint/adapters-openai";
 import type {
   D1NamedUsageDecision,
+  ManagedAiOperationLifecycleClaim,
   ManagedAiOperationReserveClaim,
 } from "@counterpoint/adapters-cloudflare";
 import {
@@ -592,9 +593,7 @@ async function invalidationFixture() {
   });
   const monitoringDecision = transitionDecision(committedDecision, {
     authority: { kind: "system" },
-    monitorRegistrationId: monitorRegistrationId(
-      "monitor-worker-invalidation",
-    ),
+    monitorRegistrationId: monitorRegistrationId("monitor-worker-invalidation"),
     to: "MONITORING",
   });
   const baseRevision = firstRevision("COMMITTED");
@@ -1365,15 +1364,10 @@ describe("Worker assumption invalidation boundary", () => {
     const claims: ManagedAiOperationReserveClaim[] = [];
     const evaluatorInputs: unknown[] = [];
     let attempt = 0;
-    let retentionElapsed = false;
-    const runtime = managedInvalidationRuntime({
-      claim: vi.fn((input: ManagedAiOperationReserveClaim) => {
-        if (attempt > 0 && !retentionElapsed) {
-          return Promise.resolve("replayed" as const);
-        }
-        claims.push(input);
-        return Promise.resolve("claimed" as const);
-      }),
+    let lifecycle: ManagedAiOperationLifecycleClaim | undefined;
+    const clock = fixtureValue.dependencies.clock;
+    const baseRuntime = managedInvalidationRuntime({
+      claim: vi.fn(() => Promise.resolve("claimed" as const)),
       evaluate: vi.fn((input) => {
         evaluatorInputs.push(structuredClone(input));
         attempt += 1;
@@ -1383,19 +1377,116 @@ describe("Worker assumption invalidation boundary", () => {
       }),
       reserve: vi.fn(() =>
         Promise.resolve({
-          activeUntilEpoch: Date.parse(NOW) / 1_000 + 120,
+          activeUntilEpoch:
+            Date.parse(clock.now()) / 1_000 +
+            JUDGE_STRUCTURED_AI_DESCRIPTORS[ASSUMPTION_INVALIDATION_OPERATION]
+              .claimLeaseSeconds,
           kind: "allowed" as const,
           reservationId: "reservation-worker-invalidation",
-          reservedAtEpoch: Date.parse(NOW) / 1_000,
+          reservedAtEpoch: Date.parse(clock.now()) / 1_000,
         }),
       ),
     });
+    const runtime: JudgeAssumptionInvalidationRuntimeDependencies = {
+      ...baseRuntime,
+      claims: {
+        abandonReserved: vi.fn(() => Promise.resolve("abandoned" as const)),
+        markProviderStarted: vi.fn(
+          (
+            input: Parameters<
+              JudgeAssumptionInvalidationRuntimeDependencies["claims"]["markProviderStarted"]
+            >[0],
+          ) => {
+            if (
+              lifecycle?.status !== "reserved" ||
+              lifecycle.createdAtEpoch !== input.createdAtEpoch
+            ) {
+              return Promise.resolve("unavailable" as const);
+            }
+            lifecycle = {
+              ...lifecycle,
+              providerStartedAtEpoch: input.providerStartedAtEpoch,
+              status: "provider_started",
+            };
+            return Promise.resolve("started" as const);
+          },
+        ),
+        markSettled: vi.fn(
+          (
+            input: Parameters<
+              JudgeAssumptionInvalidationRuntimeDependencies["claims"]["markSettled"]
+            >[0],
+          ) => {
+            const current = lifecycle;
+            if (
+              current?.status !== "provider_started" ||
+              input.expectedStatus !== "provider_started" ||
+              current.createdAtEpoch !== input.createdAtEpoch
+            ) {
+              return Promise.resolve("unavailable" as const);
+            }
+            lifecycle = {
+              ...current,
+              leaseExpiresAtEpoch: undefined,
+              reuseAfterEpoch: input.reuseAfterEpoch,
+              settledAtEpoch: input.settledAtEpoch,
+              status: "settled",
+            };
+            return Promise.resolve("settled" as const);
+          },
+        ),
+        releaseOrphanedReservation: vi.fn(() =>
+          Promise.resolve("unavailable" as const),
+        ),
+        reserveClaim: vi.fn((input: ManagedAiOperationReserveClaim) => {
+          if (
+            lifecycle?.status === "settled" &&
+            input.createdAtEpoch <= lifecycle.reuseAfterEpoch
+          ) {
+            return Promise.resolve({
+              claim: lifecycle,
+              kind: "replayed" as const,
+            });
+          }
+          claims.push(input);
+          lifecycle = {
+            ...input,
+            providerStartedAtEpoch: undefined,
+            reuseAfterEpoch: undefined,
+            settledAtEpoch: undefined,
+            status: "reserved",
+          };
+          return Promise.resolve({
+            claim: lifecycle,
+            kind: "reserved" as const,
+          });
+        }),
+        takeOverReserved: vi.fn(() => Promise.resolve("taken_over" as const)),
+      },
+    };
     const dependencies: WorkerFlagshipHttpDependencies = {
       ...fixtureValue.dependencies,
       authorizationPolicy: {
         judgeManagedAiUserIds: new Set([USER_ID]),
       },
       judgeAssumptionInvalidation: runtime,
+      sessions: {
+        ...fixtureValue.dependencies.sessions,
+        findByTokenHash: async (tokenHash) => {
+          const session =
+            await fixtureValue.dependencies.sessions.findByTokenHash(tokenHash);
+          return session === undefined
+            ? undefined
+            : {
+                ...session,
+                absoluteExpiresAt: new Date(
+                  Date.parse(clock.now()) + 8 * 60 * 60 * 1_000,
+                ).toISOString(),
+                lastActivityAt: clock.now(),
+              };
+        },
+        revoke: vi.fn(() => Promise.resolve()),
+      },
     };
 
     const first = await handleWorkerFlagshipHttp({
@@ -1405,9 +1496,16 @@ describe("Worker assumption invalidation boundary", () => {
       operation: "inject-demo-regulatory-change",
       request: invalidationRequest(),
     });
-    retentionElapsed = true;
-    const retry = await handleWorkerFlagshipHttp({
+    const withinRetention = await handleWorkerFlagshipHttp({
       correlationId: "correlation-worker-invalidation-retry-second",
+      dependencies,
+      meetingId: MEETING_ID,
+      operation: "inject-demo-regulatory-change",
+      request: invalidationRequest(),
+    });
+    clock.advance(25 * 60 * 60 * 1_000 + 1_000);
+    const afterRetention = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-invalidation-retry-third",
       dependencies,
       meetingId: MEETING_ID,
       operation: "inject-demo-regulatory-change",
@@ -1415,12 +1513,11 @@ describe("Worker assumption invalidation boundary", () => {
     });
 
     expect(first.status).toBe(202);
-    expect(retry.status).toBe(202);
+    expect(withinRetention.status).toBe(202);
+    expect(afterRetention.status).toBe(202);
     expect(claims).toHaveLength(2);
     expect(claims[1]?.claimKeyHash).toBe(claims[0]?.claimKeyHash);
-    expect(claims[1]?.requestFingerprint).toBe(
-      claims[0]?.requestFingerprint,
-    );
+    expect(claims[1]?.requestFingerprint).toBe(claims[0]?.requestFingerprint);
     expect(evaluatorInputs).toHaveLength(2);
     expect(evaluatorInputs[1]).toEqual(evaluatorInputs[0]);
     expect(evaluatorInputs[0]).toMatchObject({
