@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   OpenAiCandidateError,
   type PrivateDisclosureProposal,
+  type SharedDecisionSynthesis,
 } from "@counterpoint/adapters-openai";
 import type {
   D1NamedUsageDecision,
@@ -10,6 +11,7 @@ import type {
 } from "@counterpoint/adapters-cloudflare";
 import {
   registerPrivateTextSource,
+  type DecisionCandidateDependencies,
   type DisclosureDependencies,
 } from "@counterpoint/application";
 import type { DomainEvent, MeetingProjection } from "@counterpoint/domain";
@@ -24,10 +26,12 @@ import {
   type WorkerFlagshipHttpDependencies,
 } from "../../../apps/worker/src/worker-flagship-http.js";
 import type { JudgePrivateDisclosureRuntimeDependencies } from "../../../apps/worker/src/judge-private-disclosure.js";
+import type { JudgeSharedDecisionRuntimeDependencies } from "../../../apps/worker/src/judge-shared-decision.js";
 import {
   JUDGE_STRUCTURED_AI_DESCRIPTORS,
   PRIVATE_DISCLOSURE_OPERATION,
 } from "../../../apps/worker/src/judge-structured-ai.js";
+import { DECISION_SYNTHESIS_OPERATION } from "@counterpoint/adapters-openai";
 import {
   MutableClock,
   SequenceIdGenerator,
@@ -47,6 +51,8 @@ const BEARER = "bearer-worker-disclosure";
 const NOW = "2026-07-20T12:00:00.000Z";
 const SOURCE_TEXT = "Synthetic private note with a bounded rollout.";
 const EXACT_SNIPPET = "bounded rollout";
+const DECISION_EVIDENCE_ID = "evidence-worker-decision";
+const FACILITATOR_ID = "participant-facilitator";
 
 function managedRuntime(input: {
   readonly claim: (
@@ -78,6 +84,9 @@ function managedRuntime(input: {
       abandonReserved: vi.fn(() => Promise.resolve("abandoned" as const)),
       markProviderStarted: vi.fn(() => Promise.resolve("started" as const)),
       markSettled: vi.fn(() => Promise.resolve("settled" as const)),
+      releaseOrphanedReservation: vi.fn(() =>
+        Promise.resolve("unavailable" as const),
+      ),
       reserveClaim: vi.fn(
         async (claimInput: ManagedAiOperationReserveClaim) => {
           const legacyResult = await input.claim(claimInput);
@@ -121,6 +130,87 @@ function managedRuntime(input: {
           const decision = await input.reserve(subject, request);
           return decision.kind === "denied"
             ? decision
+            : {
+                activeUntilEpoch: nowEpoch + descriptor.claimLeaseSeconds,
+                kind: "allowed" as const,
+                reservationId: identity.reservationId,
+                reservedAtEpoch: nowEpoch,
+              };
+        },
+      ),
+    },
+  };
+}
+
+function managedDecisionRuntime(input: {
+  readonly claim: (
+    input: ManagedAiOperationReserveClaim,
+  ) => Promise<"claimed" | "conflict" | "replayed">;
+  readonly finalize?: JudgeSharedDecisionRuntimeDependencies["usage"]["finalize"];
+  readonly reconcile?: JudgeSharedDecisionRuntimeDependencies["reconcile"];
+  readonly reserve: (
+    subject: UsageSubject,
+    request: UsageRequest,
+  ) => Promise<
+    | { readonly kind: "allowed"; readonly reservationId: string }
+    | { readonly kind: "denied"; readonly limit: "tokens" }
+  >;
+  readonly synthesize: JudgeSharedDecisionRuntimeDependencies["synthesizer"]["synthesize"];
+}): JudgeSharedDecisionRuntimeDependencies {
+  const nowEpoch = Date.parse(NOW) / 1_000;
+  const descriptor =
+    JUDGE_STRUCTURED_AI_DESCRIPTORS[DECISION_SYNTHESIS_OPERATION];
+  return {
+    claims: {
+      abandonReserved: vi.fn(() => Promise.resolve("abandoned" as const)),
+      markProviderStarted: vi.fn(() => Promise.resolve("started" as const)),
+      markSettled: vi.fn(() => Promise.resolve("settled" as const)),
+      releaseOrphanedReservation: vi.fn(() =>
+        Promise.resolve("unavailable" as const),
+      ),
+      reserveClaim: vi.fn(
+        async (claimInput: ManagedAiOperationReserveClaim) => {
+          const result = await input.claim(claimInput);
+          if (result === "conflict") {
+            return { kind: "conflict" as const };
+          }
+          return {
+            claim: {
+              ...claimInput,
+              providerStartedAtEpoch: undefined,
+              reuseAfterEpoch: undefined,
+              settledAtEpoch: undefined,
+              status: "reserved" as const,
+            },
+            kind:
+              result === "replayed"
+                ? ("replayed" as const)
+                : ("reserved" as const),
+          };
+        },
+      ),
+      takeOverReserved: vi.fn(() => Promise.resolve("taken_over" as const)),
+    },
+    ipAddress: "203.0.113.72",
+    nextReservationId: () => "reservation-worker-decision",
+    reconcile: input.reconcile ?? vi.fn(() => Promise.resolve()),
+    synthesizer: { synthesize: input.synthesize },
+    usage: {
+      finalize: input.finalize ?? vi.fn(() => Promise.resolve()),
+      findReservation: vi.fn(() => Promise.resolve(undefined)),
+      release: vi.fn(() => Promise.resolve()),
+      reserveWithId: vi.fn(
+        async (
+          identity: {
+            readonly reservationId: string;
+            readonly requestFingerprint: string;
+          },
+          subject: UsageSubject,
+          requestValue: UsageRequest,
+        ): Promise<D1NamedUsageDecision> => {
+          const result = await input.reserve(subject, requestValue);
+          return result.kind === "denied"
+            ? result
             : {
                 activeUntilEpoch: nowEpoch + descriptor.claimLeaseSeconds,
                 kind: "allowed" as const,
@@ -217,6 +307,125 @@ async function fixture() {
   };
 }
 
+function decisionSynthesis(): SharedDecisionSynthesis {
+  const draft = {
+    action: {
+      affectedPremiseIndex: 0 as const,
+      ownerParticipantId: PARTICIPANT_ID,
+      scope: "Document the approval gate.",
+    },
+    confidence: 0.9,
+    dissent: {
+      reason: "Rollback ownership needs review.",
+      retained: true,
+    },
+    monitorCondition: "Reopen if the gate changes.",
+    outcome: "Proceed after documenting the gate.",
+    premise: {
+      evidenceReferenceIds: [DECISION_EVIDENCE_ID],
+      statement: "The approval gate is documented.",
+    },
+    reason: "The shared evidence supports a bounded decision.",
+    title: "Conditional rollout",
+  };
+  return {
+    ai: {
+      candidates: [draft],
+      generatedAt: NOW,
+      inputReferenceIds: [DECISION_EVIDENCE_ID],
+      model: "gpt-5.6",
+      operation: DECISION_SYNTHESIS_OPERATION,
+      promptVersion: "shared-decision-v1",
+      schemaVersion: "1",
+    },
+    billing: {
+      attemptCount: 1,
+      attempts: [{ inputTokens: 200, model: "gpt-5.6", outputTokens: 70 }],
+      inputTokens: 200,
+      outputTokens: 70,
+    },
+    draft,
+  };
+}
+
+async function decisionFixture(
+  options: {
+    readonly participantIds?: readonly string[];
+  } = {},
+) {
+  const fixtureValue = await fixture();
+  const evidenceEvent = {
+    actor: { kind: "participant", participantId: PARTICIPANT_ID },
+    correlationId: "correlation-worker-decision-evidence",
+    eventId: "event-worker-decision-evidence",
+    eventType: "EvidenceShared",
+    meetingId: MEETING_ID,
+    occurredAt: NOW,
+    payload: {
+      evidence: {
+        confirmationStatus: "confirmed",
+        createdAt: NOW,
+        createdBy: PARTICIPANT_ID,
+        disclosureAuditReferenceId: "audit-worker-decision",
+        exactSnippet: "Synthetic shared evidence for the approval gate.",
+        id: DECISION_EVIDENCE_ID,
+        meetingId: MEETING_ID,
+        origin: "source_artifact",
+        revision: 1,
+        sourceArtifactId: "artifact-worker-decision",
+        sourceRange: { end: 48, start: 0 },
+        visibility: "shared",
+      },
+    },
+    position: 2,
+    schemaVersion: 1,
+    visibility: "shared",
+  } as unknown as DomainEvent;
+  const appended = await fixtureValue.dependencies.events.append({
+    events: [evidenceEvent],
+    expectedPosition: 1,
+    meetingId: MEETING_ID,
+  });
+  if (appended.kind !== "appended") {
+    throw new Error("Decision evidence fixture failed");
+  }
+  let generatedId = 0;
+  const decisionCandidates: DecisionCandidateDependencies = {
+    clock: fixtureValue.dependencies.clock,
+    events: fixtureValue.dependencies.events,
+    hash: stableHash,
+    ids: {
+      next(namespace) {
+        generatedId += 1;
+        return `worker-decision-${namespace}-${String(generatedId)}`;
+      },
+    },
+    listParticipantIds: () =>
+      Promise.resolve(
+        options.participantIds ?? [FACILITATOR_ID, PARTICIPANT_ID],
+      ),
+    projections: new InMemoryProjectionStore<MeetingProjection>(),
+  };
+  return {
+    ...fixtureValue,
+    dependencies: {
+      ...fixtureValue.dependencies,
+      decisionCandidates,
+      meetings: {
+        ...fixtureValue.dependencies.meetings,
+        findAssignment: () =>
+          Promise.resolve({
+            active: true,
+            meetingId: MEETING_ID,
+            participantId: FACILITATOR_ID,
+            role: "facilitator" as const,
+            userId: USER_ID,
+          }),
+      },
+    },
+  };
+}
+
 function request(
   sourceArtifactId: string,
   assistance: "ai_preferred" | "manual",
@@ -237,6 +446,51 @@ function request(
         assistance === "manual"
           ? { end: start + EXACT_SNIPPET.length, start }
           : { end: 1, start: 0 },
+    }),
+    headers: {
+      authorization: `Bearer ${BEARER}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+}
+
+function decisionRequest(assistance: "ai_preferred" | "manual"): Request {
+  return new Request("https://counterpoint.test/api/v1/decisions/candidates", {
+    body: JSON.stringify({
+      assistance,
+      ...(assistance === "manual"
+        ? {
+            draft: {
+              actions: [
+                {
+                  ownerParticipantId: PARTICIPANT_ID,
+                  scope: ["Document the approval gate."],
+                },
+              ],
+              dissent: [
+                {
+                  reason: "Rollback ownership needs review.",
+                  retained: true,
+                },
+              ],
+              monitorCondition: {
+                description: "Reopen if the gate changes.",
+              },
+              outcome: "Proceed after documenting the gate.",
+              premises: [
+                {
+                  evidenceReferenceIds: [DECISION_EVIDENCE_ID],
+                  statement: "The approval gate is documented.",
+                },
+              ],
+              title: "Conditional rollout",
+            },
+          }
+        : {}),
+      expectedPosition: 2,
+      idempotencyKey: `worker-decision-${assistance}`,
+      meetingId: MEETING_ID,
     }),
     headers: {
       authorization: `Bearer ${BEARER}`,
@@ -467,5 +721,193 @@ describe("Worker private-disclosure boundary", () => {
     expect(claim).not.toHaveBeenCalled();
     expect(reserve).not.toHaveBeenCalled();
     expect(propose).not.toHaveBeenCalled();
+  });
+});
+
+describe("Worker shared Decision boundary", () => {
+  it("meters judge ai_preferred synthesis", async () => {
+    const fixtureValue = await decisionFixture();
+    const claim = vi.fn(() => Promise.resolve("claimed" as const));
+    const reserve = vi.fn(() =>
+      Promise.resolve({
+        kind: "allowed" as const,
+        reservationId: "reservation-worker-decision",
+      }),
+    );
+    const synthesize = vi.fn(() => Promise.resolve(decisionSynthesis()));
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-managed",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        authorizationPolicy: {
+          judgeManagedAiUserIds: new Set([USER_ID]),
+        },
+        judgeSharedDecision: managedDecisionRuntime({
+          claim,
+          reserve,
+          synthesize,
+        }),
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(response.status).toBe(201);
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies an ordinary facilitator before Decision lifecycle work", async () => {
+    const fixtureValue = await decisionFixture();
+    const claim = vi.fn(() => Promise.resolve("claimed" as const));
+    const reserve = vi.fn(() =>
+      Promise.reject(new Error("ordinary request touched ledger")),
+    );
+    const synthesize = vi.fn(() =>
+      Promise.reject(new Error("ordinary request touched provider")),
+    );
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-ordinary",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        judgeSharedDecision: managedDecisionRuntime({
+          claim,
+          reserve,
+          synthesize,
+        }),
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      code: "JUDGE_MODE_FORBIDDEN",
+    });
+    expect(claim).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+
+  it("keeps manual Decision synthesis at zero lifecycle usage", async () => {
+    const fixtureValue = await decisionFixture();
+    const injectedSynthesizer = vi.fn(() =>
+      Promise.reject(new Error("manual request touched synthesizer")),
+    );
+    const claim = vi.fn(() =>
+      Promise.reject(new Error("manual request touched claim")),
+    );
+    const reserve = vi.fn(() =>
+      Promise.reject(new Error("manual request touched ledger")),
+    );
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-manual",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        decisionCandidates: {
+          ...fixtureValue.dependencies.decisionCandidates,
+          synthesizer: { synthesize: injectedSynthesizer },
+        },
+        judgeSharedDecision: managedDecisionRuntime({
+          claim,
+          reserve,
+          synthesize: injectedSynthesizer,
+        }),
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("manual"),
+    });
+
+    expect(response.status).toBe(201);
+    expect(claim).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(injectedSynthesizer).not.toHaveBeenCalled();
+  });
+
+  it("keeps deterministic Decision synthesis outside managed lifecycle", async () => {
+    const fixtureValue = await decisionFixture();
+    const synthesize = vi.fn(() => Promise.resolve(decisionSynthesis()));
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-deterministic",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        decisionCandidates: {
+          ...fixtureValue.dependencies.decisionCandidates,
+          synthesizer: { synthesize },
+        },
+        deterministicSharedDecisionEnabled: true,
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(response.status).toBe(201);
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when managed and deterministic Decision synthesis are disabled", async () => {
+    const fixtureValue = await decisionFixture();
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-disabled",
+      dependencies: fixtureValue.dependencies,
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      code: "OPENAI_UNAVAILABLE",
+    });
+  });
+
+  it("rejects oversize Decision input before reconciliation or mutation", async () => {
+    const participantIds = Array.from(
+      { length: 6_000 },
+      (_, index) => `participant-${index.toString().padStart(5, "0")}`,
+    );
+    participantIds[0] = PARTICIPANT_ID;
+    participantIds[1] = FACILITATOR_ID;
+    const fixtureValue = await decisionFixture({ participantIds });
+    const claim = vi.fn(() => Promise.resolve("claimed" as const));
+    const reconcile = vi.fn(() => Promise.resolve());
+    const reserve = vi.fn(() =>
+      Promise.reject(new Error("oversize request touched ledger")),
+    );
+    const synthesize = vi.fn(() =>
+      Promise.reject(new Error("oversize request touched provider")),
+    );
+
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-oversize",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        authorizationPolicy: {
+          judgeManagedAiUserIds: new Set([USER_ID]),
+        },
+        judgeSharedDecision: managedDecisionRuntime({
+          claim,
+          reconcile,
+          reserve,
+          synthesize,
+        }),
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      code: "VALIDATION_FAILED",
+    });
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(synthesize).not.toHaveBeenCalled();
   });
 });

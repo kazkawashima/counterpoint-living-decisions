@@ -84,6 +84,11 @@ import {
   type JudgePrivateDisclosureRuntimeDependencies,
 } from "./judge-private-disclosure.js";
 import {
+  JudgeSharedDecisionError,
+  runJudgeSharedDecision,
+  type JudgeSharedDecisionRuntimeDependencies,
+} from "./judge-shared-decision.js";
+import {
   ApproveDisclosureRequestSchema,
   ApproveDisclosureResponseSchema,
   CommitDecisionRequestSchema,
@@ -155,7 +160,9 @@ export interface WorkerFlagshipHttpDependencies {
   readonly tokens: SessionTokenIssuer;
   readonly authorizationPolicy?: UserAuthorizationPolicy;
   readonly deterministicPrivateDisclosureEnabled?: boolean;
+  readonly deterministicSharedDecisionEnabled?: boolean;
   readonly judgePrivateDisclosure?: JudgePrivateDisclosureRuntimeDependencies;
+  readonly judgeSharedDecision?: JudgeSharedDecisionRuntimeDependencies;
 }
 
 export interface WorkerFlagshipD1Bindings {
@@ -344,7 +351,10 @@ export function createWorkerFlagshipDependencies(
     sessions: new D1SessionRepository(bindings.DB),
     tokens: new WebCryptoSessionTokenIssuer(),
     ...(bindings.OPENAI_MODE === "deterministic"
-      ? { deterministicPrivateDisclosureEnabled: true }
+      ? {
+          deterministicPrivateDisclosureEnabled: true,
+          deterministicSharedDecisionEnabled: true,
+        }
       : {}),
   };
 }
@@ -1649,26 +1659,90 @@ export async function handleWorkerFlagshipHttp(input: {
     if (prepareDecisionCandidateRequest === undefined) {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
-    const result = await prepareSharedDecisionCandidate(
-      dependencies.decisionCandidates,
-      resolved.authorization,
-      prepareDecisionCandidateRequest.assistance === "manual"
-        ? {
+    const decisionDependenciesWithoutSynthesizer =
+      (): DecisionCandidateDependencies => {
+        const { clock, events, hash, ids, listParticipantIds, projections } =
+          dependencies.decisionCandidates;
+        return {
+          clock,
+          events,
+          hash,
+          ids,
+          listParticipantIds,
+          projections,
+        };
+      };
+    const expectedPosition = await dependencies.events.position(meetingId);
+    let result: Awaited<ReturnType<typeof prepareSharedDecisionCandidate>>;
+    try {
+      if (prepareDecisionCandidateRequest.assistance === "manual") {
+        result = await prepareSharedDecisionCandidate(
+          decisionDependenciesWithoutSynthesizer(),
+          resolved.authorization,
+          {
             assistance: "manual",
             correlationId,
             draft: prepareDecisionCandidateRequest.draft,
-            expectedPosition: await dependencies.events.position(meetingId),
-            idempotencyKey: prepareDecisionCandidateRequest.idempotencyKey,
-            meetingId: prepareDecisionCandidateRequest.meetingId,
-          }
-        : {
-            assistance: "ai_preferred",
-            correlationId,
-            expectedPosition: await dependencies.events.position(meetingId),
+            expectedPosition,
             idempotencyKey: prepareDecisionCandidateRequest.idempotencyKey,
             meetingId: prepareDecisionCandidateRequest.meetingId,
           },
-    );
+        );
+      } else {
+        const aiRequest = {
+          assistance: "ai_preferred" as const,
+          correlationId,
+          expectedPosition,
+          idempotencyKey: prepareDecisionCandidateRequest.idempotencyKey,
+          meetingId: prepareDecisionCandidateRequest.meetingId,
+        };
+        const managed = dependencies.judgeSharedDecision;
+        if (
+          managed === undefined &&
+          (dependencies.deterministicSharedDecisionEnabled !== true ||
+            dependencies.decisionCandidates.synthesizer === undefined)
+        ) {
+          return apiErrorResponse("OPENAI_UNAVAILABLE", correlationId);
+        }
+        if (managed === undefined) {
+          result = await prepareSharedDecisionCandidate(
+            dependencies.decisionCandidates,
+            resolved.authorization,
+            aiRequest,
+          );
+        } else {
+          if (!resolved.authorization.capabilities.has("judge:managed-ai")) {
+            return apiErrorResponse("JUDGE_MODE_FORBIDDEN", correlationId);
+          }
+          result = await runJudgeSharedDecision({
+            authorization: resolved.authorization,
+            claims: managed.claims,
+            clock: dependencies.clock,
+            dependencies: decisionDependenciesWithoutSynthesizer(),
+            execute: (decisionDependencies) =>
+              prepareSharedDecisionCandidate(
+                decisionDependencies,
+                resolved.authorization,
+                aiRequest,
+              ),
+            ipAddress: managed.ipAddress,
+            nextReservationId: managed.nextReservationId,
+            reconcile: managed.reconcile,
+            request: aiRequest,
+            synthesizer: managed.synthesizer,
+            usage: managed.usage,
+          });
+        }
+      }
+    } catch (error) {
+      if (error instanceof JudgeSharedDecisionError) {
+        return apiErrorResponse(error.code, correlationId, error.details);
+      }
+      if (error instanceof OpenAiCandidateError) {
+        return apiErrorResponse("OPENAI_UNAVAILABLE", correlationId);
+      }
+      throw error;
+    }
     if (result.kind === "failed") {
       return decisionFailureResponse(correlationId, result);
     }
