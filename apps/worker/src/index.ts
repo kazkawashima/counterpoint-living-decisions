@@ -453,6 +453,14 @@ export function createWorkerHandler(
         );
       const flagshipDemoResetRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/demo\/reset$/u.exec(url.pathname);
+      const flagshipDisplayProjectionRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/display$/u.exec(url.pathname);
+      const flagshipDisplayTokenIssueRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/display-tokens$/u.exec(url.pathname);
+      const flagshipDisplayTokenRevokeRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/display-tokens\/revoke$/u.exec(
+          url.pathname,
+        );
       const flagshipCollectionOperation =
         flagshipCollectionRoute === null
           ? undefined
@@ -524,36 +532,51 @@ export function createWorkerHandler(
                                             flagshipDemoResetRoute !== null
                                           ? "reset-demo"
                                           : request.method === "POST" &&
-                                              url.pathname ===
-                                                "/api/v1/meetings"
-                                            ? "create-meeting"
-                                            : request.method === "GET" &&
-                                                flagshipDecisionHistoryRoute !==
+                                              flagshipDisplayTokenIssueRoute !==
+                                                null
+                                            ? "issue-display-token"
+                                            : request.method === "POST" &&
+                                                flagshipDisplayTokenRevokeRoute !==
                                                   null
-                                              ? "decision-history"
-                                              : request.method === "GET" &&
-                                                  flagshipDecisionExportRoute !==
-                                                    null
-                                                ? "decision-export"
+                                              ? "revoke-display-token"
+                                              : request.method === "POST" &&
+                                                  url.pathname ===
+                                                    "/api/v1/meetings"
+                                                ? "create-meeting"
                                                 : request.method === "GET" &&
-                                                    flagshipDecisionAuditRoute !==
+                                                    flagshipDecisionHistoryRoute !==
                                                       null
-                                                  ? "decision-audit"
+                                                  ? "decision-history"
                                                   : request.method === "GET" &&
-                                                      url.pathname ===
-                                                        "/api/v1/meetings"
-                                                    ? "meetings"
+                                                      flagshipDecisionExportRoute !==
+                                                        null
+                                                    ? "decision-export"
                                                     : request.method ===
                                                           "GET" &&
-                                                        flagshipProjectionRoute !==
+                                                        flagshipDecisionAuditRoute !==
                                                           null
-                                                      ? "projection"
+                                                      ? "decision-audit"
                                                       : request.method ===
                                                             "GET" &&
-                                                          flagshipCollectionOperation !==
-                                                            undefined
-                                                        ? flagshipCollectionOperation
-                                                        : undefined;
+                                                          flagshipDisplayProjectionRoute !==
+                                                            null
+                                                        ? "display-projection"
+                                                        : request.method ===
+                                                              "GET" &&
+                                                            url.pathname ===
+                                                              "/api/v1/meetings"
+                                                          ? "meetings"
+                                                          : request.method ===
+                                                                "GET" &&
+                                                              flagshipProjectionRoute !==
+                                                                null
+                                                            ? "projection"
+                                                            : request.method ===
+                                                                  "GET" &&
+                                                                flagshipCollectionOperation !==
+                                                                  undefined
+                                                              ? flagshipCollectionOperation
+                                                              : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;
@@ -615,6 +638,33 @@ export function createWorkerHandler(
         if (flagshipDemoResetRoute !== null) {
           try {
             meetingId = decodeURIComponent(flagshipDemoResetRoute[1] ?? "");
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDisplayProjectionRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(
+              flagshipDisplayProjectionRoute[1] ?? "",
+            );
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDisplayTokenIssueRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(
+              flagshipDisplayTokenIssueRoute[1] ?? "",
+            );
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDisplayTokenRevokeRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(
+              flagshipDisplayTokenRevokeRoute[1] ?? "",
+            );
           } catch {
             return apiErrorResponse("VALIDATION_FAILED", correlationId);
           }

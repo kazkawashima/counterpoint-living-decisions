@@ -1,6 +1,7 @@
 import {
   approveDisclosure,
   authenticateSession,
+  authorizeDisplayToken,
   captureUtterance,
   commitDecision,
   createMeeting,
@@ -15,8 +16,10 @@ import {
   registerPrivateTextSource,
   rejectDisclosure,
   resetDemoMeeting,
+  revokeDisplayToken,
   markDecisionReady,
   injectDemoRegulatoryChange,
+  issueDisplayToken,
   prepareSharedDecisionCandidate,
   reviewInvalidation,
   saveDecisionDraft,
@@ -140,13 +143,19 @@ import {
   InjectDemoRegulatoryChangeResponseSchema,
   FacilitatorDemoResetRequestSchema,
   FacilitatorDemoResetResponseSchema,
+  IssueDisplayTokenRequestSchema,
+  IssueDisplayTokenResponseSchema,
+  RevokeDisplayTokenRequestSchema,
+  RevokeDisplayTokenResponseSchema,
   ReviewInvalidationRequestSchema,
   ReviewInvalidationResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   type CommitDecisionRequest,
   type CaptureUtteranceRequest,
   type DispositionSharedDecisionCandidateRequest,
   type FacilitatorDemoResetRequest,
   type InjectDemoRegulatoryChangeRequest,
+  type IssueDisplayTokenRequest,
   type MarkDecisionReadyRequest,
   type ApproveDisclosureRequest,
   type PreviewDisclosureRequest,
@@ -157,6 +166,7 @@ import {
   type SynthesizeSharedDecisionRequest,
   type RegisterPrivateTextSourceFixtureRequest,
   type ReviewInvalidationRequest,
+  type RevokeDisplayTokenRequest,
 } from "@counterpoint/protocol";
 
 export interface WorkerFlagshipHttpDependencies {
@@ -197,6 +207,7 @@ export type WorkerFlagshipOperation =
   | "decision-audit"
   | "decision-export"
   | "decision-history"
+  | "display-projection"
   | "disposition-decision-candidate"
   | "evidence"
   | "external-events"
@@ -215,7 +226,9 @@ export type WorkerFlagshipOperation =
   | "save-decision-draft"
   | "start-decision-monitoring"
   | "inject-demo-regulatory-change"
+  | "issue-display-token"
   | "review-invalidation"
+  | "revoke-display-token"
   | "reset-demo";
 
 const domainEventTypeSet = new Set<string>(domainEventTypes);
@@ -1149,6 +1162,79 @@ async function roleProjection(
   });
 }
 
+async function sharedDisplayProjection(
+  dependencies: WorkerFlagshipHttpDependencies,
+  meetingScope: string,
+  expiresAt: string,
+  correlationId: string,
+) {
+  const meeting = await dependencies.meetings.findById(meetingScope);
+  if (!meeting?.active) {
+    return undefined;
+  }
+  const records = await dependencies.events.load(meetingScope);
+  const events = records.map(({ event, position }) => ({
+    ...event,
+    position: meetingPosition(position),
+  }));
+  const projection = replayMeeting(domainMeetingId(meetingScope), events);
+  return SharedDisplayProjectionResponseSchema.parse({
+    correlationId,
+    expiresAt,
+    meeting: {
+      meetingId: meeting.meetingId,
+      phase: projection.shared.meeting?.phase ?? "preparing",
+      purpose: meeting.purpose,
+    },
+    shared: {
+      actions: projection.shared.actions.map(
+        ({ id, ownerParticipantId, scope, status }) => ({
+          actionId: id,
+          ownerParticipantId,
+          scope,
+          status,
+        }),
+      ),
+      decisions: projection.shared.decisions.map((decision) => {
+        const revision = projection.shared.decisionRevisions.find(
+          ({ id }) => id === decision.activeRevisionId,
+        );
+        return decisionView(
+          decision,
+          revision?.createdAt ?? decision.createdAt,
+        );
+      }),
+      dissent: projection.shared.dissent.map(({ id, reason, retained }) => ({
+        dissentId: id,
+        reason,
+        retained,
+      })),
+      evidence: projection.shared.evidence.map(
+        ({ createdAt, exactSnippet, id, sourceArtifactId, sourceRange }) => ({
+          confirmationStatus: "human_confirmed" as const,
+          createdAt,
+          evidenceId: id,
+          exactSnippet,
+          origin: "source" as const,
+          provenance: "approved_exact_excerpt" as const,
+          scope: "shared" as const,
+          sourceArtifactId,
+          sourceRange,
+        }),
+      ),
+      position: events.filter(({ visibility }) => visibility === "shared")
+        .length,
+      premises: projection.shared.premises.map(
+        ({ confirmationStatus, id, statement }) => ({
+          confirmationStatus,
+          premiseId: id,
+          statement,
+        }),
+      ),
+    },
+  });
+}
+
 export async function handleWorkerFlagshipHttp(input: {
   readonly correlationId: string;
   readonly dependencies: WorkerFlagshipHttpDependencies;
@@ -1184,6 +1270,8 @@ export async function handleWorkerFlagshipHttp(input: {
   let resetDemoRequest: FacilitatorDemoResetRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
+  let issueDisplayTokenRequest: IssueDisplayTokenRequest | undefined;
+  let revokeDisplayTokenRequest: RevokeDisplayTokenRequest | undefined;
 
   if (operation === "login") {
     const parsed = LoginRequestSchema.safeParse(await readJson(request));
@@ -1204,6 +1292,36 @@ export async function handleWorkerFlagshipHttp(input: {
       200,
       correlationId,
     );
+  }
+
+  if (operation === "display-projection") {
+    if (meetingId === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const displayToken = new URL(request.url).searchParams.get("token");
+    if (displayToken === null) {
+      return apiErrorResponse("DISPLAY_TOKEN_EXPIRED", correlationId);
+    }
+    const authorized = await authorizeDisplayToken(
+      {
+        clock: dependencies.clock,
+        events: dependencies.events,
+        tokens: dependencies.tokens,
+      },
+      { displayToken, meetingId },
+    );
+    if (authorized.kind === "failed") {
+      return apiErrorResponse(authorized.code, correlationId);
+    }
+    const projection = await sharedDisplayProjection(
+      dependencies,
+      meetingId,
+      authorized.expiresAt,
+      correlationId,
+    );
+    return projection === undefined
+      ? apiErrorResponse("DISPLAY_TOKEN_EXPIRED", correlationId)
+      : apiJsonResponse(projection, 200, correlationId);
   }
 
   const authenticated = await authenticatedSession(request, dependencies);
@@ -1495,6 +1613,34 @@ export async function handleWorkerFlagshipHttp(input: {
     resetDemoRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
+  if (operation === "issue-display-token") {
+    const parsed = IssueDisplayTokenRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (
+      !parsed.success ||
+      (requestedMeetingId !== undefined &&
+        parsed.data.meetingId !== requestedMeetingId)
+    ) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    issueDisplayTokenRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "revoke-display-token") {
+    const parsed = RevokeDisplayTokenRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (
+      !parsed.success ||
+      (requestedMeetingId !== undefined &&
+        parsed.data.meetingId !== requestedMeetingId)
+    ) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    revokeDisplayTokenRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
 
   if (meetingId === undefined) {
     return apiErrorResponse("VALIDATION_FAILED", correlationId);
@@ -1522,6 +1668,128 @@ export async function handleWorkerFlagshipHttp(input: {
     /^\/api\/v1\/meetings\/([^/]+)\/decisions\/([^/]+)\/export$/u.exec(
       requestPath,
     );
+
+  if (operation === "issue-display-token") {
+    if (issueDisplayTokenRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const eventsBefore = await dependencies.events.load(meetingId);
+    const visibleBefore = visiblePosition(
+      eventsBefore.map(({ event, position }) => ({
+        ...event,
+        position: meetingPosition(position),
+      })),
+      resolved.authorization.participantId,
+    );
+    if (visibleBefore !== issueDisplayTokenRequest.expectedPosition) {
+      return apiErrorResponse("CONFLICT", correlationId, {
+        actualPosition: visibleBefore,
+        expectedPosition: issueDisplayTokenRequest.expectedPosition,
+      });
+    }
+    const result = await issueDisplayToken(
+      {
+        clock: dependencies.clock,
+        events: dependencies.events,
+        ids: dependencies.ids,
+        tokens: dependencies.tokens,
+      },
+      resolved.authorization,
+      {
+        correlationId,
+        expectedPosition: await dependencies.events.position(meetingId),
+        meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const eventsAfter = await dependencies.events.load(meetingId);
+    return apiJsonResponse(
+      IssueDisplayTokenResponseSchema.parse({
+        correlationId: result.correlationId,
+        displayToken: result.displayToken,
+        displayTokenId: result.displayTokenId,
+        expiresAt: result.expiresAt,
+        meetingId,
+        position: visiblePosition(
+          eventsAfter.map(({ event, position }) => ({
+            ...event,
+            position: meetingPosition(position),
+          })),
+          resolved.authorization.participantId,
+        ),
+      }),
+      201,
+      correlationId,
+    );
+  }
+
+  if (operation === "revoke-display-token") {
+    if (revokeDisplayTokenRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const eventsBefore = await dependencies.events.load(meetingId);
+    const visibleBefore = visiblePosition(
+      eventsBefore.map(({ event, position }) => ({
+        ...event,
+        position: meetingPosition(position),
+      })),
+      resolved.authorization.participantId,
+    );
+    if (visibleBefore !== revokeDisplayTokenRequest.expectedPosition) {
+      return apiErrorResponse("CONFLICT", correlationId, {
+        actualPosition: visibleBefore,
+        expectedPosition: revokeDisplayTokenRequest.expectedPosition,
+      });
+    }
+    const result = await revokeDisplayToken(
+      {
+        clock: dependencies.clock,
+        events: dependencies.events,
+        ids: dependencies.ids,
+        tokens: dependencies.tokens,
+      },
+      resolved.authorization,
+      {
+        correlationId,
+        displayTokenId: revokeDisplayTokenRequest.displayTokenId,
+        expectedPosition: await dependencies.events.position(meetingId),
+        meetingId,
+      },
+    );
+    if (result.kind === "failed") {
+      return result.code === "CONFLICT"
+        ? apiErrorResponse("CONFLICT", correlationId, {
+            actualPosition: result.actualPosition,
+            expectedPosition: result.expectedPosition,
+          })
+        : apiErrorResponse(result.code, correlationId);
+    }
+    const eventsAfter = await dependencies.events.load(meetingId);
+    return apiJsonResponse(
+      RevokeDisplayTokenResponseSchema.parse({
+        correlationId: result.correlationId,
+        displayTokenId: result.displayTokenId,
+        meetingId,
+        position: visiblePosition(
+          eventsAfter.map(({ event, position }) => ({
+            ...event,
+            position: meetingPosition(position),
+          })),
+          resolved.authorization.participantId,
+        ),
+        revokedAt: result.revokedAt,
+      }),
+      200,
+      correlationId,
+    );
+  }
 
   if (operation === "decision-history" || operation === "decision-export") {
     const decisionId =

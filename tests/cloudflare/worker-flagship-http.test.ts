@@ -20,6 +20,7 @@ import {
   DispositionSharedDecisionCandidateResponseSchema,
   FacilitatorDemoResetResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
+  IssueDisplayTokenResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
   ListSharedExternalEventsResponseSchema,
   PreviewDisclosureResponseSchema,
@@ -29,6 +30,8 @@ import {
   SynthesizeSharedDecisionResponseSchema,
   MarkDecisionReadyResponseSchema,
   ReviewInvalidationResponseSchema,
+  RevokeDisplayTokenResponseSchema,
+  SharedDisplayProjectionResponseSchema,
   StartDecisionMonitoringResponseSchema,
 } from "@counterpoint/protocol";
 
@@ -1092,6 +1095,172 @@ describe("Cloudflare Worker hosted flagship API", () => {
     expect(resetResponse.status).toBe(403);
     await expect(json(resetResponse)).resolves.toMatchObject({
       code: "FORBIDDEN",
+    });
+  }, 15_000);
+
+  it("keeps hosted display tokens scoped, projected, and revocable", async () => {
+    const handler = createWorkerHandler();
+    const facilitatorToken = await login(
+      handler,
+      workerEnv(),
+      "product",
+      "counterpoint-product",
+    );
+    const participantToken = await login(
+      handler,
+      workerEnv(),
+      "legal",
+      "counterpoint-legal",
+    );
+    const facilitatorAuthorization = {
+      authorization: `Bearer ${facilitatorToken}`,
+    };
+    const participantAuthorization = {
+      authorization: `Bearer ${participantToken}`,
+    };
+
+    const reset = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+          {
+            body: JSON.stringify({
+              expectedPosition: 0,
+              idempotencyKey: "worker-display-token-reset",
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: {
+              ...facilitatorAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(reset.status).toBe(200);
+
+    const projection = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+          { headers: facilitatorAuthorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(projection.status).toBe(200);
+    const projectionBody = await json(projection);
+    const expectedPosition = Number(
+      (projectionBody.shared as { position: number }).position,
+    );
+
+    const forbidden = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/display-tokens`,
+          {
+            body: JSON.stringify({
+              expectedPosition,
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: {
+              ...participantAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(forbidden.status).toBe(403);
+
+    const issuedResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/display-tokens`,
+          {
+            body: JSON.stringify({
+              expectedPosition,
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: {
+              ...facilitatorAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(issuedResponse.status).toBe(201);
+    const issued = IssueDisplayTokenResponseSchema.parse(
+      await json(issuedResponse),
+    );
+
+    const displayed = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/display?token=${encodeURIComponent(issued.displayToken)}`,
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(displayed.status).toBe(200);
+    const displayedBody = SharedDisplayProjectionResponseSchema.parse(
+      await json(displayed),
+    );
+    expect(displayedBody.meeting.meetingId).toBe(FLAGSHIP_MEETING_ID);
+    expect(JSON.stringify(displayedBody)).not.toContain("privateWorkspace");
+
+    const revoke = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/display-tokens/revoke`,
+          {
+            body: JSON.stringify({
+              displayTokenId: issued.displayTokenId,
+              expectedPosition: issued.position,
+              meetingId: FLAGSHIP_MEETING_ID,
+            }),
+            headers: {
+              ...facilitatorAuthorization,
+              "content-type": "application/json",
+            },
+            method: "POST",
+          },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(revoke.status).toBe(200);
+    expect(
+      RevokeDisplayTokenResponseSchema.parse(await json(revoke)),
+    ).toMatchObject({
+      displayTokenId: issued.displayTokenId,
+    });
+
+    const revoked = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/display?token=${encodeURIComponent(issued.displayToken)}`,
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(revoked.status).toBe(401);
+    await expect(json(revoked)).resolves.toMatchObject({
+      code: "DISPLAY_TOKEN_EXPIRED",
     });
   }, 15_000);
 
