@@ -980,6 +980,31 @@ The canonical implementation-facing artifacts are:
   `counterpoint-living-decisions.gs2safari.workers.dev` host is a separate stale
   Worker and still serves the former title; it is not the target preview URL.
 
+## 2026-07-21 hosted display boundary repair
+
+- The preview Worker previously routed display-token issue/revoke/projection
+  requests into the generic `ARTIFACT_STORAGE_UNAVAILABLE` parity fallback.
+  The Worker now exposes the existing application display-token protocol with
+  facilitator authorization, meeting-visible position checks, token rotation,
+  revocation, and a shared-only projection that excludes private workspaces,
+  participant lists, and private source text.
+- Commit `78507d2912afdbead22d4f58fb93b7c67e3c2442` was explicitly deployed to
+  `counterpoint-living-decisions-preview` with config hash
+  `db660c6fae9c71f6abb7e07c69f7ec219ce93a45723cfd0f2b5731ced27498a2`.
+  The deploy gate passed security 300/300 and Cloudflare pool 142/142, then
+  health/readiness/auth smoke and the complete manual Flagship reset/replay.
+- Hosted API boundary probe passed without printing tokens or response bodies:
+  logged-out root/health/ready returned 200, unauthenticated meetings returned
+  401, ordinary and product users could not access judge usage while routes are
+   disabled (`REALTIME_UNAVAILABLE`), display issue returned 201, shared display
+  returned 200 without private text, and the revoked display token returned 401
+  (`DISPLAY_TOKEN_EXPIRED`). This is API evidence, not yet the required
+  separate-browser hosted E2E for ordinary/judge/display roles.
+- The Worker display contract is covered by 14 Cloudflare-native tests. The
+  hosted Flagship still reports `invalidationEvaluations: 0` because preview AI
+  routes remain disabled; the hosted `AT_RISK → REVIEW_REQUIRED` proof and
+  production judge/provider proof remain intentionally open.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and

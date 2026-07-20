@@ -30,12 +30,21 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - C5の hosted Worker security matrix 再実行、C6の実デプロイ記録・最終D1/DO確認、
   judge secret登録は未完了。production judge を先に有効化しない。
 - 直近の hosted parity 修正により、meeting作成、decision history、audit、export
-  のWorker経路は実装済み。最新の名称・導線 preview は commit `9e2184a` で、
+  のWorker経路は実装済み。表示専用tokenの発行・projection・失効もWorkerへ接続済み。
+  最新の名称・導線 preview は commit `78507d2` で、
   `https://counterpoint-living-decisions-preview.gs2safari.workers.dev` にデプロイ済み。
   旧 `counterpoint-living-decisions.gs2safari.workers.dev` は別Workerで旧称のままなので、
   審査導線には使用しない。
 - `docs/思うところつらうら/動作確認後に修正したいこと.md` は検討材料として読むが、
   ユーザー保護のためこのgoal以外の作業で編集・公開しない。
+- `78507d2` preview deployでは security matrix 300/300、Cloudflare pool 142/142、
+  health/readiness/unauthenticated auth smoke、Flagship smokeを通過した。実previewの
+  read-only probeでも、logged-out root/health/readyは200、認証前APIは401、通常ユーザーの
+  judge usageは503 `REALTIME_UNAVAILABLE`、display projectionは200、失効後は401
+  `DISPLAY_TOKEN_EXPIRED`、projectionにprivateWorkspace/private textは出ないことを確認した。
+- hostedのmanual Flagship smokeは継続して `invalidationEvaluations: 0`。previewのAI経路が
+  disabledであるため `AT_RISK → REVIEW_REQUIRED` のhosted proofは未達であり、production
+  judgeを有効化したことを意味しない。
 
 ## 完了条件 A — 名称変更
 
