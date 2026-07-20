@@ -46,8 +46,8 @@ else
   npx wrangler d1 create counterpoint-preview
 fi
 
-npx wrangler r2 bucket list --json > "${resource_state_directory}/r2.json"
-if node -e 'const fs=require("node:fs");const rows=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.exit(rows.some(({name})=>name==="counterpoint-artifacts-preview")?0:1)' "${resource_state_directory}/r2.json"; then
+npx wrangler r2 bucket list > "${resource_state_directory}/r2.txt"
+if rg --fixed-strings --quiet "counterpoint-artifacts-preview" "${resource_state_directory}/r2.txt"; then
   echo "R2 bucket counterpoint-artifacts-preview already exists; leaving it unchanged."
 else
   echo "Creating R2 bucket counterpoint-artifacts-preview."

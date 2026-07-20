@@ -28,7 +28,7 @@ describe("Cloudflare preview resource command boundary", () => {
       'expected_confirmation="counterpoint-preview:${CLOUDFLARE_ACCOUNT_ID}"',
     );
     expect(script).toContain("wrangler d1 list --json");
-    expect(script).toContain("wrangler r2 bucket list --json");
+    expect(script).toContain("wrangler r2 bucket list >");
     expect(script).not.toContain("wrangler secret");
   });
 });
