@@ -23,6 +23,7 @@ import {
   judgeRealtimeCallControllerFor,
   type Env,
 } from "../../apps/worker/src/index.js";
+import { JUDGE_GLOBAL_USAGE_LIMITS } from "../../apps/worker/src/judge-structured-ai.js";
 
 const MEETING_ID = "meeting/worker-managed-http-c4";
 const CROSS_MEETING_ID = "meeting/worker-managed-http-c4-cross";
@@ -572,6 +573,9 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     );
     expect(usageSummary.status).toBe(200);
     const usageBody = await jsonBody(usageSummary);
+    const reservedTokens =
+      JUDGE_REALTIME_RESERVED_USAGE.estimatedInputTokens +
+      JUDGE_REALTIME_RESERVED_USAGE.estimatedOutputTokens;
     expect(usageBody).toMatchObject({
       dimensions: {
         account: { limit: 10, remaining: 9, used: 1 },
@@ -585,7 +589,11 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
         ip: { limit: 10, remaining: 9, used: 1 },
         meeting: { limit: 10, remaining: 9, used: 1 },
         realtimeSeconds: { limit: 30, remaining: 0, used: 30 },
-        tokens: { limit: 2_165_600, remaining: 965_600, used: 1_200_000 },
+        tokens: {
+          limit: JUDGE_GLOBAL_USAGE_LIMITS.tokensPerWindow,
+          remaining: JUDGE_GLOBAL_USAGE_LIMITS.tokensPerWindow - reservedTokens,
+          used: reservedTokens,
+        },
       },
       rollingWindowSeconds: 86_400,
     });

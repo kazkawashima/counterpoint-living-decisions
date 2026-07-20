@@ -37,7 +37,7 @@ test("Worker SPA serves the hosted flagship through one external-style origin", 
   await page.goto("/");
   await expect(page).toHaveTitle(/Counterpoint/u);
   const pageHost = new URL(page.url()).hostname;
-  expect(pageHost).not.toBe("localhost");
+  expect(["localhost", "127.0.0.1", "0.0.0.0"]).not.toContain(pageHost);
   await expect(
     page.getByRole("heading", { name: /Independent minds/u }),
   ).toBeVisible();
@@ -67,10 +67,16 @@ test("Worker SPA serves the hosted flagship through one external-style origin", 
   await page
     .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Private assistant is temporarily unavailable",
+  );
+  await page
+    .getByRole("button", { name: "Continue with manual excerpt" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Review the exact payload" }),
   ).toBeVisible();
-  await expect(page.getByText("AI suggestion · owner only")).toBeVisible();
+  await expect(page.getByText("Human-selected source excerpt")).toBeVisible();
 
   expect(apiRequests.length).toBeGreaterThanOrEqual(3);
   expect(apiRequests.every(({ hostname }) => hostname === pageHost)).toBe(true);
