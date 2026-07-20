@@ -66,6 +66,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - 一般roomでprivate source未選択のためsharing previewを押せない場合、ボタンの説明、
   `aria-describedby`、native tooltipで解除方法を示すようにした。meeting-creation E2Eと
   synthetic desktop screenshotを更新し、Flagshipの主導線には影響させていない。
+- 現行実装commit `16701db` で `npm run security:verify` を再実行し、build、secret scan、
+  security matrix `300/300`、Cloudflare pool `142/142` が成功した。これはlocal/contract
+  security evidenceであり、production judge/providerやfull hosted C5の代替ではない。
 
 ## 完了条件 A — 名称変更
 
