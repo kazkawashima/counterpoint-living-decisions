@@ -102,6 +102,7 @@ interface Harness {
   readonly findReservation: ReturnType<typeof vi.fn>;
   readonly markProviderStarted: ReturnType<typeof vi.fn>;
   readonly markSettled: ReturnType<typeof vi.fn>;
+  readonly releaseOrphanedReservation: ReturnType<typeof vi.fn>;
   readonly takeOverReserved: ReturnType<typeof vi.fn>;
   readonly abandonReserved: ReturnType<typeof vi.fn>;
   readonly finalize: ReturnType<typeof vi.fn>;
@@ -193,6 +194,12 @@ function harness(
     firstClaim = undefined;
     return Promise.resolve("abandoned" as const);
   });
+  const releaseOrphanedReservation = vi.fn(() => {
+    order.push("release-orphan");
+    return Promise.resolve(
+      firstClaim === undefined ? ("released" as const) : ("unavailable" as const),
+    );
+  });
   const reserveWithId = vi.fn(() => {
     order.push("reserve");
     return Promise.resolve(
@@ -224,6 +231,7 @@ function harness(
       abandonReserved,
       markProviderStarted,
       markSettled,
+      releaseOrphanedReservation,
       reserveClaim,
       takeOverReserved,
     },
@@ -233,6 +241,7 @@ function harness(
     markSettled,
     order,
     release,
+    releaseOrphanedReservation,
     reserveClaim,
     reserveWithId,
     takeOverReserved,
@@ -467,6 +476,13 @@ describe("judge managed structured-AI lifecycle", () => {
       new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE"),
     );
     expect(provider).not.toHaveBeenCalled();
+    expect(fixture.releaseOrphanedReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claimKeyHash: CLAIM_KEY_HASH,
+        reservationId: RESERVATION_ID,
+      }),
+      NOW_EPOCH,
+    );
   });
 
   it("keeps a settled claim unavailable through the retention boundary", async () => {
@@ -781,6 +797,7 @@ describe("judge managed structured-AI reconciliation", () => {
           return Promise.resolve("settled" as const);
         },
       ),
+      releaseOrphanedReservation: vi.fn(),
       releaseExpiredReserved: vi.fn(
         (
           input: Parameters<

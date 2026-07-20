@@ -203,6 +203,9 @@ function fixture(
       order.push("settle-claim");
       return Promise.resolve("settled" as const);
     }),
+    releaseOrphanedReservation: vi.fn(() =>
+      Promise.resolve("unavailable" as const),
+    ),
     reserveClaim: claim,
     takeOverReserved: vi.fn(() => Promise.resolve("taken_over" as const)),
   };

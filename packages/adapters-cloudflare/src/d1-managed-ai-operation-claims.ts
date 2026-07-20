@@ -6,6 +6,7 @@ import {
   buildFinalizeFullReservationStatement,
   buildListStaleStatement,
   buildMarkSettledStatement,
+  buildReleaseOrphanedReservationStatement,
   buildReleaseReservedStatement,
 } from "./judge-structured-ai-reconciliation.js";
 
@@ -730,6 +731,25 @@ export class D1ManagedAiOperationClaimRepository {
       "abandoned",
       "Managed-AI reserved abandonment",
       2,
+    );
+  }
+
+  async releaseOrphanedReservation(
+    input: ManagedAiOperationReservedAbandonment,
+    releasedAtEpoch: number,
+  ): Promise<"released" | "unavailable"> {
+    validateLifecycleIdentity(input);
+    requireExpectedStatus(input.expectedStatus, "reserved");
+    requireEpoch(releasedAtEpoch, "releasedAtEpoch");
+    const statement = buildReleaseOrphanedReservationStatement(
+      input,
+      releasedAtEpoch,
+    );
+    return this.#conditionalMutation(
+      statement.sql,
+      statement.bindings,
+      "released",
+      "Managed-AI orphaned reservation release",
     );
   }
 

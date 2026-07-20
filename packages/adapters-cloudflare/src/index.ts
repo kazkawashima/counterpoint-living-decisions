@@ -36,6 +36,7 @@ export {
   buildFinalizeFullReservationStatement,
   buildListStaleStatement,
   buildMarkSettledStatement,
+  buildReleaseOrphanedReservationStatement,
   buildReleaseReservedStatement,
   type JudgeStructuredAiLifecycleIdentity,
   type JudgeStructuredAiSettlementIdentity,

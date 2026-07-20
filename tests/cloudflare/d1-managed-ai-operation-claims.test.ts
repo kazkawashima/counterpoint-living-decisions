@@ -1084,4 +1084,46 @@ describe("D1 managed-AI operation claims", () => {
       repository.finalizeFullReservation(input.reservationId, NOW_EPOCH + 1),
     ).resolves.toBe("unavailable");
   });
+
+  it("releases only a reservation whose exact lifecycle generation is absent", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const input = {
+      ...lifecycleClaim("orphan", NOW_EPOCH - 1_000),
+      requestFingerprint: fingerprint("orphan"),
+    };
+    await repository.reserveClaim(input);
+    await insertReservedUsage(input);
+    const mutation = {
+      claimKeyHash: input.claimKeyHash,
+      createdAtEpoch: input.createdAtEpoch,
+      expectedStatus: "reserved" as const,
+      requestFingerprint: input.requestFingerprint,
+      reservationId: input.reservationId,
+    };
+
+    await expect(
+      repository.releaseOrphanedReservation(mutation, NOW_EPOCH),
+    ).resolves.toBe("unavailable");
+    await expect(repository.abandonReserved(mutation)).resolves.toBe(
+      "abandoned",
+    );
+    await expect(
+      repository.releaseOrphanedReservation(
+        mutation,
+        input.createdAtEpoch - 1,
+      ),
+    ).resolves.toBe("released");
+    await expect(
+      env.DB.prepare(
+        `SELECT status, released_at_epoch
+         FROM judge_usage_reservations
+         WHERE reservation_id = ?`,
+      )
+        .bind(input.reservationId)
+        .first<{ released_at_epoch: number; status: string }>(),
+    ).resolves.toEqual({
+      released_at_epoch: input.createdAtEpoch,
+      status: "released",
+    });
+  });
 });

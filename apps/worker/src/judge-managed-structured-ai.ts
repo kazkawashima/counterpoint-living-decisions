@@ -50,6 +50,10 @@ export interface JudgeManagedStructuredAiClaimRepository {
   markSettled(
     input: ManagedAiOperationSettlement,
   ): Promise<"settled" | "unavailable">;
+  releaseOrphanedReservation(
+    input: ManagedAiOperationReservedAbandonment,
+    releasedAtEpoch: number,
+  ): Promise<"released" | "unavailable">;
   reserveClaim(
     input: ManagedAiOperationReserveClaim,
   ): Promise<ManagedAiOperationReserveClaimResult>;
@@ -443,6 +447,12 @@ async function executeReservedClaim<T>(
     }),
   );
   if (providerStart !== "started") {
+    await infrastructure(() =>
+      input.claims.releaseOrphanedReservation(
+        reservedMutation(claim),
+        providerStartedAtEpoch,
+      ),
+    );
     throw new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE");
   }
   const providerStartedClaim: Extract<

@@ -178,7 +178,9 @@ export function buildReleaseReservedStatement(
     ],
     sql: `
       UPDATE judge_usage_reservations
-      SET status = 'released', released_at_epoch = ?
+      SET
+        status = 'released',
+        released_at_epoch = MAX(?, reserved_at_epoch)
       WHERE reservation_id = ?
         AND status = 'reserved'
         AND EXISTS (
@@ -193,6 +195,36 @@ export function buildReleaseReservedStatement(
             AND lifecycle.reservation_id = ?
             AND lifecycle.provider_started_at_epoch IS NULL
             AND lifecycle.lease_expires_at_epoch < ?
+        )
+    `,
+  };
+}
+
+export function buildReleaseOrphanedReservationStatement(
+  input: JudgeStructuredAiLifecycleIdentity,
+  releasedAtEpoch: number,
+): JudgeStructuredAiSqlStatement {
+  validateIdentity(input);
+  requireEpoch(releasedAtEpoch, "releasedAtEpoch");
+  return {
+    bindings: [
+      releasedAtEpoch,
+      input.reservationId,
+      input.requestFingerprint,
+      input.reservationId,
+    ],
+    sql: `
+      UPDATE judge_usage_reservations
+      SET
+        status = 'released',
+        released_at_epoch = MAX(?, reserved_at_epoch)
+      WHERE reservation_id = ?
+        AND request_fingerprint = ?
+        AND status = 'reserved'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM judge_managed_ai_operation_lifecycle
+          WHERE reservation_id = ?
         )
     `,
   };
