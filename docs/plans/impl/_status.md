@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-07-20
+Updated: 2026-07-21
 
 ## Current phase
 
@@ -21,6 +21,25 @@ The canonical implementation-facing artifacts are:
 - [`docs/plans/README.md`](../README.md)
 - [`docs/decisions/user-decisions.md`](../../decisions/user-decisions.md)
 - [`docs/decisions/external-rechecks.md`](../../decisions/external-rechecks.md)
+
+## 2026-07-21 hosted room creation repair
+
+- Hosted preview commit `baa673f` now routes `POST /api/v1/meetings` to the
+  existing application `createMeeting` use case.
+- The Worker preserves facilitator authorization, deterministic idempotent
+  replay, D1 race recovery, and the canonical create-meeting response.
+- Verification passed: typecheck, lint, Worker boundary tests (22), targeted
+  Cloudflare pool tests (13), security matrix (300), preview config dry-run,
+  remote D1 migration check, health/readiness/SPA/auth smoke, flagship smoke,
+  and hosted browser creation of a new synthetic room.
+- Browser creation produced the facilitator workspace for
+  `Hosted room creation verification`; browser console warnings were zero.
+- The complete Cloudflare pool remains a known flaky gate in the existing
+  managed-realtime suite: targeted execution passes 6/6, while full parallel
+  runs reached 140/141 and 137/141 because shared local D1 usage cleanup can
+  violate its reservation CHECK constraint. This was not hidden or changed as
+  part of the room-creation repair.
+- Production deployment and logged-out/incognito judge smoke remain pending.
 
 ## Completed
 
