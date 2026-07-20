@@ -27,6 +27,7 @@ function billing(
       overrides.attempts ??
       Array.from({ length: Math.max(0, attemptCount) }, (_, index) => ({
         inputTokens: index === 0 ? inputTokens : 0,
+        model: PRIVATE_DISCLOSURE_MODEL,
         outputTokens: index === 0 ? outputTokens : 0,
       })),
     inputTokens,
@@ -94,8 +95,16 @@ describe("judge structured AI limits", () => {
         billing({
           attemptCount: 2,
           attempts: [
-            { inputTokens: 270_000, outputTokens: 700 },
-            { inputTokens: 270_000, outputTokens: 700 },
+            {
+              inputTokens: 270_000,
+              model: "gpt-5.6-sol",
+              outputTokens: 700,
+            },
+            {
+              inputTokens: 270_000,
+              model: "gpt-5.6-sol",
+              outputTokens: 700,
+            },
           ],
           inputTokens: 540_000,
           outputTokens: 1_400,
@@ -108,8 +117,16 @@ describe("judge structured AI limits", () => {
         billing({
           attemptCount: 2,
           attempts: [
-            { inputTokens: 300_000, outputTokens: 700 },
-            { inputTokens: 240_000, outputTokens: 700 },
+            {
+              inputTokens: 300_000,
+              model: "gpt-5.6-sol",
+              outputTokens: 700,
+            },
+            {
+              inputTokens: 240_000,
+              model: "gpt-5.6-sol",
+              outputTokens: 700,
+            },
           ],
           inputTokens: 540_000,
           outputTokens: 1_400,
@@ -145,7 +162,9 @@ describe("judge structured AI limits", () => {
       "mismatched attempt totals",
       "gpt-5.6-sol",
       billing({
-        attempts: [{ inputTokens: 2, outputTokens: 1 }],
+        attempts: [
+          { inputTokens: 2, model: "gpt-5.6-sol", outputTokens: 1 },
+        ],
         inputTokens: 1,
       }),
     ],

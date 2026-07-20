@@ -13,6 +13,10 @@ import {
   OpenAiCandidateError,
   type TokenUsage,
 } from "./private-disclosure.js";
+import {
+  StructuredAiBillingAccumulator,
+  type StructuredAiBilling,
+} from "./structured-ai-billing.js";
 
 export const ASSUMPTION_INVALIDATION_OPERATION = "assumption_invalidation";
 export const ASSUMPTION_INVALIDATION_SCHEMA_VERSION = "1";
@@ -108,6 +112,7 @@ export interface AssumptionInvalidationAiEnvelope {
 
 export interface AssumptionInvalidationEvaluation {
   readonly ai: AssumptionInvalidationAiEnvelope;
+  readonly billing?: StructuredAiBilling;
   readonly suggestion: AssumptionInvalidationCandidate;
 }
 
@@ -275,11 +280,13 @@ export class OpenAiAssumptionInvalidationEvaluator {
 
     const startedAt = performance.now();
     let accumulatedUsage: TokenUsage | undefined;
+    const billing = new StructuredAiBillingAccumulator();
     let attemptsMade = 0;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= this.#maxAttempts; attempt += 1) {
       attemptsMade = attempt;
+      let responseObservedForAttempt = false;
       try {
         const response = await this.#modelAdapter.generate({
           input: {
@@ -291,6 +298,8 @@ export class OpenAiAssumptionInvalidationEvaluator {
           },
           model: this.#model,
         });
+        responseObservedForAttempt = true;
+        billing.record(response.responseModel, response.usage);
         accumulatedUsage = addUsage(accumulatedUsage, response.usage);
         const suggestion = validateModelOutput(response.output, input);
 
@@ -305,6 +314,7 @@ export class OpenAiAssumptionInvalidationEvaluator {
             : { usage: accumulatedUsage }),
         });
 
+        const completedBilling = billing.complete(attempt);
         return {
           ai: {
             candidates: [suggestion],
@@ -321,9 +331,15 @@ export class OpenAiAssumptionInvalidationEvaluator {
             promptVersion: ASSUMPTION_INVALIDATION_PROMPT_VERSION,
             schemaVersion: ASSUMPTION_INVALIDATION_SCHEMA_VERSION,
           },
+          ...(completedBilling === undefined
+            ? {}
+            : { billing: completedBilling }),
           suggestion,
         };
       } catch (error) {
+        if (!responseObservedForAttempt) {
+          billing.invalidate();
+        }
         lastError = error;
         if (
           attempt >= this.#maxAttempts ||

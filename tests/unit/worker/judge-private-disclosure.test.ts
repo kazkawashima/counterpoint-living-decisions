@@ -79,7 +79,9 @@ function baseDependencies(): DisclosureDependencies {
 function proposal(
   billing: PrivateDisclosureProposal["billing"] = {
     attemptCount: 1,
-    attempts: [{ inputTokens: 120, outputTokens: 30 }],
+    attempts: [
+      { inputTokens: 120, model: "gpt-5.6", outputTokens: 30 },
+    ],
     inputTokens: 120,
     outputTokens: 30,
   },
@@ -671,7 +673,9 @@ describe("judge private-disclosure orchestration", () => {
       "malformed",
       proposal({
         attemptCount: 1,
-        attempts: [{ inputTokens: -1, outputTokens: 1 }],
+        attempts: [
+          { inputTokens: -1, model: "gpt-5.6", outputTokens: 1 },
+        ],
         inputTokens: -1,
         outputTokens: 1,
       }),

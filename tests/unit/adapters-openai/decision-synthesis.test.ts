@@ -104,6 +104,18 @@ describe("OpenAiSharedDecisionSynthesizer", () => {
         premise: { evidenceReferenceIds: ["evidence-shared-1"] },
       },
     });
+    expect(result.billing).toEqual({
+      attemptCount: 1,
+      attempts: [
+        {
+          inputTokens: 220,
+          model: "gpt-5.6-sol",
+          outputTokens: 180,
+        },
+      ],
+      inputTokens: 220,
+      outputTokens: 180,
+    });
     expect(model.requests[0]).not.toHaveProperty("meetingId");
     expect(JSON.stringify(model.requests)).not.toContain("meeting-1");
     expect(logs[0]?.metadata).toMatchObject({
@@ -112,6 +124,49 @@ describe("OpenAiSharedDecisionSynthesizer", () => {
       totalTokens: 400,
     });
     expect(JSON.stringify(logs)).not.toContain(input.evidence[0]?.exactSnippet);
+  });
+
+  it("meters each response model across an invalid-output retry", async () => {
+    const invalid = modelResult({
+      responseModel: "gpt-5.6-mini",
+      usage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        totalTokens: 120,
+      },
+    });
+    const output = structuredClone(invalid.output) as {
+      action: { ownerParticipantId: string };
+    };
+    output.action.ownerParticipantId = "participant-outsider";
+    const model = new QueueModel([
+      { ...invalid, output },
+      modelResult(),
+    ]);
+    const synthesizer = new OpenAiSharedDecisionSynthesizer({
+      delay: () => Promise.resolve(),
+      modelAdapter: model,
+    });
+
+    const result = await synthesizer.synthesize(input);
+
+    expect(result.billing).toEqual({
+      attemptCount: 2,
+      attempts: [
+        {
+          inputTokens: 100,
+          model: "gpt-5.6-mini",
+          outputTokens: 20,
+        },
+        {
+          inputTokens: 220,
+          model: "gpt-5.6-sol",
+          outputTokens: 180,
+        },
+      ],
+      inputTokens: 320,
+      outputTokens: 200,
+    });
   });
 
   it("rejects invented evidence and participant references after capped retries", async () => {

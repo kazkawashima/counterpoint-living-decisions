@@ -9,6 +9,12 @@ import OpenAI, {
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
+import {
+  StructuredAiBillingAccumulator,
+  type StructuredAiBilling,
+  type StructuredAiTokenUsage,
+} from "./structured-ai-billing.js";
+
 export const DEFAULT_OPENAI_MODEL = "gpt-5.6";
 export const PRIVATE_DISCLOSURE_OPERATION = "private_evidence_disclosure";
 export const PRIVATE_DISCLOSURE_SCHEMA_VERSION = "1";
@@ -50,11 +56,7 @@ type PrivateDisclosureModelOutput = z.infer<
   typeof PrivateDisclosureModelOutputSchema
 >;
 
-export interface TokenUsage {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly totalTokens: number;
-}
+export type TokenUsage = StructuredAiTokenUsage;
 
 export interface PrivateDisclosureModelRequest {
   readonly model: string;
@@ -97,15 +99,7 @@ export interface PrivateDisclosureAiEnvelope {
   readonly schemaVersion: typeof PRIVATE_DISCLOSURE_SCHEMA_VERSION;
 }
 
-export interface PrivateDisclosureBilling {
-  readonly attemptCount: number;
-  readonly attempts: readonly {
-    readonly inputTokens: number;
-    readonly outputTokens: number;
-  }[];
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-}
+export type PrivateDisclosureBilling = StructuredAiBilling;
 
 export interface PrivateDisclosureProposal {
   readonly ai: PrivateDisclosureAiEnvelope;
@@ -307,37 +301,23 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
   }): Promise<PrivateDisclosureProposal> {
     const startedAt = performance.now();
     let accumulatedUsage: TokenUsage | undefined;
-    const billingAttempts: {
-      inputTokens: number;
-      outputTokens: number;
-    }[] = [];
+    const billing = new StructuredAiBillingAccumulator();
     let attemptsMade = 0;
-    let billingComplete = true;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= this.#maxAttempts; attempt += 1) {
       attemptsMade = attempt;
-      let usageObservedForAttempt = false;
+      let responseObservedForAttempt = false;
       try {
         const response = await this.#modelAdapter.generate({
           model: this.#model,
           sourceReferenceId: input.sourceArtifactId,
           sourceText: input.text,
         });
-        if (!isTrustworthyTokenUsage(response.usage)) {
-          billingComplete = false;
-        } else {
-          const nextUsage = addUsage(accumulatedUsage, response.usage);
-          if (nextUsage === undefined) {
-            billingComplete = false;
-          } else {
-            usageObservedForAttempt = true;
-            accumulatedUsage = nextUsage;
-            billingAttempts.push({
-              inputTokens: response.usage.inputTokens,
-              outputTokens: response.usage.outputTokens,
-            });
-          }
+        responseObservedForAttempt = true;
+        billing.record(response.responseModel, response.usage);
+        if (isTrustworthyTokenUsage(response.usage)) {
+          accumulatedUsage = addUsage(accumulatedUsage, response.usage);
         }
 
         const output = validatePrivateDisclosureOutput(
@@ -369,24 +349,18 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
             : { usage: accumulatedUsage }),
         });
 
+        const completedBilling = billing.complete(attempt);
         return {
           ai: envelope,
-          ...(billingComplete && accumulatedUsage !== undefined
-            ? {
-                billing: {
-                  attemptCount: attempt,
-                  attempts: billingAttempts,
-                  inputTokens: accumulatedUsage.inputTokens,
-                  outputTokens: accumulatedUsage.outputTokens,
-                },
-              }
-            : {}),
+          ...(completedBilling === undefined
+            ? {}
+            : { billing: completedBilling }),
           exactSnippet: candidate.exactSnippet,
           sourceRange: candidate.sourceRange,
         };
       } catch (error) {
-        if (!usageObservedForAttempt) {
-          billingComplete = false;
+        if (!responseObservedForAttempt) {
+          billing.invalidate();
         }
         lastError = error;
         const canRetry =

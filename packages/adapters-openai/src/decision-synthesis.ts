@@ -13,6 +13,10 @@ import {
   OpenAiCandidateError,
   type TokenUsage,
 } from "./private-disclosure.js";
+import {
+  StructuredAiBillingAccumulator,
+  type StructuredAiBilling,
+} from "./structured-ai-billing.js";
 
 export const DECISION_SYNTHESIS_OPERATION = "shared_decision_synthesis";
 export const DECISION_SYNTHESIS_SCHEMA_VERSION = "1";
@@ -112,6 +116,7 @@ export interface SharedDecisionAiEnvelope {
 
 export interface SharedDecisionSynthesis {
   readonly ai: SharedDecisionAiEnvelope;
+  readonly billing?: StructuredAiBilling;
   readonly draft: SharedDecisionModelOutput;
 }
 
@@ -275,9 +280,11 @@ export class OpenAiSharedDecisionSynthesizer {
     const startedAt = performance.now();
     let attemptsMade = 0;
     let accumulatedUsage: TokenUsage | undefined;
+    const billing = new StructuredAiBillingAccumulator();
     let lastError: unknown;
     for (let attempt = 1; attempt <= this.#maxAttempts; attempt += 1) {
       attemptsMade = attempt;
+      let responseObservedForAttempt = false;
       try {
         const response = await this.#modelAdapter.generate({
           input: {
@@ -289,6 +296,8 @@ export class OpenAiSharedDecisionSynthesizer {
           },
           model: this.#model,
         });
+        responseObservedForAttempt = true;
+        billing.record(response.responseModel, response.usage);
         accumulatedUsage = addUsage(accumulatedUsage, response.usage);
         const draft = validateOutput(response.output, input);
         this.#record({
@@ -301,6 +310,7 @@ export class OpenAiSharedDecisionSynthesizer {
             ? {}
             : { usage: accumulatedUsage }),
         });
+        const completedBilling = billing.complete(attempt);
         return {
           ai: {
             candidates: [draft],
@@ -311,9 +321,15 @@ export class OpenAiSharedDecisionSynthesizer {
             promptVersion: DECISION_SYNTHESIS_PROMPT_VERSION,
             schemaVersion: DECISION_SYNTHESIS_SCHEMA_VERSION,
           },
+          ...(completedBilling === undefined
+            ? {}
+            : { billing: completedBilling }),
           draft,
         };
       } catch (error) {
+        if (!responseObservedForAttempt) {
+          billing.invalidate();
+        }
         lastError = error;
         if (
           attempt >= this.#maxAttempts ||

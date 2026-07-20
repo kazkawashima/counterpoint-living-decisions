@@ -61,6 +61,14 @@ function validResult(
   };
 }
 
+function resultWithoutUsage(): PrivateDisclosureModelResult {
+  const result = validResult();
+  return {
+    output: result.output,
+    responseModel: result.responseModel,
+  };
+}
+
 class QueueModel implements PrivateDisclosureModel {
   readonly requests: PrivateDisclosureModelRequest[] = [];
   readonly #results: (PrivateDisclosureModelResult | Error)[];
@@ -124,6 +132,18 @@ describe("OpenAiPrivateDisclosureProposer", () => {
       operation: "private_evidence_disclosure",
       promptVersion: "private-evidence-v1",
       schemaVersion: "1",
+    });
+    expect(proposal.billing).toEqual({
+      attemptCount: 1,
+      attempts: [
+        {
+          inputTokens: 120,
+          model: "gpt-5.6-2026-07-01",
+          outputTokens: 40,
+        },
+      ],
+      inputTokens: 120,
+      outputTokens: 40,
     });
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({
@@ -207,8 +227,16 @@ describe("OpenAiPrivateDisclosureProposer", () => {
     expect(proposal.billing).toEqual({
       attemptCount: 2,
       attempts: [
-        { inputTokens: 120, outputTokens: 40 },
-        { inputTokens: 120, outputTokens: 40 },
+        {
+          inputTokens: 120,
+          model: "gpt-5.6-2026-07-01",
+          outputTokens: 40,
+        },
+        {
+          inputTokens: 120,
+          model: "gpt-5.6-2026-07-01",
+          outputTokens: 40,
+        },
       ],
       inputTokens: 240,
       outputTokens: 80,
@@ -324,16 +352,58 @@ describe("OpenAiPrivateDisclosureProposer", () => {
     expect(proposal).not.toHaveProperty("billing");
   });
 
-  it("omits billing when provider usage is malformed", async () => {
-    const malformed = validResult({
-      usage: {
-        inputTokens: 120,
-        outputTokens: -1,
-        totalTokens: 119,
-      },
-    });
+  it.each([
+    {
+      label: "missing response model",
+      result: validResult({ responseModel: "" }),
+    },
+    {
+      label: "missing usage",
+      result: resultWithoutUsage(),
+    },
+    {
+      label: "negative usage",
+      result: validResult({
+        usage: {
+          inputTokens: 120,
+          outputTokens: -1,
+          totalTokens: 119,
+        },
+      }),
+    },
+    {
+      label: "fractional usage",
+      result: validResult({
+        usage: {
+          inputTokens: 120.5,
+          outputTokens: 40,
+          totalTokens: 160.5,
+        },
+      }),
+    },
+    {
+      label: "unsafe usage",
+      result: validResult({
+        usage: {
+          inputTokens: Number.MAX_SAFE_INTEGER + 1,
+          outputTokens: 0,
+          totalTokens: Number.MAX_SAFE_INTEGER + 1,
+        },
+      }),
+    },
+    {
+      label: "inconsistent total",
+      result: validResult({
+        usage: {
+          inputTokens: 120,
+          outputTokens: 40,
+          totalTokens: 161,
+        },
+      }),
+    },
+  ])("omits billing for $label", async ({ result }) => {
     const proposer = new OpenAiPrivateDisclosureProposer({
-      modelAdapter: new QueueModel([malformed]),
+      modelAdapter: new QueueModel([result]),
     });
 
     const proposal = await proposer.propose({

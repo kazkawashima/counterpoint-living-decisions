@@ -134,7 +134,8 @@ describe("OpenAiAssumptionInvalidationEvaluator", () => {
     });
     const structuralEvaluator: AssumptionInvalidationEvaluator = evaluator;
 
-    const result = await structuralEvaluator.evaluate(input);
+    const result = await evaluator.evaluate(input);
+    expect(structuralEvaluator).toBe(evaluator);
 
     expect(result).toMatchObject({
       ai: {
@@ -162,6 +163,18 @@ describe("OpenAiAssumptionInvalidationEvaluator", () => {
           "demo://regulatory-change/eu-approval-gate",
         ],
       },
+    });
+    expect(result.billing).toEqual({
+      attemptCount: 1,
+      attempts: [
+        {
+          inputTokens: 240,
+          model: "gpt-5.6-2026-07-01",
+          outputTokens: 80,
+        },
+      ],
+      inputTokens: 240,
+      outputTokens: 80,
     });
     expect(result.ai.candidates).toEqual([result.suggestion]);
     expect(result.ai.candidates[0]).toBe(result.suggestion);
@@ -192,6 +205,49 @@ describe("OpenAiAssumptionInvalidationEvaluator", () => {
     expect(serializedLogs).not.toContain(input.externalEvent.description);
     expect(serializedLogs).not.toContain(input.evidence[0]?.exactSnippet);
     expect(serializedLogs).not.toContain(input.decision.outcome);
+  });
+
+  it("meters each response model across an invalid-output retry", async () => {
+    const invalid = validResult({
+      responseModel: "gpt-5.6-mini",
+      usage: {
+        inputTokens: 180,
+        outputTokens: 60,
+        totalTokens: 240,
+      },
+    });
+    const output = structuredClone(invalid.output) as {
+      evidenceReferenceIds: string[];
+    };
+    output.evidenceReferenceIds = ["evidence-invented"];
+    const model = new QueueModel([
+      { ...invalid, output },
+      validResult(),
+    ]);
+    const evaluator = new OpenAiAssumptionInvalidationEvaluator({
+      delay: () => Promise.resolve(),
+      modelAdapter: model,
+    });
+
+    const result = await evaluator.evaluate(input);
+
+    expect(result.billing).toEqual({
+      attemptCount: 2,
+      attempts: [
+        {
+          inputTokens: 180,
+          model: "gpt-5.6-mini",
+          outputTokens: 60,
+        },
+        {
+          inputTokens: 240,
+          model: "gpt-5.6-2026-07-01",
+          outputTokens: 80,
+        },
+      ],
+      inputTokens: 420,
+      outputTokens: 140,
+    });
   });
 
   it("rejects invented references and missing external-event grounding", async () => {

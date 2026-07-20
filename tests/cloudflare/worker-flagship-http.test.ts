@@ -175,7 +175,9 @@ function meteredProposal(
     },
     billing: {
       attemptCount: 1,
-      attempts: [{ inputTokens: 120, outputTokens: 20 }],
+      attempts: [
+        { inputTokens: 120, model: "gpt-5.6", outputTokens: 20 },
+      ],
       inputTokens: 120,
       outputTokens: 20,
     },
