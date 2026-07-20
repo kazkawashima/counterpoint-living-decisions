@@ -142,8 +142,7 @@ export async function runReconciliationCommand(input) {
     buildListStaleStatement,
     buildMarkSettledStatement,
     buildReleaseReservedStatement,
-  } =
-    await import("../packages/adapters-cloudflare/dist/judge-structured-ai-reconciliation.js");
+  } = input.statements;
   const nowEpoch = Math.floor(Date.now() / 1_000);
   const select = buildListStaleStatement({ limit: 20, nowEpoch });
   const selected = queryRows(
@@ -250,6 +249,8 @@ export async function runReconciliationCommand(input) {
 async function main() {
   const parsed = parseReconciliationArguments(process.argv.slice(2));
   const configPath = `.wrangler/reconcile/${parsed.target}.wrangler.json`;
+  const statements =
+    await import("../packages/adapters-cloudflare/dist/judge-structured-ai-reconciliation.js");
   await writeCloudflareDeployConfiguration({
     databaseId: process.env.CLOUDFLARE_D1_DATABASE_ID,
     outputPath: configPath,
@@ -262,6 +263,7 @@ async function main() {
     configPath,
     execute: wranglerExecute,
     mode: parsed.mode,
+    statements,
   });
   console.log(reconciliationSummary(result));
   if (result.failed > 0) {

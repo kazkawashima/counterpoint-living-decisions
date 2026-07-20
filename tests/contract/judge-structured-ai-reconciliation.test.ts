@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   parseReconciliationArguments,
@@ -34,6 +34,13 @@ const deployUrl = new URL(
   import.meta.url,
 );
 const packageUrl = new URL("../../package.json", import.meta.url);
+const reconciliationStatements = {
+  buildAbandonExpiredReservedStatement,
+  buildFinalizeFullReservationStatement,
+  buildListStaleStatement,
+  buildMarkSettledStatement,
+  buildReleaseReservedStatement,
+};
 
 describe("judge structured-AI reconciliation command", () => {
   it("accepts only a target and dry-run/apply mode, defaulting to dry-run", () => {
@@ -135,6 +142,22 @@ describe("judge structured-AI reconciliation command", () => {
     expect(shell).not.toContain("OPENAI_API_KEY_JUDGE=");
   });
 
+  it("uses explicitly supplied statement builders without a prebuilt adapter", async () => {
+    const injectedList = vi.fn(buildListStaleStatement);
+
+    await runReconciliationCommand({
+      configPath: ".wrangler/reconcile/preview.wrangler.json",
+      execute: () => JSON.stringify([{ meta: { changes: 0 }, results: [] }]),
+      mode: "dry-run",
+      statements: {
+        ...reconciliationStatements,
+        buildListStaleStatement: injectedList,
+      },
+    });
+
+    expect(injectedList).toHaveBeenCalledOnce();
+  });
+
   it("executes only the stale SELECT during dry-run", async () => {
     const sql: string[] = [];
     const result = await runReconciliationCommand({
@@ -144,6 +167,7 @@ describe("judge structured-AI reconciliation command", () => {
         return JSON.stringify([{ meta: { changes: 0 }, results: [] }]);
       },
       mode: "dry-run",
+      statements: reconciliationStatements,
     });
 
     expect(result).toEqual({
@@ -187,6 +211,7 @@ describe("judge structured-AI reconciliation command", () => {
           : JSON.stringify([{ meta: { changes: 2 }, results: [] }]);
       },
       mode: "apply",
+      statements: reconciliationStatements,
     });
 
     expect(result).toEqual({

@@ -712,8 +712,13 @@ The canonical implementation-facing artifacts are:
   suppression while allowing the same logical operation after the claim's
   25-hour retention boundary. Worker readiness now requires the exact 0012
   migration set.
-- The current regular baseline is 804 Vitest tests, the contract project passes
-  129 tests, and the Cloudflare pool passes 11 files and 141 tests. Formatting,
+- The operator reconciliation command now receives its shared statement
+  builders explicitly. The production CLI imports the built adapter only after
+  the documented workspace build, while contract tests inject the source
+  builders and therefore pass in a clean checkout before any build artifacts
+  exist.
+- The current regular baseline is 805 Vitest tests, the contract project passes
+  130 tests, and the Cloudflare pool passes 11 files and 141 tests. Formatting,
   ESLint, typecheck, build, architecture, secret scan, environment, generated
   Worker types, and Cloudflare configuration checks pass. The Worker-specific
   browser E2E passes both external-style Wrangler cases, and the complete Node
