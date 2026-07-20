@@ -173,7 +173,9 @@ test("Worker keeps ordinary, judge, and shared-display browser contexts separate
       { headers: ordinaryAuthorization },
     );
     expect(ordinaryProjection.status()).toBe(200);
-    const ordinaryProjectionBody = await ordinaryProjection.json();
+    const ordinaryProjectionBody = (await ordinaryProjection.json()) as {
+      privateWorkspace?: { sources?: unknown[] };
+    };
     expect(JSON.stringify(ordinaryProjectionBody)).not.toContain(privateText);
     expect(ordinaryProjectionBody).toMatchObject({
       privateWorkspace: { sources: [] },

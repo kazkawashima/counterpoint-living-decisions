@@ -85,9 +85,19 @@ test("facilitator creates a 3-person decision room from the browser", async ({
   ).toBeVisible();
   await expect(page.getByText("Regional launch readiness note")).toHaveCount(0);
   await expect(page.getByText("Synthetic launch decision")).toHaveCount(0);
+  const preparePreview = page.getByRole("button", {
+    name: "Prepare grounded sharing preview",
+  });
+  await expect(preparePreview).toBeDisabled();
+  await expect(preparePreview).toHaveAttribute(
+    "aria-describedby",
+    "prepare-preview-hint",
+  );
   await expect(
-    page.getByRole("button", { name: "Prepare grounded sharing preview" }),
-  ).toBeDisabled();
+    page.getByText(
+      "Add a private source first · upload a file or import a URL.",
+    ),
+  ).toBeVisible();
   await page.screenshot({
     animations: "disabled",
     fullPage: true,

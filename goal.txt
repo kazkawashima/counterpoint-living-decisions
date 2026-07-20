@@ -63,6 +63,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   これはprovider-free staged review/manual fallback、SPA/API同一origin、
   ordinary/judge/display境界のpath-health証拠であり、初見の人間による3分リハーサルとは
   分けて扱う。
+- 一般roomでprivate source未選択のためsharing previewを押せない場合、ボタンの説明、
+  `aria-describedby`、native tooltipで解除方法を示すようにした。meeting-creation E2Eと
+  synthetic desktop screenshotを更新し、Flagshipの主導線には影響させていない。
 
 ## 完了条件 A — 名称変更
 

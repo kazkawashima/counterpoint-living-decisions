@@ -2373,6 +2373,14 @@ button:disabled {
   line-height: 1.45;
 }
 
+.action-hint {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
 .disclosure-preview,
 .private-confirmation {
   margin-top: 1rem;

@@ -286,7 +286,7 @@ test("real Wrangler replays the provider-free staged rule and manual review arc 
   );
   expect(projectionResponse.status()).toBe(200);
   const projection = (await projectionResponse.json()) as {
-    shared?: { decisions?: Array<{ decisionId?: string }> };
+    shared?: { decisions?: { decisionId?: string }[] };
   };
   const decisionId = projection.shared?.decisions?.at(-1)?.decisionId;
   expect(decisionId).toEqual(expect.any(String));

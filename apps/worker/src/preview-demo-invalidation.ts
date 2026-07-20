@@ -15,7 +15,7 @@ export const PREVIEW_DEMO_INVALIDATION_MODEL = "staged-demo-rule-v1";
  */
 export function createPreviewDemoInvalidationEvaluator(): ConcreteAssumptionInvalidationEvaluator {
   return {
-    async evaluate(
+    evaluate(
       input: AssumptionInvalidationEvaluationInput,
     ): Promise<AssumptionInvalidationEvaluation> {
       const action = input.actions[0];
@@ -42,7 +42,7 @@ export function createPreviewDemoInvalidationEvaluator(): ConcreteAssumptionInva
         reason:
           "The staged demo rule matches the synthetic event to the monitored rollout premise.",
       };
-      return {
+      return Promise.resolve({
         ai: {
           candidates: [suggestion],
           generatedAt: input.externalEvent.effectiveAt,
@@ -59,7 +59,7 @@ export function createPreviewDemoInvalidationEvaluator(): ConcreteAssumptionInva
           schemaVersion: "1",
         },
         suggestion,
-      };
+      });
     },
   };
 }

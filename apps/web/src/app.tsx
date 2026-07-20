@@ -3419,14 +3419,31 @@ function WorkspaceShell({
               source.
             </small>
             {phase === "idle" ? (
-              <button
-                className="prepare-button"
-                disabled={uploadedPrivateSource === undefined && !isFlagship}
-                onClick={() => void preparePreview("ai_preferred")}
-                type="button"
-              >
-                Prepare grounded sharing preview
-              </button>
+              <>
+                <button
+                  aria-describedby={
+                    uploadedPrivateSource === undefined && !isFlagship
+                      ? "prepare-preview-hint"
+                      : undefined
+                  }
+                  className="prepare-button"
+                  disabled={uploadedPrivateSource === undefined && !isFlagship}
+                  onClick={() => void preparePreview("ai_preferred")}
+                  title={
+                    uploadedPrivateSource === undefined && !isFlagship
+                      ? "Select a private source before preparing an excerpt."
+                      : undefined
+                  }
+                  type="button"
+                >
+                  Prepare grounded sharing preview
+                </button>
+                {uploadedPrivateSource === undefined && !isFlagship ? (
+                  <small className="action-hint" id="prepare-preview-hint">
+                    Add a private source first · upload a file or import a URL.
+                  </small>
+                ) : null}
+              </>
             ) : null}
             {phase === "preparing" ? (
               <button disabled type="button">

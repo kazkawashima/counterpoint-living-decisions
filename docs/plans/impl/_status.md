@@ -1081,6 +1081,11 @@ The canonical implementation-facing artifacts are:
   same-origin API access, and separate ordinary/judge/display contexts. This
   confirms path health but does not replace the pending first-time human
   rehearsal for the three-minute acceptance gate.
+- The generic-room empty state now explains why `Prepare grounded sharing
+  preview` is disabled and how to add a private source. The hint is exposed
+  through both visible text and `aria-describedby`/native tooltip, with updated
+  synthetic evidence and a passing meeting-creation browser test. The
+  Flagship path remains unchanged.
 
 ## Next executable slice
 

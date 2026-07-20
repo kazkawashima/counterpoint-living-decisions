@@ -705,7 +705,7 @@
       "sha256": "f082eff1dbc293d9d27a396fc20ad29cf0e379ddee03ca887f1d504ef42ca361"
     },
     {
-      "bytes": 604551,
+      "bytes": 337422,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/meeting-creation/2026-07-20-create-room-ready-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -713,10 +713,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "97f21af5dd195f1c9f2e3bb2b3aab53a42a98203d19ccd61c97be8c6d970293c"
+      "sha256": "0d514e7db21b1ed09f7ba4c209da9a1f0377a048b930a75cca64e698edb24b07"
     },
     {
-      "bytes": 686724,
+      "bytes": 688235,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/meeting-creation/2026-07-20-generic-room-empty-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -724,7 +724,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "969610159c3be93e3a89425d8b9cd7ed65001deb4e39e6b3405292b3d9a5ea6e"
+      "sha256": "23055c2fe9f300c56c245ff77cfca56c337cb254a2c82e90874bf8b232a71197"
     },
     {
       "bytes": 701460,
