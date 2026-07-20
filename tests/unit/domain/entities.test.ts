@@ -143,4 +143,13 @@ describe("opaque values and entity construction", () => {
       }),
     ).toThrow("shared and human-confirmed");
   });
+
+  it("publishes Evidence only from an approved source artifact", () => {
+    expect(() =>
+      createEvidence({
+        ...sharedEvidence(),
+        origin: "ai_inference",
+      }),
+    ).toThrow("source artifact");
+  });
 });

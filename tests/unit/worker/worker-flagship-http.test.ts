@@ -791,6 +791,91 @@ async function responseBody(
 }
 
 describe("Worker private-disclosure boundary", () => {
+  it.each(["evidence", "decisions"] as const)(
+    "does not read private source bodies for the shared %s list",
+    async (operation) => {
+      const fixtureValue = await fixture();
+      const privateBodyRead = vi.spyOn(
+        fixtureValue.dependencies.disclosures.artifacts,
+        "get",
+      );
+      privateBodyRead.mockClear();
+      const dependencies = {
+        ...fixtureValue.dependencies,
+        meetings: {
+          ...fixtureValue.dependencies.meetings,
+          listAssignments: () =>
+            Promise.resolve([
+              {
+                active: true,
+                meetingId: MEETING_ID,
+                participantId: PARTICIPANT_ID,
+                role: "participant" as const,
+                userId: USER_ID,
+              },
+            ]),
+        },
+      };
+
+      const response = await handleWorkerFlagshipHttp({
+        correlationId: `correlation-worker-${operation}-no-private-body`,
+        dependencies,
+        meetingId: MEETING_ID,
+        operation,
+        request: new Request(
+          `https://counterpoint.test/api/v1/meetings/${MEETING_ID}/${operation}`,
+          { headers: { authorization: `Bearer ${BEARER}` } },
+        ),
+      });
+
+      expect(response.status).toBe(200);
+      expect(privateBodyRead).not.toHaveBeenCalled();
+    },
+  );
+
+  it("projects truthful UI grammar labels for shared evidence", async () => {
+    const fixtureValue = await decisionFixture();
+    const dependencies = {
+      ...fixtureValue.dependencies,
+      meetings: {
+        ...fixtureValue.dependencies.meetings,
+        listAssignments: () =>
+          Promise.resolve([
+            {
+              active: true,
+              meetingId: MEETING_ID,
+              participantId: FACILITATOR_ID,
+              role: "facilitator" as const,
+              userId: USER_ID,
+            },
+          ]),
+      },
+    };
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-evidence-projection",
+      dependencies,
+      meetingId: MEETING_ID,
+      operation: "evidence",
+      request: new Request(
+        `https://counterpoint.test/api/v1/meetings/${MEETING_ID}/evidence`,
+        { headers: { authorization: `Bearer ${BEARER}` } },
+      ),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      evidence: [
+        {
+          confirmationStatus: "human_confirmed",
+          evidenceId: DECISION_EVIDENCE_ID,
+          origin: "source",
+          provenance: "approved_exact_excerpt",
+          scope: "shared",
+        },
+      ],
+    });
+  });
+
   it("strips every proposer in manual mode and never touches claim or ledger", async () => {
     const fixtureValue = await fixture();
     const candidateProposer = vi.fn(() =>

@@ -2,11 +2,13 @@ import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
+  ApproveDisclosureResponseSchema,
   createErrorEnvelope,
   CreateMeetingResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { uploadAndUsePrivateMarkdown } from "../helpers/private-source.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/login-meeting");
 const clipDirectory = evidenceDirectory("clips/login-meeting");
@@ -120,8 +122,33 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   await expect(page.getByRole("alert")).toContainText(
     "could not reach the local decision service",
   );
+  const approvalResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/disclosures/approve") &&
+      response.status() === 200,
+  );
   await page.getByRole("button", { name: "Approve exact excerpt" }).click();
+  const approved = ApproveDisclosureResponseSchema.parse(
+    await (await approvalResponsePromise).json(),
+  );
   await expect(page.getByText("Permission recorded")).toBeVisible();
+  const sharedEvidence = page.locator(".shared-evidence");
+  await expect(sharedEvidence).toContainText("Shared scope");
+  await expect(sharedEvidence).toContainText("Source origin");
+  await expect(sharedEvidence).toContainText("Human confirmed");
+  await expect(sharedEvidence).toContainText("Approved exact excerpt");
+  await expect(sharedEvidence).toContainText("Source ref");
+  const sourceReference = sharedEvidence.locator("details.source-reference");
+  await expect(sourceReference).toHaveAttribute(
+    "aria-label",
+    `Source reference ${approved.evidence.sourceArtifactId}`,
+  );
+  await sourceReference.locator("summary").click();
+  await expect(
+    sourceReference.getByText(approved.evidence.sourceArtifactId, {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(page.getByText("1 of 5 conditions assembled")).toBeVisible();
   await page.screenshot({
     animations: "disabled",
@@ -216,6 +243,10 @@ test("AI dependency failure preserves an explicit manual excerpt fallback", asyn
     .getByRole("article")
     .filter({ hasText: created.purpose });
   await privateMeeting.getByRole("button", { name: "Open workspace" }).click();
+  await uploadAndUsePrivateMarkdown(page, {
+    filename: "ai-fallback-source.md",
+    text: "Regional launch requires a documented approval gate.",
+  });
   await page.route("**/api/v1/disclosures/proposals", async (route) => {
     const request = route.request().postDataJSON() as {
       assistance?: string;
@@ -302,6 +333,10 @@ test("mobile and reduced-motion views preserve the permission boundary", async (
     .getByRole("article")
     .filter({ hasText: created.purpose });
   await privateMeeting.getByRole("button", { name: "Open workspace" }).click();
+  await uploadAndUsePrivateMarkdown(page, {
+    filename: "mobile-private-source.md",
+    text: "Regional launch requires a documented approval gate.",
+  });
   await expect(page.getByText("Permission gate")).toBeVisible();
   await page.screenshot({
     animations: "disabled",

@@ -382,9 +382,13 @@ export async function roleProjectionFor(
       })),
       evidence: projection.shared.evidence.map(
         ({ createdAt, exactSnippet, id, sourceArtifactId, sourceRange }) => ({
+          confirmationStatus: "human_confirmed" as const,
           createdAt,
           evidenceId: id,
           exactSnippet,
+          origin: "source" as const,
+          provenance: "approved_exact_excerpt" as const,
+          scope: "shared" as const,
           sourceArtifactId,
           sourceRange,
         }),
@@ -508,9 +512,13 @@ export async function sharedDisplayProjectionFor(
       })),
       evidence: projection.shared.evidence.map(
         ({ createdAt, exactSnippet, id, sourceArtifactId, sourceRange }) => ({
+          confirmationStatus: "human_confirmed" as const,
           createdAt,
           evidenceId: id,
           exactSnippet,
+          origin: "source" as const,
+          provenance: "approved_exact_excerpt" as const,
+          scope: "shared" as const,
           sourceArtifactId,
           sourceRange,
         }),

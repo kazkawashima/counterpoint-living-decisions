@@ -1,7 +1,8 @@
 import { AxeBuilder } from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { activateByKeyboard } from "../helpers/keyboard.js";
 
 const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
 const screenshotDirectory = evidenceDirectory("screenshots/accessibility");
@@ -28,6 +29,62 @@ function cssTimeSeconds(value: string): number {
   const normalized = value.trim();
   const magnitude = Number.parseFloat(normalized);
   return normalized.endsWith("ms") ? magnitude / 1_000 : magnitude;
+}
+
+function relativeLuminance(input: readonly number[]): number {
+  const [red = 0, green = 0, blue = 0] = input;
+  const channels = [red, green, blue].map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return (
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
+  );
+}
+
+function contrastRatio(
+  foreground: readonly number[],
+  background: readonly number[],
+): number {
+  const lighter = Math.max(
+    relativeLuminance(foreground),
+    relativeLuminance(background),
+  );
+  const darker = Math.min(
+    relativeLuminance(foreground),
+    relativeLuminance(background),
+  );
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function expectTextContrast(locator: Locator, minimum = 4.5) {
+  const colors = await locator.evaluate((element) => {
+    const parse = (value: string) =>
+      (value.match(/\d+(?:\.\d+)?/gu) ?? [])
+        .slice(0, 3)
+        .map((channel) => Number(channel));
+    let backgroundElement: Element | null = element;
+    let background = [0, 0, 0];
+    while (backgroundElement !== null) {
+      const color = getComputedStyle(backgroundElement).backgroundColor;
+      if (color !== "rgba(0, 0, 0, 0)") {
+        background = parse(color);
+        break;
+      }
+      backgroundElement = backgroundElement.parentElement;
+    }
+    return {
+      background,
+      foreground: parse(getComputedStyle(element).color),
+    };
+  });
+  expect(
+    contrastRatio(colors.foreground, colors.background),
+  ).toBeGreaterThanOrEqual(minimum);
 }
 
 test("meeting list exposes its loading state until assigned meetings arrive", async ({
@@ -128,6 +185,40 @@ test("meeting list controls meet the WCAG 2.2 target-size rule", async ({
   expect(results.passes.some(({ id }) => id === "target-size")).toBe(true);
 });
 
+test("login and meeting list text pass automated color contrast checks", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const loginContrast = await new AxeBuilder({ page })
+    .withRules(["color-contrast"])
+    .analyze();
+  expect(
+    loginContrast.violations.map(({ id, nodes }) => ({
+      id,
+      targets: nodes.map(({ target }) => target),
+    })),
+  ).toEqual([]);
+  await expectTextContrast(page.locator(".story-foot"));
+
+  await page.getByRole("button", { name: "Product" }).click();
+  await page.getByLabel("Demo password").fill("counterpoint-product");
+  await page.getByRole("button", { name: "Continue to meetings" }).click();
+  await expect(
+    page.getByRole("heading", { name: FLAGSHIP_PURPOSE }),
+  ).toBeVisible();
+  const meetingContrast = await new AxeBuilder({ page })
+    .withRules(["color-contrast"])
+    .analyze();
+  expect(
+    meetingContrast.violations.map(({ id, nodes }) => ({
+      id,
+      targets: nodes.map(({ target }) => target),
+    })),
+  ).toEqual([]);
+  await expectTextContrast(page.locator(".meeting-number").first());
+  await expectTextContrast(page.locator(".stage:not(.active)").first());
+});
+
 test("durable projection exposes offline state and successful recovery", async ({
   page,
 }) => {
@@ -213,8 +304,7 @@ test("flagship entry is keyboard operable with visible focus and named controls"
   const verifyMembership = page.getByRole("button", {
     name: "Verify membership",
   });
-  await verifyMembership.focus();
-  await page.keyboard.press("Enter");
+  await activateByKeyboard(page, verifyMembership);
   await expect(
     page.getByRole("heading", { name: "product workspace" }),
   ).toBeVisible();
@@ -231,16 +321,22 @@ test("flagship entry is keyboard operable with visible focus and named controls"
   const preparePreview = page.getByRole("button", {
     name: "Prepare grounded sharing preview",
   });
-  await preparePreview.focus();
-  await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "Review the exact payload" }),
-  ).toBeVisible();
+  await activateByKeyboard(page, preparePreview);
+  const outgoingPreview = page.getByRole("region", {
+    name: "Review the exact payload",
+  });
+  await expect(outgoingPreview).toBeVisible();
+  await expect(outgoingPreview).toBeFocused();
+  await expect(outgoingPreview).toHaveCSS("outline-style", "solid");
 
   const keepPrivate = page.getByRole("button", { name: "Keep private" });
-  await keepPrivate.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByText("Kept private", { exact: true })).toBeVisible();
+  await activateByKeyboard(page, keepPrivate);
+  const keptPrivate = page.getByRole("status").filter({
+    has: page.getByText("Kept private", { exact: true }),
+  });
+  await expect(keptPrivate).toBeVisible();
+  await expect(keptPrivate).toBeFocused();
+  await expect(keptPrivate).toHaveCSS("outline-style", "solid");
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.emulateMedia({ reducedMotion: "reduce" });

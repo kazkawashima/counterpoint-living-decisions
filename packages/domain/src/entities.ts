@@ -513,6 +513,11 @@ export function createEvidence(input: Evidence): Evidence {
       "Published Evidence must be shared and human-confirmed",
     );
   }
+  if (input.origin !== "source_artifact") {
+    throw new DomainValueError(
+      "Published Evidence must originate from an approved source artifact",
+    );
+  }
   return input;
 }
 

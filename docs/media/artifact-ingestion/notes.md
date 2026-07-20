@@ -25,5 +25,5 @@ Suggested narration:
 > source, creates a separately hashed text derivative, and still requires an
 > exact preview before one word can enter the room.
 
-Capture date: 2026-07-19. Feature slices: A1 validated artifact ingestion and
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slices: A1 validated artifact ingestion and
 A2 SSRF-safe URL ingestion.

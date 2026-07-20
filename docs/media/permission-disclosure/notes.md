@@ -25,5 +25,5 @@ Useful narration:
 > sees the exact outgoing evidence first, then explicitly approves or keeps it
 > private. Only the approved excerpt crosses into the decision room.
 
-Capture date: 2026-07-19. Feature slice: A4 owner-private AI assistance with
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: A4 owner-private AI assistance with
 deterministic browser fixtures and a separately verified live GPT-5.6 smoke.

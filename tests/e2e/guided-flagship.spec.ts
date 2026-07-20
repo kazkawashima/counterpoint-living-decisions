@@ -1,14 +1,12 @@
 import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
-import {
-  CreateMeetingResponseSchema,
-  LoginResponseSchema,
-} from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { activateByKeyboard } from "../helpers/keyboard.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/guided-flagship");
 const exactSnippet = "Regional launch requires a documented approval gate.";
+const flagshipPurpose = "Work & Productivity — Global AI Product Rollout";
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -42,39 +40,16 @@ test("facilitator can reset the guided flagship while participants cannot", asyn
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/");
 
-  const facilitatorLogin = await page.request.post("/api/v1/login", {
-    data: {
-      password: "counterpoint-product",
-      userId: "product",
-    },
-  });
-  const facilitator = LoginResponseSchema.parse(await facilitatorLogin.json());
-  const meetingResponse = await page.request.post("/api/v1/meetings", {
-    data: {
-      idempotencyKey: "guided-flagship-reset-e2e-meeting",
-      purpose: "Guided flagship reset check",
-      users: [
-        { role: "facilitator", userId: "product" },
-        { role: "participant", userId: "legal" },
-        { role: "participant", userId: "engineering" },
-      ],
-    },
-    headers: {
-      authorization: `Bearer ${facilitator.bearerToken}`,
-    },
-  });
-  const meeting = CreateMeetingResponseSchema.parse(
-    await meetingResponse.json(),
-  );
-
   await signIn(page, "Product", "counterpoint-product");
   const facilitatorMeeting = page
     .getByRole("article")
-    .filter({ hasText: meeting.purpose });
+    .filter({ hasText: flagshipPurpose });
   await facilitatorMeeting
     .getByRole("button", { name: "Open workspace" })
     .click();
 
+  await page.getByRole("button", { name: "Reset staged demo" }).click();
+  await page.getByRole("button", { name: "Confirm meeting reset" }).click();
   await expectCurrentStage(page, "01 Context", 1);
   await expect(
     page.getByText(
@@ -116,25 +91,44 @@ test("facilitator can reset the guided flagship while participants cannot", asyn
     ),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Reset staged demo" }).click();
+  const resetRequest = page.getByRole("button", {
+    name: "Reset staged demo",
+  });
+  await activateByKeyboard(page, resetRequest, "Space");
   const resetConfirmation = page.locator(".reset-confirmation");
   await expect(resetConfirmation).toContainText(
     "Only this staged meeting will be cleared.",
   );
+  await expect(resetConfirmation).toBeFocused();
+  await expect(resetConfirmation).toHaveCSS("outline-style", "solid");
   await expect(
     resetConfirmation.getByRole("button", {
       name: "Confirm meeting reset",
     }),
   ).toBeVisible();
+  await activateByKeyboard(
+    page,
+    resetConfirmation.getByRole("button", { name: "Cancel", exact: true }),
+    "Space",
+  );
+  await expect(resetConfirmation).toHaveCount(0);
+  await expect(resetRequest).toBeFocused();
+  await activateByKeyboard(page, resetRequest, "Space");
+  await expect(resetConfirmation).toContainText(
+    "Only this staged meeting will be cleared.",
+  );
+  await expect(resetConfirmation).toBeFocused();
   await page.screenshot({
     animations: "disabled",
     fullPage: true,
     path: `${screenshotDirectory}/2026-07-19-reset-confirmation-desktop.png`,
   });
 
-  await resetConfirmation
-    .getByRole("button", { name: "Confirm meeting reset" })
-    .click();
+  await activateByKeyboard(
+    page,
+    resetConfirmation.getByRole("button", { name: "Confirm meeting reset" }),
+    "Space",
+  );
   await expect(
     page.getByText("Meeting reset complete · synthetic Context restored"),
   ).toBeVisible();
@@ -168,13 +162,20 @@ test("facilitator can reset the guided flagship while participants cannot", asyn
   await signIn(participantPage, "Legal", "counterpoint-legal");
   const participantMeeting = participantPage
     .getByRole("article")
-    .filter({ hasText: meeting.purpose });
+    .filter({ hasText: flagshipPurpose });
   await participantMeeting
     .getByRole("button", { name: "Open workspace" })
     .click();
   await expect(
     participantPage.getByRole("heading", { name: "legal workspace" }),
   ).toBeVisible();
+  await expectCurrentStage(participantPage, "01 Context", 1);
+  await expect(
+    participantPage.getByRole("heading", {
+      name: "No evidence has crossed the boundary",
+    }),
+  ).toBeVisible();
+  await expect(participantPage.locator(".shared-evidence")).toHaveCount(0);
   await expect(
     participantPage.getByRole("button", { name: "Reset staged demo" }),
   ).toHaveCount(0);

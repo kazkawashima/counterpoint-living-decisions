@@ -1,9 +1,10 @@
 # Regulatory event receipt reel notes
 
-All material is part of the explicitly labeled `Grounded Decision commitment
-check` synthetic demo story. The regulatory source, jurisdiction, dates,
-Decision, and participant identities are fixtures. No real webhook secret,
-payload, customer data, or regulation appears in the captures.
+All material is part of the explicitly labeled synthetic flagship story
+`Work & Productivity — Global AI Product Rollout`. The regulatory source,
+jurisdiction, dates, Decision, and participant identities are fixtures. No
+real webhook secret, payload, customer data, or regulation appears in the
+captures.
 
 | State | Viewport | Suggested reel use |
 |---|---|---|
@@ -23,5 +24,5 @@ Useful narration:
 > provenance remains human-injected. Receipt is durable and evaluation is
 > still pending—AI has not changed the Decision.
 
-Capture date: 2026-07-19. Feature slice: D2 signed webhook receipt and D3 demo
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: D2 signed webhook receipt and D3 demo
 event parity.

@@ -73,14 +73,36 @@ test("facilitator creates a 3-person decision room from the browser", async ({
   await expect(
     page.getByRole("heading", { name: "product workspace" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Flagship progress" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Staged synthetic demo story")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Reset staged demo" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "No private source selected" }),
+  ).toBeVisible();
+  await expect(page.getByText("Regional launch readiness note")).toHaveCount(0);
+  await expect(page.getByText("Synthetic launch decision")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Prepare grounded sharing preview" }),
+  ).toBeDisabled();
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${screenshotDirectory}/2026-07-20-generic-room-empty-desktop.png`,
+  });
 
   await page.getByRole("button", { name: "Meetings" }).click();
   await page.reload();
-  await expect(
-    page.getByRole("article").filter({
-      hasText: "Work & Productivity — Browser-created launch review",
-    }),
-  ).toHaveCount(1);
+  const createdMeeting = page.getByRole("article").filter({
+    hasText: "Work & Productivity — Browser-created launch review",
+  });
+  await expect(createdMeeting).toHaveCount(1);
+  await expect(createdMeeting).not.toContainText("Synthetic launch decision");
+  await expect(createdMeeting).not.toContainText("Five perspectives");
+  await expect(createdMeeting).not.toContainText("Living monitor");
 
   const safetyContext = await browser.newContext({ baseURL });
   const legalContext = await browser.newContext({ baseURL });

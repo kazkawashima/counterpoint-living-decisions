@@ -1,9 +1,10 @@
 # Human invalidation review reel notes
 
-All captures use the explicitly labeled `Grounded Decision commitment check`
-synthetic demo story. The regulation, Decision, premise, Evidence, Action,
-facilitator reason, and reconsideration task are fixtures. No real customer
-data, production credential, webhook, or regulation appears in the material.
+All captures use the explicitly labeled synthetic flagship story
+`Work & Productivity — Global AI Product Rollout`. The regulation, Decision,
+premise, Evidence, Action, facilitator reason, and reconsideration task are
+fixtures. No real customer data, production credential, webhook, or regulation
+appears in the material.
 
 | State | Viewport | Suggested reel use |
 |---|---|---|
@@ -29,4 +30,4 @@ The rejection path is also implemented and covered by application tests: it
 records the facilitator reason, holds no Action, creates no task, and returns
 the Decision to `MONITORING`.
 
-Capture date: 2026-07-19. Feature slice: D5 human invalidation review.
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: D5 human invalidation review.

@@ -1,10 +1,10 @@
 # Assumption invalidation reel notes
 
-All material belongs to the explicitly labeled `Grounded Decision commitment
-check` synthetic demo story. The regulation, source, jurisdiction, Decision,
-premise, Action, evidence, and participant identities are fixtures. No real
-customer data, webhook body, prompt, credential, or regulation appears in the
-captures.
+All material belongs to the explicitly labeled synthetic flagship story
+`Work & Productivity — Global AI Product Rollout`. The regulation, source,
+jurisdiction, Decision, premise, Action, evidence, and participant identities
+are fixtures. No real customer data, webhook body, prompt, credential, or
+regulation appears in the captures.
 
 | State | Viewport | Suggested reel use |
 |---|---|---|
@@ -24,7 +24,7 @@ The updated Decision clip under `docs/media/clips/decision-commit/` now reaches
 the `AT_RISK` risk pulse. Preserve the visible `Staged demo story`, `AI
 inferred`, and `Human review required` labels in any cut.
 
-Capture date: 2026-07-19. Feature slice: D4 GPT-5.6 assumption invalidation.
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: D4 GPT-5.6 assumption invalidation.
 Live synthetic verification used `gpt-5.6-sol`, grounded all premise, Action,
 and external-source references, required no retry, and returned schema version
 1. No input or model output text was written to logs.

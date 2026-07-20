@@ -10,6 +10,7 @@
   --acid: #d9ff70;
   --mint: #83e6bd;
   --private: #c5a4ff;
+  --violet: var(--private);
 }
 
 * {
@@ -49,6 +50,16 @@ input:focus-visible,
 textarea:focus-visible,
 a:focus-visible,
 .progress-rail:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 3px;
+}
+
+.disclosure-preview:focus,
+.decision-forge:focus,
+.display-access-control:focus,
+.private-confirmation:focus,
+.reset-confirmation:focus,
+.shared-evidence:focus {
   outline: 2px solid var(--acid);
   outline-offset: 3px;
 }
@@ -252,7 +263,7 @@ a:focus-visible,
   display: flex;
   flex-wrap: wrap;
   gap: 1.5rem;
-  color: #65736d;
+  color: var(--muted);
   font-family: ui-monospace, monospace;
   font-size: 0.62rem;
   letter-spacing: 0.08em;
@@ -385,7 +396,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #5f6b66;
+  color: var(--muted);
 }
 
 .primary-button,
@@ -551,7 +562,7 @@ button:disabled {
 
 .meeting-number {
   align-self: start;
-  color: #4c5b55;
+  color: var(--muted);
   font-family: ui-monospace, monospace;
   font-size: 0.68rem;
 }
@@ -596,7 +607,7 @@ button:disabled {
 .stage {
   position: relative;
   padding-left: 0.8rem;
-  color: #56645e;
+  color: var(--muted);
   font-size: 0.63rem;
 }
 
@@ -830,7 +841,7 @@ button:disabled {
 .progress-rail span {
   padding: 1rem 0.7rem;
   border-right: 1px solid var(--line);
-  color: #59655f;
+  color: var(--muted);
   font-family: ui-monospace, monospace;
   font-size: 0.64rem;
   text-align: center;
@@ -1741,7 +1752,7 @@ button:disabled {
 
 .speech-transcript > p {
   margin: 1rem 0 0;
-  color: #738078;
+  color: var(--muted);
   font-size: 0.6rem;
 }
 
@@ -2267,7 +2278,6 @@ button:disabled {
   color: var(--muted);
   background: transparent;
   text-align: left;
-  cursor: pointer;
 }
 
 .channel.active {
@@ -2575,6 +2585,34 @@ button:disabled {
   font-family: ui-monospace, monospace;
   font-size: 0.56rem;
   text-transform: uppercase;
+}
+
+.source-reference {
+  color: var(--mint);
+  font-family: ui-monospace, monospace;
+}
+
+.source-reference summary {
+  width: fit-content;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(131, 230, 189, 0.25);
+  cursor: pointer;
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.source-reference > code {
+  display: block;
+  margin-top: 0.45rem;
+  padding: 0.5rem;
+  border: 1px dashed rgba(131, 230, 189, 0.25);
+  color: var(--ink);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.evidence-meta .source-reference[open] {
+  flex-basis: 100%;
 }
 
 .evidence-id {
@@ -4279,6 +4317,10 @@ button:disabled {
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   font-size: 0.64rem;
   text-transform: uppercase;
+}
+
+.display-evidence .source-reference {
+  margin-top: 0.8rem;
 }
 
 .display-panel ul {

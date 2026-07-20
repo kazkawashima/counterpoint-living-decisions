@@ -10,6 +10,8 @@ import {
   LoginResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { activateByKeyboard } from "../helpers/keyboard.js";
+import { uploadAndUsePrivateMarkdown } from "../helpers/private-source.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/decision-commit");
 const clipDirectory = evidenceDirectory("clips/decision-commit");
@@ -31,6 +33,7 @@ const degradedScreenshotDirectory = evidenceDirectory(
   "screenshots/degraded-mode",
 );
 const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
+const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -104,6 +107,11 @@ test("OpenAI failure preserves manual Decision, audit, and export paths", async 
       .getByText("Meeting state stays online"),
   ).toBeVisible();
 
+  const sourceText = "Regional launch requires a documented approval gate.";
+  await uploadAndUsePrivateMarkdown(page, {
+    filename: "manual-continuity-source.md",
+    text: sourceText,
+  });
   await page
     .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
@@ -146,6 +154,18 @@ test("OpenAI failure preserves manual Decision, audit, and export paths", async 
   });
 
   await page.getByRole("button", { name: "Edit manual draft" }).click();
+  await expect(page.locator(".candidate-provenance")).toContainText(
+    "Manual draft · Proposed · Not submitted",
+  );
+  await expect(page.getByLabel("Decision title")).toHaveValue(
+    "Untitled Decision",
+  );
+  await expect(page.getByLabel("Bounded Action")).toHaveValue(
+    "Record the next accountable action.",
+  );
+  await expect(page.getByLabel("Monitor condition")).toHaveValue(
+    "Review when the recorded condition changes.",
+  );
   await page
     .getByLabel("Decision title")
     .fill("Human-authored continuity launch");
@@ -233,6 +253,16 @@ test("OpenAI failure preserves manual Decision, audit, and export paths", async 
     fullPage: true,
     path: `${degradedScreenshotDirectory}/2026-07-19-manual-decision-audit-export-desktop.png`,
   });
+  await activateByKeyboard(
+    page,
+    committedDecision.getByRole("button", { name: "Start Decision monitor" }),
+  );
+  await expect(committedDecision).toContainText("Monitoring active");
+  await expect(
+    committedDecision.getByRole("button", {
+      name: "Inject staged regulatory event",
+    }),
+  ).toHaveCount(0);
   const video = page.video();
   const saveVideo = video?.saveAs(
     `${degradedClipDirectory}/2026-07-19-openai-failure-to-manual-decision.webm`,
@@ -256,65 +286,64 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   const facilitatorPage = await facilitatorContext.newPage();
   await facilitatorPage.goto(baseURL ?? "/");
 
-  const loginResponse = await facilitatorPage.request.post("/api/v1/login", {
-    data: {
-      password: "counterpoint-product",
-      userId: "product",
-    },
-  });
-  const facilitator = LoginResponseSchema.parse(await loginResponse.json());
-  const meetingResponse = await facilitatorPage.request.post(
-    "/api/v1/meetings",
-    {
-      data: {
-        idempotencyKey: "decision-commit-e2e-meeting",
-        purpose: "Grounded Decision commitment check",
-        users: [
-          { role: "facilitator", userId: "product" },
-          { role: "participant", userId: "legal" },
-          { role: "participant", userId: "engineering" },
-        ],
-      },
-      headers: {
-        authorization: `Bearer ${facilitator.bearerToken}`,
-      },
-    },
-  );
-  const meeting = CreateMeetingResponseSchema.parse(
-    await meetingResponse.json(),
-  );
-
   await signIn(facilitatorPage, "Product", "counterpoint-product");
   const facilitatorMeeting = facilitatorPage
     .getByRole("article")
-    .filter({ hasText: meeting.purpose });
-  await facilitatorMeeting
-    .getByRole("button", { name: "Open workspace" })
-    .click();
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    facilitatorPage,
+    facilitatorMeeting.getByRole("button", { name: "Open workspace" }),
+  );
+  await activateByKeyboard(
+    facilitatorPage,
+    facilitatorPage.getByRole("button", { name: "Reset staged demo" }),
+  );
+  await activateByKeyboard(
+    facilitatorPage,
+    facilitatorPage.getByRole("button", { name: "Confirm meeting reset" }),
+  );
   await expect(
-    facilitatorPage
-      .getByRole("navigation", { name: "Flagship progress" })
-      .getByText("01 Context"),
-  ).toHaveAttribute("aria-current", "step");
-  await expect(facilitatorPage.getByText("Current stage 1 of 5")).toBeVisible();
+    facilitatorPage.getByRole("navigation", { name: "Flagship progress" }),
+  ).toBeVisible();
 
-  await facilitatorPage
-    .getByRole("button", { name: "Prepare grounded sharing preview" })
-    .click();
+  const privateWorkspace = facilitatorPage.locator(".private-zone");
+  await activateByKeyboard(
+    facilitatorPage,
+    privateWorkspace.getByRole("button", {
+      name: "Prepare grounded sharing preview",
+    }),
+  );
   await expect(
     facilitatorPage.getByRole("heading", { name: "Review the exact payload" }),
   ).toBeVisible();
-  await expect(facilitatorPage.getByText("Current stage 2 of 5")).toBeVisible();
-  await facilitatorPage
-    .getByRole("button", { name: "Approve exact excerpt" })
-    .click();
-  await expect(facilitatorPage.getByText("Permission recorded")).toBeVisible();
-  await expect(facilitatorPage.getByText("Current stage 3 of 5")).toBeVisible();
+  const disclosurePreview = privateWorkspace.getByRole("region", {
+    name: "Review the exact payload",
+  });
+  await activateByKeyboard(
+    facilitatorPage,
+    disclosurePreview.getByRole("button", { name: "Approve exact excerpt" }),
+  );
+  await expect(disclosurePreview.getByRole("status")).toContainText(
+    "Exact excerpt approved and recorded.",
+  );
+  await expect(
+    facilitatorPage.locator(".shared-zone").locator(".shared-evidence"),
+  ).toContainText("Permission recorded");
 
-  await facilitatorPage
-    .getByRole("button", { name: "Generate Decision candidate" })
-    .click();
+  const decisionForge = facilitatorPage.getByRole("region", {
+    name: "Turn evidence into commitment",
+  });
+  await expect(decisionForge.locator(".forge-state")).toContainText(
+    "No Decision yet",
+  );
+  await activateByKeyboard(
+    facilitatorPage,
+    decisionForge.getByRole("button", {
+      name: "Generate Decision candidate",
+    }),
+  );
   await expect(facilitatorPage.getByText("AI proposed")).toBeVisible();
+  await expect(decisionForge).toBeFocused();
   await expect(
     facilitatorPage.getByText("deterministic-shared-decision"),
   ).toBeVisible();
@@ -332,23 +361,24 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     .fill(
       "Regional launch requires a documented approval gate confirmed by the facilitator.",
     );
-  await facilitatorPage
-    .getByRole("button", { name: "Confirm edited premise" })
-    .click();
+  await activateByKeyboard(
+    facilitatorPage,
+    decisionForge.getByRole("button", { name: "Confirm edited premise" }),
+  );
   await expect(
-    facilitatorPage
-      .locator(".confirmation-stripe")
-      .getByText("Human confirmed"),
-  ).toBeVisible();
-  await facilitatorPage
-    .getByRole("button", { name: "Save Decision draft" })
-    .click();
+    decisionForge.getByRole("status").filter({ hasText: "Human confirmed" }),
+  ).toContainText("Premise, dissent, and Action are now canonical.");
+  await activateByKeyboard(
+    facilitatorPage,
+    decisionForge.getByRole("button", { name: "Save Decision draft" }),
+  );
   await expect(
     facilitatorPage.getByText("Revision 1 · immutable DRAFT"),
   ).toBeVisible();
-  await facilitatorPage
-    .getByRole("button", { name: "Validate and mark ready" })
-    .click();
+  await activateByKeyboard(
+    facilitatorPage,
+    decisionForge.getByRole("button", { name: "Validate and mark ready" }),
+  );
   await expect(
     facilitatorPage.locator(".commit-gate").getByText("DECISION_READY"),
   ).toBeVisible();
@@ -358,17 +388,17 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${screenshotDirectory}/2026-07-19-human-ready-desktop.png`,
   });
 
-  await facilitatorPage
-    .getByRole("button", { name: "Commit Decision" })
-    .click();
+  await activateByKeyboard(
+    facilitatorPage,
+    decisionForge.getByRole("button", { name: "Commit Decision" }),
+  );
+  const committedDecision = decisionForge.locator(".committed-decision");
   await expect(
     facilitatorPage.getByRole("heading", {
       name: "Conditional regional launch",
     }),
   ).toBeVisible();
-  await expect(
-    facilitatorPage.getByText("Revision 2 · COMMITTED"),
-  ).toBeVisible();
+  await expect(committedDecision).toContainText("Revision 2 · COMMITTED");
   await expect(
     facilitatorPage.locator(".audit-line").getByText("Drafted"),
   ).toBeVisible();
@@ -384,11 +414,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${screenshotDirectory}/2026-07-19-committed-decision-desktop.png`,
   });
 
-  await facilitatorPage
-    .getByRole("button", { name: "Start Decision monitor" })
-    .click();
-  await expect(facilitatorPage.getByText("Monitoring active")).toBeVisible();
-  await expect(facilitatorPage.getByText("Current stage 4 of 5")).toBeVisible();
+  await activateByKeyboard(
+    facilitatorPage,
+    committedDecision.getByRole("button", { name: "Start Decision monitor" }),
+  );
+  await expect(committedDecision).toContainText("Monitoring active");
   await expect(
     facilitatorPage.locator(".audit-line").getByText("MonitoringStarted"),
   ).toBeVisible();
@@ -398,24 +428,26 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${screenshotDirectory}/2026-07-19-monitoring-active-desktop.png`,
   });
 
-  await facilitatorPage
-    .getByRole("button", { name: "Inject staged regulatory event" })
-    .click();
+  await activateByKeyboard(
+    facilitatorPage,
+    committedDecision.getByRole("button", {
+      name: "Inject staged regulatory event",
+    }),
+  );
   await expect(
-    facilitatorPage
-      .locator(".regulatory-event-receipt")
-      .getByText("External event received", { exact: false }),
-  ).toBeVisible();
+    committedDecision
+      .getByRole("status")
+      .filter({ hasText: "External event received" }),
+  ).toContainText("Evaluation recorded · Human review still required");
+  await expect(committedDecision).toContainText("AT_RISK · AI suggestion");
   await expect(
-    facilitatorPage.getByText("AT_RISK · AI suggestion"),
-  ).toBeVisible();
-  await expect(
-    facilitatorPage.getByText("AI inferred · Human review required"),
+    committedDecision
+      .getByRole("status")
+      .filter({ hasText: "AI inferred · Human review required" }),
   ).toBeVisible();
   await expect(
     facilitatorPage.getByText("REVIEW_REQUIRED has not been confirmed"),
   ).toBeVisible();
-  await expect(facilitatorPage.getByText("Current stage 5 of 5")).toBeVisible();
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -438,9 +470,10 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     fullPage: true,
     path: `${reviewScreenshotDirectory}/2026-07-19-facilitator-review-workbench-desktop.png`,
   });
-  await facilitatorReview
-    .getByRole("button", { name: "Confirm impact and open review" })
-    .click();
+  const confirmImpact = facilitatorReview.getByRole("button", {
+    name: "Confirm impact and open review",
+  });
+  await activateByKeyboard(facilitatorPage, confirmImpact);
   await expect(
     facilitatorPage.getByText(
       "Enter a facilitator review reason before choosing an outcome.",
@@ -456,14 +489,14 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     .fill(
       "The staged regulatory evidence materially affects the launch premise.",
     );
-  await facilitatorReview
-    .getByRole("button", { name: "Confirm impact and open review" })
-    .click();
+  await activateByKeyboard(facilitatorPage, confirmImpact);
+  await expect(committedDecision).toContainText(
+    "REVIEW_REQUIRED · Human confirmed",
+  );
   await expect(
-    facilitatorPage
-      .locator(".committed-decision")
-      .getByText("REVIEW_REQUIRED · Human confirmed")
-      .first(),
+    committedDecision
+      .getByRole("status")
+      .filter({ hasText: "Human reviewed · Impact confirmed" }),
   ).toBeVisible();
   await expect(
     facilitatorPage.getByTestId("reconsideration-task"),
@@ -481,9 +514,6 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     facilitatorPage
       .locator(".audit-line")
       .getByText("ReconsiderationTaskCreated"),
-  ).toBeVisible();
-  await expect(
-    facilitatorPage.getByText("Flagship arc complete"),
   ).toBeVisible();
   await facilitatorPage.screenshot({
     animations: "disabled",
@@ -520,25 +550,23 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     fullPage: true,
     path: `${resolutionScreenshotDirectory}/2026-07-19-recommit-comparison-desktop.png`,
   });
-  await resolutionWorkbench
-    .getByRole("button", { name: "Commit revision 3" })
-    .click();
-  await expect(
-    facilitatorPage.getByText("Revision 3 is now active"),
-  ).toBeVisible();
-  await expect(
-    facilitatorPage.getByText(
-      "Human review is resolved. Revision history and current state remain exportable.",
-    ),
-  ).toBeVisible();
+  await activateByKeyboard(
+    facilitatorPage,
+    resolutionWorkbench.getByRole("button", { name: "Commit revision 3" }),
+  );
+  const resolutionStatus = resolutionWorkbench.getByRole("status");
+  await expect(resolutionStatus).toContainText("Revision 3 is now active");
   await expect(
     facilitatorPage.locator(".audit-line").getByText("RevisionCommitted"),
   ).toBeVisible();
-  await resolutionWorkbench
-    .getByRole("button", { name: "Prepare Decision JSON export" })
-    .click();
+  await activateByKeyboard(
+    facilitatorPage,
+    resolutionStatus.getByRole("button", {
+      name: "Prepare Decision JSON export",
+    }),
+  );
   await expect(
-    resolutionWorkbench.getByRole("link", { name: /Download JSON/u }),
+    resolutionStatus.getByRole("link", { name: /Download JSON/u }),
   ).toContainText("3 revisions");
   await facilitatorPage.screenshot({
     animations: "disabled",
@@ -549,8 +577,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await facilitatorPage.reload();
   const reloadedMeeting = facilitatorPage
     .getByRole("article")
-    .filter({ hasText: meeting.purpose });
-  await reloadedMeeting.getByRole("button", { name: "Open workspace" }).click();
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    facilitatorPage,
+    reloadedMeeting.getByRole("button", { name: "Open workspace" }),
+  );
   await expect(
     facilitatorPage.getByText("Revision 3 · COMMITTED"),
   ).toBeVisible();
@@ -567,12 +598,6 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   const video = facilitatorPage.video();
   const clipPath = `${clipDirectory}/2026-07-19-candidate-to-commit.webm`;
   const saveVideo = video?.saveAs(clipPath);
-  await facilitatorContext.close();
-  await saveVideo;
-  await copyFile(
-    clipPath,
-    `${resolutionClipDirectory}/2026-07-19-review-required-to-recommit.webm`,
-  );
 
   const participantContext = await browser.newContext({
     viewport: { height: 900, width: 1440 },
@@ -582,7 +607,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await signIn(participantPage, "Legal", "counterpoint-legal");
   const participantMeeting = participantPage
     .getByRole("article")
-    .filter({ hasText: meeting.purpose });
+    .filter({ hasText: FLAGSHIP_PURPOSE });
   await participantMeeting
     .getByRole("button", { name: "Open workspace" })
     .click();
@@ -667,4 +692,18 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${resolutionScreenshotDirectory}/2026-07-19-participant-terminal-mobile-reduced-motion.png`,
   });
   await participantContext.close();
+  await activateByKeyboard(
+    facilitatorPage,
+    facilitatorPage.getByRole("button", { name: "Reset staged demo" }),
+  );
+  await activateByKeyboard(
+    facilitatorPage,
+    facilitatorPage.getByRole("button", { name: "Confirm meeting reset" }),
+  );
+  await facilitatorContext.close();
+  await saveVideo;
+  await copyFile(
+    clipPath,
+    `${resolutionClipDirectory}/2026-07-19-review-required-to-recommit.webm`,
+  );
 });

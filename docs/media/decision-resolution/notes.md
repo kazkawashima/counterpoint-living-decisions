@@ -1,9 +1,10 @@
 # Decision review resolution reel notes
 
-All captures use the explicitly labeled `Grounded Decision commitment check`
-synthetic demo story. The Decision, regulation, revision text, participant
-identities, audit trail, and export are fixtures. No real customer data,
-credential, webhook, or regulation appears in the material.
+All captures use the explicitly labeled synthetic flagship story
+`Work & Productivity — Global AI Product Rollout`. The Decision, regulation,
+revision text, participant identities, audit trail, and export are fixtures.
+No real customer data, credential, webhook, or regulation appears in the
+material.
 
 | State | Viewport | Suggested reel use |
 |---|---|---|
@@ -31,4 +32,4 @@ domain has no release/completion event for the D5 Action hold or
 reconsideration task, so D6 truthfully preserves them instead of implying they
 were automatically closed.
 
-Capture date: 2026-07-19. Feature slice: D6 Decision review resolution.
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: D6 Decision review resolution.

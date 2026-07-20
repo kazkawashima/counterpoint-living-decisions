@@ -6,6 +6,7 @@ import {
   LoginResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { activateByKeyboard } from "../helpers/keyboard.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/artifact-ingestion");
 const clipDirectory = evidenceDirectory("clips/artifact-ingestion");
@@ -89,9 +90,10 @@ test("owner uploads, derives, and privately uses an artifact without leaking its
     name: filename,
   });
   await expect(vault.getByText(filename, { exact: true })).toBeVisible();
-  await vault
-    .getByRole("button", { name: "Store and process privately" })
-    .click();
+  await activateByKeyboard(
+    page,
+    vault.getByRole("button", { name: "Store and process privately" }),
+  );
 
   const artifact = vault
     .locator(".artifact-item")
@@ -103,24 +105,36 @@ test("owner uploads, derives, and privately uses an artifact without leaking its
   });
 
   const sourceDownloadPromise = page.waitForEvent("download");
-  await artifact.getByRole("button", { name: "Source", exact: true }).click();
+  await activateByKeyboard(
+    page,
+    artifact.getByRole("button", { name: "Source", exact: true }),
+  );
   expect((await sourceDownloadPromise).suggestedFilename()).toBe(filename);
   const derivedDownloadPromise = page.waitForEvent("download");
-  await artifact.getByRole("button", { name: "Derived", exact: true }).click();
+  await activateByKeyboard(
+    page,
+    artifact.getByRole("button", { name: "Derived", exact: true }),
+  );
   expect((await derivedDownloadPromise).suggestedFilename()).toBe(
     `${filename}.txt`,
   );
 
-  await artifact.getByRole("button", { name: "Use privately" }).click();
+  await activateByKeyboard(
+    page,
+    artifact.getByRole("button", { name: "Use privately" }),
+  );
   await expect(
     page.getByLabel("Active private source · derived text"),
   ).toHaveValue(syntheticDocument);
   await expect(page.getByLabel("Exact excerpt to preview")).toHaveValue(
     syntheticDocument,
   );
-  await page
-    .getByRole("button", { name: "Prepare grounded sharing preview" })
-    .click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", {
+      name: "Prepare grounded sharing preview",
+    }),
+  );
   const preview = page.getByRole("region", {
     name: "Review the exact payload",
   });
@@ -132,6 +146,16 @@ test("owner uploads, derives, and privately uses an artifact without leaking its
     fullPage: true,
     path: `${screenshotDirectory}/2026-07-19-uploaded-source-preview-desktop.png`,
   });
+  await activateByKeyboard(
+    page,
+    preview.getByRole("button", { name: "Approve exact excerpt" }),
+  );
+  const sharedEvidence = page.locator(".shared-evidence");
+  await expect(sharedEvidence).toContainText(exactSnippet);
+  await expect(sharedEvidence).toContainText("Shared scope");
+  await expect(sharedEvidence).toContainText("Source origin");
+  await expect(sharedEvidence).toContainText("Human confirmed");
+  await expect(sharedEvidence).toContainText("Approved exact excerpt");
 
   const otherContext = await browser.newContext({
     viewport: { height: 844, width: 390 },

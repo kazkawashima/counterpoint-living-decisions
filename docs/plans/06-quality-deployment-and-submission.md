@@ -37,7 +37,7 @@ lightweight verification evidence in the meantime.
 - [ ] Keyboard and focus audit of all flagship controls.
 - [ ] Contrast, labels, target size, live-region, and reduced-motion audit.
 - [x] Empty/loading/success/error/offline/degraded/limit states.
-- [ ] Remove placeholder copy and any unsupported product claims.
+- [x] Remove placeholder copy and any unsupported product claims.
 - [x] Confirm English primary UI and synthetic data consistency.
 
 ### Q3 — Reel asset completion

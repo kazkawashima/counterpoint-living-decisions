@@ -232,6 +232,7 @@ type AppendResult =
 
 interface OwnedSource {
   readonly artifact: EventOf<"ArtifactRegistered">["payload"]["artifact"];
+  readonly contentHash: string;
   readonly text: string;
 }
 
@@ -370,6 +371,15 @@ function normalizeRecords(
   }));
 }
 
+function eventsAfterLatestDemoReset(
+  events: readonly DomainEvent[],
+): readonly DomainEvent[] {
+  const resetIndex = events.findLastIndex(
+    (event) => event.eventType === "DemoResetCompleted",
+  );
+  return resetIndex < 0 ? events : events.slice(resetIndex + 1);
+}
+
 async function refreshProjection(
   dependencies: DisclosureDependencies,
   meetingScope: string,
@@ -441,7 +451,7 @@ async function loadCandidate(
   candidateId: string,
 ): Promise<CandidateSnapshot | undefined> {
   const records = await dependencies.events.load(meetingScope);
-  const events = normalizeRecords(records).filter(
+  const events = eventsAfterLatestDemoReset(normalizeRecords(records)).filter(
     (event) =>
       disclosureEvent(event) && event.payload.disclosureId === candidateId,
   ) as CandidateSnapshot["events"];
@@ -507,7 +517,8 @@ async function loadOwnedSource(
   capability: Capability,
 ): Promise<DisclosureFailure | OwnedSource> {
   const records = await dependencies.events.load(meetingScope);
-  const registered = normalizeRecords(records).find(
+  const activeEvents = eventsAfterLatestDemoReset(normalizeRecords(records));
+  const registered = activeEvents.find(
     (event): event is PrivateArtifactRegisteredEvent =>
       sourceRegisteredEvent(event) &&
       event.payload.artifact.id === sourceArtifactId,
@@ -535,7 +546,7 @@ async function loadOwnedSource(
   const processed =
     registered.payload.artifact.artifactType === "text"
       ? undefined
-      : normalizeRecords(records).find(
+      : activeEvents.find(
           (event): event is EventOf<"ArtifactProcessed"> =>
             event.eventType === "ArtifactProcessed" &&
             event.ownerParticipantId === registered.ownerParticipantId &&
@@ -547,7 +558,13 @@ async function loadOwnedSource(
       : processed?.payload.processingState === "processed"
         ? processed.payload.derivedArtifactId
         : undefined;
-  if (readableArtifactId === undefined) {
+  const readableContentHash =
+    registered.payload.artifact.artifactType === "text"
+      ? registered.payload.artifact.contentHash
+      : processed?.payload.processingState === "processed"
+        ? processed.payload.contentHash
+        : undefined;
+  if (readableArtifactId === undefined || readableContentHash === undefined) {
     return failed("VALIDATION_FAILED");
   }
   const bytes = await dependencies.artifacts.get({
@@ -562,6 +579,7 @@ async function loadOwnedSource(
   try {
     return {
       artifact: registered.payload.artifact,
+      contentHash: readableContentHash,
       text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
     };
   } catch {
@@ -765,11 +783,15 @@ async function replayedAiProposal(
   input: ProposeDisclosureInput,
 ): Promise<ProposeDisclosureResult | undefined> {
   const records = await dependencies.events.load(input.meetingId);
-  const existing = normalizeRecords(records).find(
+  const events = normalizeRecords(records);
+  const existing = events.find(
     (event) => event.idempotencyKey === input.idempotencyKey,
   );
   if (existing === undefined) {
     return undefined;
+  }
+  if (!eventsAfterLatestDemoReset(events).includes(existing)) {
+    return failed("IDEMPOTENCY_CONFLICT");
   }
   if (
     existing.eventType !== "DisclosureProposed" ||
@@ -1125,14 +1147,16 @@ export async function approveDisclosure(
     commandIdempotencyKey = idempotencyKey(input.idempotencyKey);
     const revalidatedSourceHash = await hashValue(
       dependencies.hash,
-      `source\u0000${source.text}`,
+      source.artifact.origin === "human_input"
+        ? `source\u0000${source.text}`
+        : source.text,
     );
     revalidatedPreviewHash = await hashValue(
       dependencies.hash,
       previewFingerprintPayload(revalidatedPayload),
     );
     if (
-      revalidatedSourceHash !== source.artifact.contentHash ||
+      revalidatedSourceHash !== source.contentHash ||
       candidate.previewHash === undefined ||
       candidate.previewHash !== input.previewHash ||
       revalidatedPreviewHash !== input.previewHash

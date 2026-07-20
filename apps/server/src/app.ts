@@ -1663,30 +1663,21 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
     if (resolved.kind === "rejected") {
       return errorResponse(context, resolved.code);
     }
-    const records = await runtime.disclosures.events.load(query.data.meetingId);
-    const evidence = records.flatMap(({ event }) =>
-      event.eventType === "EvidenceShared" && event.visibility === "shared"
-        ? [
-            {
-              createdAt: event.payload.evidence.createdAt,
-              evidenceId: event.payload.evidence.id,
-              exactSnippet: event.payload.evidence.exactSnippet,
-              sourceArtifactId: event.payload.evidence.sourceArtifactId,
-              sourceRange: event.payload.evidence.sourceRange,
-            },
-          ]
-        : [],
+    const projection = await roleProjectionFor(
+      runtime,
+      resolved.authorization,
+      context.get("correlationId"),
+      { includePrivateSourceBodies: false },
     );
+    if (projection === undefined) {
+      return errorResponse(context, "FORBIDDEN");
+    }
     return context.json(
       ListSharedEvidenceResponseSchema.parse({
         correlationId: context.get("correlationId"),
-        evidence,
+        evidence: projection.shared.evidence,
         meetingId: query.data.meetingId,
-        position: await participantVisiblePosition(
-          runtime,
-          query.data.meetingId,
-          resolved.authorization.participantId,
-        ),
+        position: projection.shared.position,
       }),
     );
   });
@@ -2188,7 +2179,13 @@ export function createServerApp(runtime: ServerRuntime): Hono<AppEnvironment> {
       ApproveDisclosureResponseSchema.parse({
         candidateId: result.candidateId,
         correlationId: result.correlationId,
-        evidence: result.evidence,
+        evidence: {
+          ...result.evidence,
+          confirmationStatus: "human_confirmed" as const,
+          origin: "source" as const,
+          provenance: "approved_exact_excerpt" as const,
+          scope: "shared" as const,
+        },
         meetingId: request.value.meetingId,
         position: await participantVisiblePositionAt(
           runtime,

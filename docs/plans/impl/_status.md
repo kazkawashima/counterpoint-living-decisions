@@ -750,13 +750,58 @@ The canonical implementation-facing artifacts are:
   controlled durable-projection 503 renders explicit `Offline` and
   reconnection copy, then returns to `Live` after the route recovers. Together
   with the existing empty, success, error, degraded, and limit journeys, this
-  closes the explicit async-state checklist. The broader all-control keyboard,
-  focus, contrast, label, and live-region audit remains open.
+  closes the explicit async-state checklist.
+- Q2 accessibility and polish coverage is materially expanded but the
+  all-control audit remains open. Shared keyboard activation helpers cover
+  disclosure, artifact, Decision, monitoring, review, reset, display-token,
+  Realtime, and shared-display controls. Browser proof covers visible focus
+  and focus handoff for generated previews, private rejection, approved
+  Evidence, Decision transitions, reset confirmation, and display-token
+  issue/revoke. Axe and computed-color checks currently cover login,
+  meeting-list, representative workspace, and mobile reduced-motion states;
+  state-by-state contrast, target-size, label, and live-region audits for the
+  later Decision/risk/review surfaces remain residual.
+- The flagship UI is explicitly isolated from ordinary rooms. Only
+  `meeting-global-ai-rollout` receives the five-stage guide, synthetic source,
+  staged regulatory injection, regulatory launch defaults, and deterministic
+  demo reset. Newly created rooms start with no selected private source,
+  neutral Decision fields, no staged progress rail, and no unsupported
+  monitoring or demo-story claim.
+- Shared Evidence HTTP contracts and both Node/Worker projections now expose
+  the same visible grammar: `Shared`, `Source`, `Human confirmed`,
+  `Approved exact excerpt`, and an expandable source reference with the
+  complete artifact ID. Approval revalidates the actual readable derived bytes
+  against the processed-content hash, so an uploaded document changed after
+  preview fails with
+  `DISCLOSURE_PREVIEW_MISMATCH` and publishes nothing.
+- Node Evidence hydration now reads the reset-aware role projection instead of
+  enumerating every historical `EvidenceShared` event. A fresh participant
+  browser after a second flagship reset sees Context, no shared Evidence, and
+  no facilitator reset controls; the earlier Evidence remains only in the
+  append-only audit history.
+- Shared Evidence/Decision list queries now build their reset-aware projection
+  without loading or decoding owner-private source bodies. The full owner
+  workspace projection still loads its own active private sources, while
+  Realtime and shared-list paths retain only the metadata and shared state they
+  need.
+- Demo reset now establishes an application-level generation boundary for
+  disclosure mutations as well as projections. A pre-reset candidate, source,
+  processed derivative, or AI proposal replay cannot be reused afterward; old
+  idempotency keys are rejected before provider work, while all historical
+  events remain available for append-only audit replay. Published Evidence is
+  also domain-constrained to shared, human-confirmed source artifacts so the UI
+  grammar cannot silently mislabel a future producer.
 - Normal E2E writes screenshots and clips under `test-results/evidence/`.
   `npm run e2e:capture` is the explicit path for intentional updates under
   `docs/media/`, preventing CI and verification reruns from silently replacing
   committed evidence. The generated media manifest preserves reviewed
   provenance and fails closed when a new PNG/WebM has no explicit review.
+- The Q2 closeout capture reran 20 browser scenarios with synthetic data,
+  refreshed the affected Evidence/Decision/reset/shared-display assets, and
+  added the generic-room empty state under
+  `docs/media/screenshots/meeting-creation/`. The reviewed first-party
+  provenance manifest is current. This remains development evidence hygiene;
+  Q3 asset completion and Q5 reel production have not started.
 - A deterministic direct/transitive lockfile inventory now fails closed on
   missing package-license metadata. It records review-required identifiers but
   does not claim to replace authoritative package license/NOTICE or final
@@ -780,15 +825,14 @@ The canonical implementation-facing artifacts are:
   skips exact-name existing resources, allowing a partial create to resume
   without mutating existing state. No remote resource, migration, Secret, or
   deployment was created in this closeout.
-- Fresh verification passes 73 Vitest files and 817 tests, the focused security
-  matrix's 296 tests, the Cloudflare pool's 11 files and 141 tests, all 26 Node
+- Fresh verification passes 73 Vitest files and 826 tests, the focused security
+  matrix's 300 tests, the Cloudflare pool's 11 files and 141 tests, all 27 Node
   browser E2E cases, and both real-Wrangler browser cases. Environment,
   generated notices/media, formatting, architecture, ESLint, typecheck, build,
   secret scan, Worker bindings, Cloudflare configuration, shell syntax,
   deployment plans, and Worker dry-run also pass.
-- Fresh specification and code-quality reviews report no remaining Critical or
-  Important findings for the Compose persistence and focused accessibility
-  closeout.
+- Fresh specification and code-quality reviews report no remaining Critical,
+  Important, or Minor findings for the local deployment-readiness closeout.
 - AC-03, AC-11, and AC-13 have direct browser proof. AC-12 is now locally
   proven by one restart journey covering the newly created meeting,
   authenticated private source, uploaded source/derived artifact, committed

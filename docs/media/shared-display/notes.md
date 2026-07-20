@@ -22,4 +22,4 @@ Useful narration:
 > only approved state—never participant workspaces—and one click revokes the
 > link and clears the screen.
 
-Capture date: 2026-07-19. Feature slice: L4 revocable read-only shared display.
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: L4 revocable read-only shared display.

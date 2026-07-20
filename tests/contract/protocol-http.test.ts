@@ -72,6 +72,7 @@ import {
   SaveDecisionDraftRequestSchema,
   StartDecisionMonitoringRequestSchema,
   StartDecisionMonitoringResponseSchema,
+  SharedEvidenceSchema,
   SharedDisplayProjectionResponseSchema,
   SupersedeDecisionRequestSchema,
   SupersedeDecisionResponseSchema,
@@ -1855,8 +1856,12 @@ describe("strict v1 HTTP protocol", () => {
         position: 5,
         evidence: [
           {
+            confirmationStatus: "human_confirmed",
             evidenceId: "evidence-1",
             exactSnippet: "Synthetic approved evidence.",
+            origin: "source",
+            provenance: "approved_exact_excerpt",
+            scope: "shared",
             sourceArtifactId: "source-1",
             sourceRange: { start: 0, end: 28 },
             createdAt: "2026-07-19T12:00:00.000Z",
@@ -1921,6 +1926,38 @@ describe("strict v1 HTTP protocol", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("requires strict truthful UI grammar labels on shared evidence", () => {
+    const evidence = {
+      confirmationStatus: "human_confirmed",
+      createdAt: "2026-07-19T12:00:00.000Z",
+      evidenceId: "evidence-1",
+      exactSnippet: "Synthetic approved evidence.",
+      origin: "source",
+      provenance: "approved_exact_excerpt",
+      scope: "shared",
+      sourceArtifactId: "source-1",
+      sourceRange: { end: 28, start: 0 },
+    } as const;
+
+    expect(SharedEvidenceSchema.parse(evidence)).toEqual(evidence);
+    const { scope: omittedScope, ...withoutScope } = evidence;
+    expect(omittedScope).toBe("shared");
+    expect(SharedEvidenceSchema.safeParse(withoutScope).success).toBe(false);
+    for (const [field, invalidValue] of [
+      ["scope", "private"],
+      ["origin", "human"],
+      ["confirmationStatus", "proposed"],
+      ["provenance", "source_artifact"],
+    ] as const) {
+      expect(
+        SharedEvidenceSchema.safeParse({
+          ...evidence,
+          [field]: invalidValue,
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("contracts owner-private artifact upload, retrieval, and projection metadata", () => {

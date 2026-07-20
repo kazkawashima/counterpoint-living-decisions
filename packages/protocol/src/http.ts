@@ -314,8 +314,12 @@ export const SharedFloorProjectionSchema = z.strictObject({
 });
 
 export const SharedEvidenceSchema = z.strictObject({
+  confirmationStatus: z.literal("human_confirmed"),
   evidenceId: EvidenceIdSchema,
   exactSnippet: NonEmptyTextSchema,
+  origin: z.literal("source"),
+  provenance: z.literal("approved_exact_excerpt"),
+  scope: z.literal("shared"),
   sourceArtifactId: SourceArtifactIdSchema,
   sourceRange: TextRangeSchema,
   createdAt: UtcIsoTimestampSchema,

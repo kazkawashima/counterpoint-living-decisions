@@ -1,9 +1,9 @@
 # Grounded Decision commitment reel notes
 
-All captures use the isolated, synthetic `Grounded Decision commitment check`
-story. The private note, shared Evidence, model output, participant identities,
-and Decision content are demo fixtures; no user data or production credential
-appears in the material.
+All captures use the explicitly labeled synthetic flagship story
+`Work & Productivity — Global AI Product Rollout`. The private note, shared
+Evidence, model output, participant identities, and Decision content are demo
+fixtures; no user data or production credential appears in the material.
 
 | State | Viewport | Suggested reel use |
 |---|---|---|
@@ -28,6 +28,6 @@ Useful narration:
 > validate the complete Decision, and explicitly commit an immutable revision.
 > Other participants receive the shared result—not the private AI candidate.
 
-Capture date: 2026-07-19. Feature slice: A5 shared Decision synthesis, L6
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: A5 shared Decision synthesis, L6
 deterministic commitment, D1 monitoring, D2/D3 event receipt, D4 assumption
 invalidation, D5 human review, and D6 review resolution.

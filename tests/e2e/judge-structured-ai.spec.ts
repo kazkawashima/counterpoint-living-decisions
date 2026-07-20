@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   createErrorEnvelope,
-  CreateMeetingResponseSchema,
+  FacilitatorDemoResetResponseSchema,
   GetRoleProjectionResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
   ListInvalidationEvaluationsResponseSchema,
@@ -9,6 +9,9 @@ import {
   ListSharedExternalEventsResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+
+const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
+const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
 
 async function signIn(page: Page) {
   await page.getByRole("button", { name: "Product" }).click();
@@ -39,23 +42,6 @@ async function prepareMonitoredMeeting(page: Page, purpose: string) {
     },
   });
   const facilitator = LoginResponseSchema.parse(await loginResponse.json());
-  const meetingResponse = await page.request.post("/api/v1/meetings", {
-    data: {
-      idempotencyKey: `judge-structured-ai-${crypto.randomUUID()}`,
-      purpose,
-      users: [
-        { role: "facilitator", userId: "product" },
-        { role: "participant", userId: "legal" },
-        { role: "participant", userId: "engineering" },
-      ],
-    },
-    headers: {
-      authorization: `Bearer ${facilitator.bearerToken}`,
-    },
-  });
-  const meeting = CreateMeetingResponseSchema.parse(
-    await meetingResponse.json(),
-  );
 
   await signIn(page);
   await openMeeting(page, purpose);
@@ -76,8 +62,53 @@ async function prepareMonitoredMeeting(page: Page, purpose: string) {
   await page.getByRole("button", { name: "Start Decision monitor" }).click();
   await expect(page.getByText("Monitoring active")).toBeVisible();
 
-  return { bearerToken: facilitator.bearerToken, meeting };
+  return {
+    bearerToken: facilitator.bearerToken,
+    meeting: { meetingId: FLAGSHIP_MEETING_ID },
+  };
 }
+
+async function resetFlagship(page: Page) {
+  const loginResponse = await page.request.post("/api/v1/login", {
+    data: {
+      password: "counterpoint-product",
+      userId: "product",
+    },
+  });
+  const facilitator = LoginResponseSchema.parse(await loginResponse.json());
+  const authorization = {
+    authorization: `Bearer ${facilitator.bearerToken}`,
+  };
+  const projectionResponse = await page.request.get(
+    `/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+    { headers: authorization },
+  );
+  expect(projectionResponse.status()).toBe(200);
+  const projection = GetRoleProjectionResponseSchema.parse(
+    await projectionResponse.json(),
+  );
+  const resetResponse = await page.request.post(
+    `/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
+    {
+      data: {
+        expectedPosition: projection.shared.position,
+        idempotencyKey: `judge-structured-ai-reset-${crypto.randomUUID()}`,
+        meetingId: FLAGSHIP_MEETING_ID,
+      },
+      headers: authorization,
+    },
+  );
+  expect(resetResponse.status()).toBe(200);
+  FacilitatorDemoResetResponseSchema.parse(await resetResponse.json());
+}
+
+test.beforeEach(async ({ page }) => {
+  await resetFlagship(page);
+});
+
+test.afterEach(async ({ page }) => {
+  await resetFlagship(page);
+});
 
 function manualTextControls(page: Page) {
   const speech = page.getByRole("region", {
@@ -124,8 +155,7 @@ async function expectManualContinuity(page: Page) {
 test("invalidation 429 preserves durable text and manual controls", async ({
   page,
 }) => {
-  const purpose = `Judge invalidation limit UI contract ${crypto.randomUUID()}`;
-  const { meeting } = await prepareMonitoredMeeting(page, purpose);
+  const { meeting } = await prepareMonitoredMeeting(page, FLAGSHIP_PURPOSE);
   const beforeLimit = "Durable text recorded before the invalidation limit.";
   const afterLimit = "Manual text continues after the invalidation limit.";
   await sendPrivateText(page, beforeLimit);
@@ -162,7 +192,7 @@ test("invalidation 429 preserves durable text and manual controls", async ({
   expect(intercepted).toBe(1);
 
   await page.reload();
-  await openMeeting(page, purpose);
+  await openMeeting(page, FLAGSHIP_PURPOSE);
   await expect(page.getByText(beforeLimit, { exact: true })).toBeVisible();
   await expect(page.getByText(afterLimit, { exact: true })).toBeVisible();
   await expectManualContinuity(page);
@@ -171,8 +201,10 @@ test("invalidation 429 preserves durable text and manual controls", async ({
 test("invalidation 202 pending preserves its receipt, durable text, and manual controls", async ({
   page,
 }) => {
-  const purpose = `Judge invalidation pending UI contract ${crypto.randomUUID()}`;
-  const { bearerToken, meeting } = await prepareMonitoredMeeting(page, purpose);
+  const { bearerToken, meeting } = await prepareMonitoredMeeting(
+    page,
+    FLAGSHIP_PURPOSE,
+  );
   const beforePending = "Durable text recorded before pending evaluation.";
   const afterPending = "Manual text continues while evaluation is pending.";
   await sendPrivateText(page, beforePending);
@@ -287,7 +319,7 @@ test("invalidation 202 pending preserves its receipt, durable text, and manual c
   await page.unroute(regulatoryRoute);
   await page.unroute(evaluationsRoute);
   await page.reload();
-  await openMeeting(page, purpose);
+  await openMeeting(page, FLAGSHIP_PURPOSE);
   await expect(page.locator(".regulatory-event-receipt")).toHaveCount(0);
   await expect(page.locator(".invalidation-risk-pulse")).toHaveCount(0);
   await expect(

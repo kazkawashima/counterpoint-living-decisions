@@ -791,6 +791,7 @@ async function roleProjection(
   dependencies: WorkerFlagshipHttpDependencies,
   authorization: UserAuthorizationContext,
   correlationId: string,
+  options: { readonly includePrivateSourceBodies?: boolean } = {},
 ) {
   const meeting = await dependencies.meetings.findById(authorization.meetingId);
   const assignment = await dependencies.meetings.findAssignment(
@@ -817,38 +818,42 @@ async function roleProjection(
     ({ ownerParticipantId }) =>
       ownerParticipantId === authorization.participantId,
   );
-  const privateSources = await Promise.all(
-    activeEvents.flatMap((event) =>
-      event.eventType === "ArtifactRegistered" &&
-      event.visibility === "private" &&
-      event.ownerParticipantId === authorization.participantId &&
-      event.payload.artifact.artifactType === "text"
-        ? [
-            dependencies.disclosures.artifacts
-              .get({
-                artifactId: event.payload.artifact.id,
-                meetingId: authorization.meetingId,
-                ownerParticipantId: authorization.participantId,
-                visibility: "private",
-              })
-              .then((bytes) =>
-                bytes === undefined
-                  ? undefined
-                  : {
-                      createdAt: event.occurredAt,
-                      sourceArtifactId: event.payload.artifact.id,
-                      text: new TextDecoder().decode(bytes),
-                      title: "Registered private text source",
-                    },
-              ),
-          ]
-        : [],
-    ),
-  ).then((sources) =>
-    sources.filter(
-      (source): source is NonNullable<typeof source> => source !== undefined,
-    ),
-  );
+  const privateSources =
+    options.includePrivateSourceBodies === false
+      ? []
+      : await Promise.all(
+          activeEvents.flatMap((event) =>
+            event.eventType === "ArtifactRegistered" &&
+            event.visibility === "private" &&
+            event.ownerParticipantId === authorization.participantId &&
+            event.payload.artifact.artifactType === "text"
+              ? [
+                  dependencies.disclosures.artifacts
+                    .get({
+                      artifactId: event.payload.artifact.id,
+                      meetingId: authorization.meetingId,
+                      ownerParticipantId: authorization.participantId,
+                      visibility: "private",
+                    })
+                    .then((bytes) =>
+                      bytes === undefined
+                        ? undefined
+                        : {
+                            createdAt: event.occurredAt,
+                            sourceArtifactId: event.payload.artifact.id,
+                            text: new TextDecoder().decode(bytes),
+                            title: "Registered private text source",
+                          },
+                    ),
+                ]
+              : [],
+          ),
+        ).then((sources) =>
+          sources.filter(
+            (source): source is NonNullable<typeof source> =>
+              source !== undefined,
+          ),
+        );
 
   return GetRoleProjectionResponseSchema.parse({
     capabilities: publicCapabilities(authorization.capabilities),
@@ -921,9 +926,13 @@ async function roleProjection(
       })),
       evidence: projection.shared.evidence.map(
         ({ createdAt, exactSnippet, id, sourceArtifactId, sourceRange }) => ({
+          confirmationStatus: "human_confirmed" as const,
           createdAt,
           evidenceId: id,
           exactSnippet,
+          origin: "source" as const,
+          provenance: "approved_exact_excerpt" as const,
+          scope: "shared" as const,
           sourceArtifactId,
           sourceRange,
         }),
@@ -1491,7 +1500,13 @@ export async function handleWorkerFlagshipHttp(input: {
       ApproveDisclosureResponseSchema.parse({
         candidateId: result.candidateId,
         correlationId: result.correlationId,
-        evidence: result.evidence,
+        evidence: {
+          ...result.evidence,
+          confirmationStatus: "human_confirmed" as const,
+          origin: "source" as const,
+          provenance: "approved_exact_excerpt" as const,
+          scope: "shared" as const,
+        },
         meetingId,
         position: visiblePosition(
           events,
@@ -2104,6 +2119,7 @@ export async function handleWorkerFlagshipHttp(input: {
       dependencies,
       resolved.authorization,
       correlationId,
+      { includePrivateSourceBodies: false },
     );
     if (projection === undefined) {
       return apiErrorResponse("FORBIDDEN", correlationId);

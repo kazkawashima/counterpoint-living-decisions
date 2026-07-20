@@ -68,11 +68,33 @@ const SYNTHETIC_PRIVATE_NOTE =
   "Private context: the regional team is ready to launch. Regional launch requires a documented approval gate. Keep the fallback owner private until the staffing review.";
 const SYNTHETIC_EXACT_SNIPPET =
   "Regional launch requires a documented approval gate.";
+const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 
 function messageFor(error: unknown): string {
   return error instanceof ApiError
     ? error.message
     : "Counterpoint could not reach the local decision service.";
+}
+
+function labelForToken(value: string): string {
+  const normalized = value.replaceAll("_", " ");
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function SourceReference({
+  sourceArtifactId,
+}: {
+  readonly sourceArtifactId: string;
+}) {
+  return (
+    <details
+      aria-label={`Source reference ${sourceArtifactId}`}
+      className="source-reference"
+    >
+      <summary>Source ref {sourceArtifactId.slice(0, 16)}…</summary>
+      <code>{sourceArtifactId}</code>
+    </details>
+  );
 }
 
 function Brand() {
@@ -356,36 +378,43 @@ function MeetingListScreen({
               <p>Use a meeting code if a facilitator invited this identity.</p>
             </div>
           ) : null}
-          {meetings.map((meeting, index) => (
-            <article className="meeting-card" key={meeting.meetingId}>
-              <div className="meeting-number">
-                {String(index + 1).padStart(2, "0")}
-              </div>
-              <div className="meeting-summary">
-                <div className="meeting-meta">
-                  <span className="role-pill">{meeting.role}</span>
-                  <span className="scope-pill">Shared room</span>
+          {meetings.map((meeting, index) => {
+            const isFlagship = meeting.meetingId === FLAGSHIP_MEETING_ID;
+            return (
+              <article className="meeting-card" key={meeting.meetingId}>
+                <div className="meeting-number">
+                  {String(index + 1).padStart(2, "0")}
                 </div>
-                <h3>{meeting.purpose}</h3>
-                <p>
-                  Synthetic launch decision · Five perspectives · Living monitor
-                </p>
-                <div className="stage-row" aria-label="Meeting progress">
-                  <span className="stage active">Prepare</span>
-                  <span className="stage">Deliberate</span>
-                  <span className="stage">Commit</span>
-                  <span className="stage">Monitor</span>
+                <div className="meeting-summary">
+                  <div className="meeting-meta">
+                    <span className="role-pill">{meeting.role}</span>
+                    <span className="scope-pill">Shared room</span>
+                  </div>
+                  <h3>{meeting.purpose}</h3>
+                  <p>
+                    {isFlagship
+                      ? "Synthetic launch decision · Five seeded perspectives"
+                      : `${meeting.role} workspace · ${meeting.phase}`}
+                  </p>
+                  {isFlagship ? (
+                    <div className="stage-row" aria-label="Meeting progress">
+                      <span className="stage active">Prepare</span>
+                      <span className="stage">Deliberate</span>
+                      <span className="stage">Commit</span>
+                      <span className="stage">Monitor</span>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-              <button
-                className="open-button"
-                onClick={() => onOpen(meeting)}
-                type="button"
-              >
-                Open workspace <span aria-hidden="true">→</span>
-              </button>
-            </article>
-          ))}
+                <button
+                  className="open-button"
+                  onClick={() => onOpen(meeting)}
+                  type="button"
+                >
+                  Open workspace <span aria-hidden="true">→</span>
+                </button>
+              </article>
+            );
+          })}
         </div>
 
         <div className="meeting-side-stack">
@@ -626,6 +655,7 @@ function FacilitatorDecisionPanel({
   existingDecision,
   existingExternalEvent,
   existingInvalidation,
+  isFlagship,
   meeting,
   onDecisionChange,
   onExternalEventChange,
@@ -638,6 +668,7 @@ function FacilitatorDecisionPanel({
   readonly existingDecision: DecisionView | undefined;
   readonly existingExternalEvent: ExternalEventReceipt | undefined;
   readonly existingInvalidation: InvalidationEvaluation | undefined;
+  readonly isFlagship: boolean;
   readonly meeting: AssignedMeeting;
   readonly onDecisionChange: (decision: DecisionView) => void;
   readonly onExternalEventChange: (event: ExternalEventReceipt) => void;
@@ -712,19 +743,26 @@ function FacilitatorDecisionPanel({
     "recommit_revision" | "reject_decision" | "supersede_decision"
   >("recommit_revision");
   const [resolutionDraft, setResolutionDraft] = useState({
-    changeReason:
-      "Regulatory change requires a revised approval gate before launch.",
+    changeReason: isFlagship
+      ? "Regulatory change requires a revised approval gate before launch."
+      : "New shared evidence requires a revised Decision.",
     monitorCondition:
       existingDecision?.snapshot.monitorCondition.description ??
-      "Monitor the revised approval gate before resuming launch.",
+      (isFlagship
+        ? "Monitor the revised approval gate before resuming launch."
+        : "Review this Decision when the recorded condition changes."),
     outcome:
       existingDecision?.snapshot.outcome ??
-      "Pause regional launch until the revised approval gate is satisfied.",
-    rejectionReason:
-      "The Decision can no longer proceed under the changed regulation.",
+      (isFlagship
+        ? "Pause regional launch until the revised approval gate is satisfied."
+        : "Record the revised facilitator-confirmed outcome."),
+    rejectionReason: isFlagship
+      ? "The Decision can no longer proceed under the changed regulation."
+      : "The Decision can no longer proceed under the reviewed evidence.",
     replacementDecisionId: "",
     title:
-      existingDecision?.snapshot.title ?? "Revised conditional regional launch",
+      existingDecision?.snapshot.title ??
+      (isFlagship ? "Revised conditional regional launch" : "Revised Decision"),
   });
   const [decisionExport, setDecisionExport] =
     useState<DecisionJsonExportResponse>();
@@ -732,16 +770,23 @@ function FacilitatorDecisionPanel({
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<DecisionDraftForm>({
     actionOwnerParticipantId: meeting.participantId,
-    actionScope: "Document the approval gate before regional launch.",
-    dissentReason:
-      "Rollback ownership and staffing remain explicit retained concerns.",
-    monitorCondition:
-      "Reopen if the approval gate, staffing plan, or regulation changes.",
-    outcome:
-      "Proceed with regional launch only after the documented approval gate is satisfied.",
+    actionScope: isFlagship
+      ? "Document the approval gate before regional launch."
+      : "Record the next accountable action.",
+    dissentReason: isFlagship
+      ? "Rollback ownership and staffing remain explicit retained concerns."
+      : "Retain unresolved concerns for the committed Decision.",
+    monitorCondition: isFlagship
+      ? "Reopen if the approval gate, staffing plan, or regulation changes."
+      : "Review when the recorded condition changes.",
+    outcome: isFlagship
+      ? "Proceed with regional launch only after the documented approval gate is satisfied."
+      : "Record the facilitator-confirmed outcome.",
     premise: evidence.exactSnippet,
-    title: "Conditional regional launch",
+    title: isFlagship ? "Conditional regional launch" : "Untitled Decision",
   });
+  const decisionForgeRef = useRef<HTMLElement>(null);
+  const decisionForgeMounted = useRef(false);
   const commandKeys = useRef({
     commit: crypto.randomUUID(),
     confirm: crypto.randomUUID(),
@@ -758,6 +803,14 @@ function FacilitatorDecisionPanel({
     save: crypto.randomUUID(),
     synthesize: crypto.randomUUID(),
   });
+
+  useEffect(() => {
+    if (!decisionForgeMounted.current) {
+      decisionForgeMounted.current = true;
+      return;
+    }
+    decisionForgeRef.current?.focus({ preventScroll: true });
+  }, [phase]);
 
   useEffect(() => {
     if (
@@ -1306,6 +1359,8 @@ function FacilitatorDecisionPanel({
     <section
       aria-labelledby="decision-forge-title"
       className={`decision-forge decision-${phase}`}
+      ref={decisionForgeRef}
+      tabIndex={-1}
     >
       <header className="decision-forge-heading">
         <div>
@@ -1313,7 +1368,14 @@ function FacilitatorDecisionPanel({
           <h2 id="decision-forge-title">Turn evidence into commitment</h2>
         </div>
         <div className="forge-state">
-          <span>{decision?.status ?? "CANDIDATE"}</span>
+          <span>
+            {decision?.status ??
+              (phase === "idle" || phase === "ai-unavailable"
+                ? "No Decision yet"
+                : phase === "manual-edit"
+                  ? "Proposed draft"
+                  : "Candidate workbench")}
+          </span>
           <small>Human authority required</small>
         </div>
       </header>
@@ -1391,7 +1453,11 @@ function FacilitatorDecisionPanel({
                 aiProvenance === undefined ? "human-label" : "ai-label"
               }
             >
-              {aiProvenance === undefined ? "Human authored" : "AI proposed"}
+              {aiProvenance === undefined
+                ? phase === "manual-edit"
+                  ? "Manual draft · Proposed · Not submitted"
+                  : "Human authored"
+                : "AI proposed"}
             </span>
             {aiProvenance === undefined ? null : (
               <>
@@ -1694,7 +1760,9 @@ function FacilitatorDecisionPanel({
               </small>
             </div>
           ) : null}
-          {phase === "monitoring" && externalEvent === undefined ? (
+          {isFlagship &&
+          phase === "monitoring" &&
+          externalEvent === undefined ? (
             <div className="demo-event-control">
               <span>Staged demo story</span>
               <p>
@@ -1718,7 +1786,10 @@ function FacilitatorDecisionPanel({
           ) : null}
           {externalEvent === undefined ? null : (
             <div className="regulatory-event-receipt" role="status">
-              <span>Staged demo event · External event received</span>
+              <span>
+                {isFlagship ? "Staged demo event" : "Signed external event"} ·
+                External event received
+              </span>
               <strong>{externalEvent.jurisdiction}</strong>
               <p>{externalEvent.description}</p>
               <small>
@@ -2287,7 +2358,13 @@ function SharedDisplayScreen({
             projection.shared.evidence.map((evidence) => (
               <blockquote key={evidence.evidenceId}>
                 “{evidence.exactSnippet}”
-                <small>Human confirmed · Source attached</small>
+                <small>
+                  {labelForToken(evidence.scope)} scope ·{" "}
+                  {labelForToken(evidence.origin)} origin ·{" "}
+                  {labelForToken(evidence.confirmationStatus)} ·{" "}
+                  {labelForToken(evidence.provenance)}
+                </small>
+                <SourceReference sourceArtifactId={evidence.sourceArtifactId} />
               </blockquote>
             ))
           )}
@@ -2316,14 +2393,15 @@ function SharedDisplayScreen({
         <article className="display-panel display-decision">
           <header>
             <p className="zone-label shared">Living Decision</p>
-            <span>{decision?.status ?? "ASSEMBLING"}</span>
+            <span>{decision?.status ?? "No Decision yet"}</span>
           </header>
           {decision === undefined ? (
             <div className="display-decision-empty">
               <span aria-hidden="true">◎</span>
-              <h2>Commitment is still assembling</h2>
+              <h2>No Decision has been committed</h2>
               <p>
-                Evidence, premise, dissent, and Action remain visible above.
+                Confirmed shared material remains visible while the facilitator
+                prepares a Decision.
               </p>
             </div>
           ) : (
@@ -2379,6 +2457,7 @@ function WorkspaceShell({
   readonly onBack: () => void;
   readonly onPositionChange: (position: AssignedMeeting["position"]) => void;
 }) {
+  const isFlagship = meeting.meetingId === FLAGSHIP_MEETING_ID;
   const [position, setPosition] = useState(meeting.position);
   const [phase, setPhase] = useState<
     | "ai-unavailable"
@@ -2411,13 +2490,22 @@ function WorkspaceShell({
   const [displayAccessError, setDisplayAccessError] = useState<string>();
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const [selectedSnippet, setSelectedSnippet] = useState(
-    SYNTHETIC_EXACT_SNIPPET,
+    isFlagship ? SYNTHETIC_EXACT_SNIPPET : "",
   );
   const [uploadedPrivateSource, setUploadedPrivateSource] = useState<{
     readonly filename: string;
     readonly sourceArtifactId: string;
     readonly text: string;
   }>();
+  const outgoingPreviewRef = useRef<HTMLElement>(null);
+  const privateConfirmationRef = useRef<HTMLElement>(null);
+  const sharedEvidenceRef = useRef<HTMLElement>(null);
+  const displayAccessButtonRef = useRef<HTMLButtonElement>(null);
+  const displayAccessControlRef = useRef<HTMLDivElement>(null);
+  const displayAccessWasActive = useRef(false);
+  const resetButtonRef = useRef<HTMLButtonElement>(null);
+  const resetConfirmationRef = useRef<HTMLDivElement>(null);
+  const resetInteractionStarted = useRef(false);
   const commandKeys = useRef({
     approve: crypto.randomUUID(),
     preview: crypto.randomUUID(),
@@ -2471,6 +2559,45 @@ function WorkspaceShell({
     return () => controller.abort();
   }, [meeting.meetingId, session]);
 
+  useEffect(() => {
+    const focusTarget =
+      phase === "preview"
+        ? outgoingPreviewRef.current
+        : phase === "rejected"
+          ? privateConfirmationRef.current
+          : phase === "approved"
+            ? sharedEvidenceRef.current
+            : undefined;
+    focusTarget?.focus({ preventScroll: true });
+  }, [phase]);
+
+  useEffect(() => {
+    if (displayAccess !== undefined) {
+      displayAccessWasActive.current = true;
+      displayAccessControlRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (displayAccessWasActive.current) {
+      displayAccessWasActive.current = false;
+      displayAccessButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [displayAccess]);
+
+  useEffect(() => {
+    if (resetState === "confirming") {
+      resetInteractionStarted.current = true;
+      resetConfirmationRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (
+      resetInteractionStarted.current &&
+      (resetState === "idle" || resetState === "succeeded")
+    ) {
+      resetInteractionStarted.current = false;
+      resetButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [resetState]);
+
   function advancePosition(nextPosition: AssignedMeeting["position"]) {
     setPosition(nextPosition);
     onPositionChange(nextPosition);
@@ -2480,7 +2607,15 @@ function WorkspaceShell({
     setPhase("preparing");
     setError(undefined);
     try {
-      const privateText = uploadedPrivateSource?.text ?? SYNTHETIC_PRIVATE_NOTE;
+      const privateText =
+        uploadedPrivateSource?.text ??
+        (isFlagship ? SYNTHETIC_PRIVATE_NOTE : undefined);
+      if (privateText === undefined) {
+        throw new ApiError(
+          "INVALID_STATE",
+          "Select a private source before preparing an excerpt.",
+        );
+      }
       const exactSnippet = selectedSnippet.trim();
       const start = privateText.indexOf(exactSnippet);
       if (exactSnippet.length === 0 || start < 0) {
@@ -2491,7 +2626,7 @@ function WorkspaceShell({
       }
       const sourceRange = { end: start + exactSnippet.length, start };
       const registered =
-        uploadedPrivateSource === undefined
+        uploadedPrivateSource === undefined && isFlagship
           ? await registerPrivateTextSource(session, {
               expectedPosition: position,
               idempotencyKey: commandKeys.current.register,
@@ -2711,7 +2846,7 @@ function WorkspaceShell({
     completedStage = 3;
     currentStage = 4;
     stageCue =
-      "The committed revision is immutable while the external monitor watches for change.";
+      "The committed revision is immutable and registered to receive staged or signed events.";
   }
   if (sharedInvalidation !== undefined) {
     completedStage = 4;
@@ -2736,7 +2871,11 @@ function WorkspaceShell({
           <span className="live-dot" />
           <span>
             <strong>{meeting.purpose}</strong>
-            <small>Staged synthetic demo story</small>
+            <small>
+              {isFlagship
+                ? "Staged synthetic demo story"
+                : `${meeting.role} decision workspace`}
+            </small>
           </span>
         </div>
         <div className="workspace-actions">
@@ -2746,6 +2885,7 @@ function WorkspaceShell({
                 className="display-access-button"
                 disabled={displayAccessState !== "idle"}
                 onClick={() => void createSharedDisplay()}
+                ref={displayAccessButtonRef}
                 type="button"
               >
                 {displayAccessState === "issuing"
@@ -2756,7 +2896,9 @@ function WorkspaceShell({
               <div
                 aria-label="Read-only display active"
                 className="display-access-control"
+                ref={displayAccessControlRef}
                 role="group"
+                tabIndex={-1}
               >
                 <span>Read-only display active</span>
                 <a href={displayUrl} rel="noreferrer" target="_blank">
@@ -2772,9 +2914,14 @@ function WorkspaceShell({
               </div>
             )
           ) : null}
-          {meeting.role === "facilitator" ? (
+          {meeting.role === "facilitator" && isFlagship ? (
             resetState === "confirming" || resetState === "resetting" ? (
-              <div className="reset-confirmation" role="group">
+              <div
+                className="reset-confirmation"
+                ref={resetConfirmationRef}
+                role="group"
+                tabIndex={-1}
+              >
                 <span>Only this staged meeting will be cleared.</span>
                 <button
                   className="reset-confirm-button"
@@ -2798,6 +2945,7 @@ function WorkspaceShell({
               <button
                 className="reset-demo-button"
                 onClick={() => setResetState("confirming")}
+                ref={resetButtonRef}
                 type="button"
               >
                 Reset staged demo
@@ -2815,41 +2963,45 @@ function WorkspaceShell({
         </p>
       )}
 
-      <nav
-        className="progress-rail"
-        aria-label="Flagship progress"
-        tabIndex={0}
-      >
-        {stageLabels.map((label, index) => {
-          const stage = index + 1;
-          return (
-            <span
-              aria-current={stage === currentStage ? "step" : undefined}
-              className={
-                stage <= completedStage
-                  ? "complete"
-                  : stage === currentStage
-                    ? "current"
-                    : undefined
-              }
-              key={label}
-            >
-              {label}
+      {isFlagship ? (
+        <>
+          <nav
+            className="progress-rail"
+            aria-label="Flagship progress"
+            tabIndex={0}
+          >
+            {stageLabels.map((label, index) => {
+              const stage = index + 1;
+              return (
+                <span
+                  aria-current={stage === currentStage ? "step" : undefined}
+                  className={
+                    stage <= completedStage
+                      ? "complete"
+                      : stage === currentStage
+                        ? "current"
+                        : undefined
+                  }
+                  key={label}
+                >
+                  {label}
+                </span>
+              );
+            })}
+          </nav>
+          <div className="flagship-cue" role="status">
+            <span>
+              {currentStage === undefined
+                ? "Flagship arc complete"
+                : `Current stage ${currentStage} of 5`}
             </span>
-          );
-        })}
-      </nav>
-      <div className="flagship-cue" role="status">
-        <span>
-          {currentStage === undefined
-            ? "Flagship arc complete"
-            : `Current stage ${currentStage} of 5`}
-        </span>
-        <strong>{stageCue}</strong>
-        {resetState === "succeeded" ? (
-          <small>Meeting reset complete · synthetic Context restored</small>
-        ) : null}
-      </div>
+            <strong>{stageCue}</strong>
+            {resetState === "succeeded" ? (
+              <small>Meeting reset complete · synthetic Context restored</small>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       <RealtimePanel
         facilitator={meeting.role === "facilitator"}
@@ -2866,27 +3018,42 @@ function WorkspaceShell({
               <p className="zone-label private">Private · Owner only</p>
               <h1>{session.userId} workspace</h1>
             </div>
-            <span className="origin-tag">Human + Source</span>
+            <span className="origin-tag">
+              {uploadedPrivateSource !== undefined || isFlagship
+                ? "Human + Source"
+                : "Human"}
+            </span>
           </header>
           <div className="source-card">
             <div className="source-icon" aria-hidden="true">
               §
             </div>
-            <div>
-              <span className="source-type">
-                {uploadedPrivateSource === undefined
-                  ? "Synthetic source"
-                  : "Registered private source"}
-              </span>
-              <h2>
-                {uploadedPrivateSource?.filename ??
-                  "Regional launch readiness note"}
-              </h2>
-              <p>
-                Visible only here. No private-existence hint reaches the shared
-                room.
-              </p>
-            </div>
+            {uploadedPrivateSource !== undefined || isFlagship ? (
+              <div>
+                <span className="source-type">
+                  {uploadedPrivateSource === undefined
+                    ? "Synthetic source"
+                    : "Registered private source"}
+                </span>
+                <h2>
+                  {uploadedPrivateSource?.filename ??
+                    "Regional launch readiness note"}
+                </h2>
+                <p>
+                  Visible only here. No private-existence hint reaches the
+                  shared room.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <span className="source-type">Private source</span>
+                <h2>No private source selected</h2>
+                <p>
+                  Upload a private artifact or add a source before preparing an
+                  excerpt.
+                </p>
+              </div>
+            )}
           </div>
           <ArtifactPanel
             meetingId={meeting.meetingId}
@@ -2924,32 +3091,37 @@ function WorkspaceShell({
             <span className="assistant-boundary">Suggestion only</span>
           </section>
           <div className="channel-choice">
-            <button className="channel active" type="button">
+            <div className="channel active">
               <span aria-hidden="true">◉</span>
               <span>
                 <strong>Speak privately</strong>
                 <small>Private agent context</small>
               </span>
-            </button>
-            <button className="channel" type="button">
+            </div>
+            <div className="channel">
               <span aria-hidden="true">◎</span>
               <span>
                 <strong>Prepare for room</strong>
                 <small>Exact preview required</small>
               </span>
-            </button>
+            </div>
           </div>
           <div className="workspace-input">
             <label htmlFor="private-note">
               {uploadedPrivateSource === undefined
-                ? "Staged private note"
+                ? isFlagship
+                  ? "Staged private note"
+                  : "Private source text"
                 : "Active private source · derived text"}
             </label>
             <textarea
               id="private-note"
               readOnly
               rows={5}
-              value={uploadedPrivateSource?.text ?? SYNTHETIC_PRIVATE_NOTE}
+              value={
+                uploadedPrivateSource?.text ??
+                (isFlagship ? SYNTHETIC_PRIVATE_NOTE : "")
+              }
             />
             <label htmlFor="selected-excerpt">Exact excerpt to preview</label>
             <textarea
@@ -2966,6 +3138,7 @@ function WorkspaceShell({
             {phase === "idle" ? (
               <button
                 className="prepare-button"
+                disabled={uploadedPrivateSource === undefined && !isFlagship}
                 onClick={() => void preparePreview("ai_preferred")}
                 type="button"
               >
@@ -3014,6 +3187,8 @@ function WorkspaceShell({
             <section
               aria-labelledby="outgoing-preview-title"
               className="disclosure-preview"
+              ref={outgoingPreviewRef}
+              tabIndex={-1}
             >
               <div className="preview-heading">
                 <div>
@@ -3082,7 +3257,12 @@ function WorkspaceShell({
             </section>
           ) : null}
           {phase === "rejected" ? (
-            <section className="private-confirmation" role="status">
+            <section
+              className="private-confirmation"
+              ref={privateConfirmationRef}
+              role="status"
+              tabIndex={-1}
+            >
               <span aria-hidden="true">◇</span>
               <div>
                 <strong>Kept private</strong>
@@ -3107,7 +3287,7 @@ function WorkspaceShell({
               <p className="zone-label shared">Shared · Decision room</p>
               <h1>Commitment canvas</h1>
             </div>
-            <span className="confirmation-tag">Human confirmed</span>
+            <span className="confirmation-tag">Scope · Shared</span>
           </header>
           {evidence === undefined ? (
             <div className="shared-empty">
@@ -3123,15 +3303,23 @@ function WorkspaceShell({
               </p>
             </div>
           ) : (
-            <article className="shared-evidence" aria-live="polite">
+            <article
+              aria-live="polite"
+              className="shared-evidence"
+              ref={sharedEvidenceRef}
+              tabIndex={-1}
+            >
               <div className="evidence-arrival" aria-hidden="true">
                 Permission recorded
               </div>
               <p className="zone-label shared">Evidence · Exact excerpt</p>
               <blockquote>{evidence.exactSnippet}</blockquote>
               <div className="evidence-meta">
-                <span>Human confirmed</span>
-                <span>Source attached</span>
+                <span>{labelForToken(evidence.scope)} scope</span>
+                <span>{labelForToken(evidence.origin)} origin</span>
+                <span>{labelForToken(evidence.confirmationStatus)}</span>
+                <span>{labelForToken(evidence.provenance)}</span>
+                <SourceReference sourceArtifactId={evidence.sourceArtifactId} />
                 <span>
                   Range {evidence.sourceRange.start}–{evidence.sourceRange.end}
                 </span>
@@ -3147,6 +3335,7 @@ function WorkspaceShell({
               existingDecision={sharedDecision}
               existingExternalEvent={sharedExternalEvent}
               existingInvalidation={sharedInvalidation}
+              isFlagship={isFlagship}
               key={workspaceEpoch}
               meeting={meeting}
               onDecisionChange={setSharedDecision}

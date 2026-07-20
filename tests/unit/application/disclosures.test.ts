@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  uploadPrivateArtifact,
+  type ArtifactIngestionDependencies,
+} from "../../../packages/application/src/artifacts.js";
+import {
   approveDisclosure,
   previewDisclosure,
   proposeDisclosure,
@@ -30,6 +34,12 @@ const OTHER_OWNER_ID = "participant-operations";
 const SOURCE_TEXT =
   "Private planning note. Budget guardrail is 25 USD. Do not share the appendix.";
 const SELECTED_SNIPPET = "Budget guardrail is 25 USD.";
+const UPLOADED_SOURCE_BYTES = new TextEncoder().encode(
+  "# Private vendor assessment\n\nThis source document is not directly shareable.",
+);
+const DERIVED_DOCUMENT_TEXT =
+  "Private vendor assessment\nThe renewal ceiling is 48,000 USD.\nInternal negotiation notes must remain private.";
+const DERIVED_SELECTED_SNIPPET = "The renewal ceiling is 48,000 USD.";
 
 function stableFixtureHash(value: string): string {
   let hash = 2_166_136_261;
@@ -82,6 +92,45 @@ function dependencies(): DisclosureDependencies {
   };
 }
 
+async function registerProcessedDocument(deps: DisclosureDependencies) {
+  const ingestionDependencies: ArtifactIngestionDependencies = {
+    ...deps,
+    extractor: {
+      extract: () =>
+        Promise.resolve({
+          content: DERIVED_DOCUMENT_TEXT,
+          contentType: "text/plain; charset=utf-8",
+        }),
+    },
+    hashBytes: (bytes) => stableFixtureHash(new TextDecoder().decode(bytes)),
+  };
+  const result = await uploadPrivateArtifact(
+    ingestionDependencies,
+    ownerContext(),
+    {
+      bytes: UPLOADED_SOURCE_BYTES,
+      contentType: "text/markdown",
+      expectedPosition: 0,
+      filename: "private-vendor-assessment.md",
+      idempotencyKey: "upload-private-vendor-assessment",
+      meetingId: MEETING_ID,
+    },
+  );
+  if (result.kind !== "registered") {
+    throw new Error(`Document fixture failed: ${result.code}`);
+  }
+  const { derivedArtifactId, derivedContentHash, sourceArtifactId } =
+    result.artifact;
+  if (derivedArtifactId === undefined || derivedContentHash === undefined) {
+    throw new Error("Document fixture produced no readable derived artifact");
+  }
+  return {
+    derivedArtifactId,
+    derivedContentHash,
+    sourceArtifactId,
+  };
+}
+
 async function registerSource(deps: DisclosureDependencies) {
   const result = await registerPrivateTextSource(deps, ownerContext(), {
     expectedPosition: 0,
@@ -124,6 +173,37 @@ async function registerProposeAndPreview(deps: DisclosureDependencies) {
     throw new Error(`Preview fixture failed: ${previewed.code}`);
   }
   return { ...setup, previewed };
+}
+
+async function appendDemoReset(
+  deps: DisclosureDependencies,
+  expectedPosition: number,
+) {
+  const appended = await deps.events.append({
+    events: [
+      {
+        actor: { kind: "system" },
+        correlationId: "correlation-disclosure-reset",
+        eventId: "event-disclosure-reset-completed",
+        eventType: "DemoResetCompleted",
+        meetingId: MEETING_ID,
+        occurredAt: "2026-07-19T03:05:00.000Z",
+        payload: {
+          resetRequestId: "reset-disclosure-boundary",
+          seedName: "flagship",
+        },
+        position: expectedPosition + 1,
+        schemaVersion: 1,
+        visibility: "shared",
+      } as unknown as DomainEvent,
+    ],
+    expectedPosition,
+    idempotencyKey: "reset-disclosure-boundary",
+    meetingId: MEETING_ID,
+  });
+  if (appended.kind !== "appended") {
+    throw new Error("Disclosure reset fixture failed");
+  }
 }
 
 describe("deterministic private text disclosure", () => {
@@ -412,6 +492,117 @@ describe("deterministic private text disclosure", () => {
     expect(await deps.events.position(MEETING_ID)).toBe(3);
   });
 
+  it("rejects approval when derived document bytes change after preview", async () => {
+    const deps: DisclosureDependencies = {
+      ...dependencies(),
+      candidateProposer: {
+        propose: ({ text }) => {
+          const start = text.indexOf(DERIVED_SELECTED_SNIPPET);
+          return Promise.resolve({
+            exactSnippet: DERIVED_SELECTED_SNIPPET,
+            sourceRange: {
+              start,
+              end: start + DERIVED_SELECTED_SNIPPET.length,
+            },
+          });
+        },
+      },
+    };
+    const artifact = await registerProcessedDocument(deps);
+    const registeredRecords = await deps.events.load(MEETING_ID);
+    expect(registeredRecords.map(({ event }) => event.eventType)).toEqual([
+      "ArtifactRegistered",
+      "ArtifactProcessed",
+    ]);
+    expect(registeredRecords[0]?.event).toMatchObject({
+      eventType: "ArtifactRegistered",
+      payload: {
+        artifact: {
+          artifactType: "document",
+          id: artifact.sourceArtifactId,
+          origin: "source_artifact",
+          visibility: "private",
+        },
+      },
+      visibility: "private",
+    });
+    expect(registeredRecords[1]?.event).toMatchObject({
+      eventType: "ArtifactProcessed",
+      payload: {
+        artifactId: artifact.sourceArtifactId,
+        contentHash: artifact.derivedContentHash,
+        derivedArtifactId: artifact.derivedArtifactId,
+        processingState: "processed",
+      },
+      visibility: "private",
+    });
+
+    const proposed = await proposeDisclosure(deps, ownerContext(), {
+      expectedPosition: 2,
+      idempotencyKey: "propose-derived-document-disclosure",
+      meetingId: MEETING_ID,
+      sourceArtifactId: artifact.sourceArtifactId,
+    });
+    if (proposed.kind !== "proposed") {
+      throw new Error(`Derived proposal failed: ${proposed.code}`);
+    }
+    const previewed = await previewDisclosure(deps, ownerContext(), {
+      candidateId: proposed.candidate.candidateId,
+      exactSnippet: DERIVED_SELECTED_SNIPPET,
+      expectedPosition: 3,
+      idempotencyKey: "preview-derived-document-disclosure",
+      meetingId: MEETING_ID,
+      sourceRange: proposed.candidate.outgoingPayload.sourceRange,
+    });
+    if (previewed.kind !== "previewed") {
+      throw new Error(`Derived preview failed: ${previewed.code}`);
+    }
+    expect(previewed.outgoingPayload.exactSnippet).toBe(
+      DERIVED_SELECTED_SNIPPET,
+    );
+
+    const tamperedDerivedText = DERIVED_DOCUMENT_TEXT.replace(
+      "48,000 USD",
+      "84,000 USD",
+    );
+    await deps.artifacts.put({
+      bytes: new TextEncoder().encode(tamperedDerivedText),
+      contentType: "text/plain; charset=utf-8",
+      hash: stableFixtureHash(tamperedDerivedText),
+      scope: {
+        artifactId: artifact.derivedArtifactId,
+        meetingId: MEETING_ID,
+        ownerParticipantId: OWNER_ID,
+        visibility: "private",
+      },
+    });
+
+    await expect(
+      approveDisclosure(deps, ownerContext(), {
+        candidateId: proposed.candidate.candidateId,
+        expectedPosition: 4,
+        idempotencyKey: "approve-tampered-derived-document",
+        meetingId: MEETING_ID,
+        previewHash: previewed.previewHash,
+      }),
+    ).resolves.toEqual({
+      code: "DISCLOSURE_PREVIEW_MISMATCH",
+      kind: "failed",
+    });
+    expect(await deps.events.position(MEETING_ID)).toBe(4);
+    expect(
+      (await deps.events.load(MEETING_ID)).filter(
+        ({ event }) => event.visibility === "shared",
+      ),
+    ).toEqual([]);
+    const projection = await deps.projections.get({
+      meetingId: MEETING_ID,
+      ownerParticipantId: OWNER_ID,
+      projection: "meeting",
+    });
+    expect(projection?.shared.evidence).toEqual([]);
+  });
+
   it("rejects privately without creating any shared content or audit trace", async () => {
     const deps = dependencies();
     const { proposed } = await registerAndPropose(deps);
@@ -517,5 +708,88 @@ describe("deterministic private text disclosure", () => {
     expect(
       events.filter(({ event }) => event.eventType === "EvidenceShared"),
     ).toHaveLength(1);
+  });
+
+  it("rejects approval of a candidate created before the latest demo reset", async () => {
+    const deps = dependencies();
+    const { previewed, proposed } = await registerProposeAndPreview(deps);
+    await appendDemoReset(deps, 3);
+
+    await expect(
+      approveDisclosure(deps, ownerContext(), {
+        candidateId: proposed.candidate.candidateId,
+        expectedPosition: 4,
+        idempotencyKey: "approve-after-reset",
+        meetingId: MEETING_ID,
+        previewHash: previewed.previewHash,
+      }),
+    ).resolves.toEqual({ code: "FORBIDDEN", kind: "failed" });
+    expect(await deps.events.position(MEETING_ID)).toBe(4);
+    expect(
+      (await deps.events.load(MEETING_ID)).filter(
+        ({ event }) => event.eventType === "EvidenceShared",
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects a private source registration created before the latest demo reset", async () => {
+    const deps = dependencies();
+    const { registered } = await registerAndPropose(deps);
+    await appendDemoReset(deps, 2);
+
+    await expect(
+      proposeDisclosure(deps, ownerContext(), {
+        expectedPosition: 3,
+        idempotencyKey: "propose-old-source-after-reset",
+        meetingId: MEETING_ID,
+        sourceArtifactId: registered.source.sourceArtifactId,
+      }),
+    ).resolves.toEqual({ code: "FORBIDDEN", kind: "failed" });
+    expect(await deps.events.position(MEETING_ID)).toBe(3);
+  });
+
+  it("rejects a pre-reset proposal key before calling the provider", async () => {
+    let proposalCalls = 0;
+    const deps: DisclosureDependencies = {
+      ...dependencies(),
+      candidateProposer: {
+        propose: ({ text }) => {
+          proposalCalls += 1;
+          const start = text.indexOf(SELECTED_SNIPPET);
+          return Promise.resolve({
+            sourceRange: {
+              end: start + SELECTED_SNIPPET.length,
+              start,
+            },
+          });
+        },
+      },
+    };
+    await registerAndPropose(deps);
+    await appendDemoReset(deps, 2);
+    const registered = await registerPrivateTextSource(deps, ownerContext(), {
+      expectedPosition: 3,
+      idempotencyKey: "register-post-reset-source",
+      meetingId: MEETING_ID,
+      text: SOURCE_TEXT,
+      title: "Post-reset synthetic note",
+    });
+    if (registered.kind !== "registered") {
+      throw new Error(`Post-reset source fixture failed: ${registered.code}`);
+    }
+
+    await expect(
+      proposeDisclosure(deps, ownerContext(), {
+        expectedPosition: 4,
+        idempotencyKey: "propose-disclosure",
+        meetingId: MEETING_ID,
+        sourceArtifactId: registered.source.sourceArtifactId,
+      }),
+    ).resolves.toEqual({
+      code: "IDEMPOTENCY_CONFLICT",
+      kind: "failed",
+    });
+    expect(proposalCalls).toBe(1);
+    expect(await deps.events.position(MEETING_ID)).toBe(4);
   });
 });

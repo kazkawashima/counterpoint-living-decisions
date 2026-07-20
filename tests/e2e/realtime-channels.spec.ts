@@ -2,6 +2,7 @@ import { copyFile, mkdir } from "node:fs/promises";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { activateByKeyboard } from "../helpers/keyboard.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/realtime-channels");
 const clipDirectory = evidenceDirectory("clips/realtime-channels");
@@ -679,7 +680,10 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
   await productPage
     .getByLabel("Facilitator BYOK · tab only")
     .fill(standardApiKey);
-  await productPage.getByRole("button", { name: "Set key" }).click();
+  await activateByKeyboard(
+    productPage,
+    productPage.getByRole("button", { name: "Set key" }),
+  );
   await expect(productPage.getByText("Facilitator lease active")).toBeVisible();
 
   await legalPage.goto(baseURL ?? "/");
@@ -701,7 +705,10 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
     path: `${voiceScreenshotDirectory}/2026-07-19-private-text-desktop.png`,
   });
 
-  await productSpeech.getByRole("button", { name: /Shared · room/u }).click();
+  await activateByKeyboard(
+    productPage,
+    productSpeech.getByRole("button", { name: /Shared · room/u }),
+  );
   await legalSpeech.getByRole("button", { name: /Shared · room/u }).click();
   await expect(legalSpeech.getByText(privateText)).toHaveCount(0);
 
@@ -711,14 +718,20 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
   const legalSharedCard = legalPage
     .getByRole("article")
     .filter({ hasText: "Shared room agent" });
-  await productSharedCard.getByRole("button", { name: "Connect" }).click();
+  await activateByKeyboard(
+    productPage,
+    productSharedCard.getByRole("button", { name: "Connect" }),
+  );
   await legalSharedCard.getByRole("button", { name: "Connect" }).click();
   await expect(productSharedCard.getByText("Connected")).toBeVisible();
   await expect(legalSharedCard.getByText("Connected")).toBeVisible();
 
   const sharedText = "Synthetic shared launch statement for A7.";
   await productSpeech.getByLabel("Equivalent text command").fill(sharedText);
-  await productSpeech.getByRole("button", { name: /Send to room/u }).click();
+  await activateByKeyboard(
+    productPage,
+    productSpeech.getByRole("button", { name: /Send to room/u }),
+  );
   await expect(
     productSpeech.getByText(`Sent to the room · ${sharedText}`),
   ).toBeVisible();
@@ -788,6 +801,13 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
   const saveVideo = video?.saveAs(
     `${voiceClipDirectory}/2026-07-19-private-text-shared-floor-voice.webm`,
   );
+  await activateByKeyboard(
+    productPage,
+    productSharedCard.getByRole("button", { name: "Disconnect" }),
+  );
+  await expect(
+    productSharedCard.getByRole("button", { name: "Connect" }),
+  ).toBeVisible();
   await productPage.getByRole("button", { name: "Remove key" }).click();
   await expect(
     productPage.getByText("Facilitator BYOK · tab only"),

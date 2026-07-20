@@ -1872,16 +1872,82 @@ describe("Node HTTP flagship shell", () => {
       },
     );
     expect(privateSource.status).toBe(201);
+    const registeredSource =
+      RegisterPrivateTextSourceFixtureResponseSchema.parse(
+        await privateSource.json(),
+      );
+    const exactSnippet = "Synthetic private content";
+    const sourceRange = { end: exactSnippet.length, start: 0 };
+    const proposalResponse = await app.request(
+      "/api/v1/disclosures/proposals",
+      {
+        body: JSON.stringify({
+          exactSnippet,
+          expectedPosition: 1,
+          idempotencyKey: "reset-private-proposal",
+          meetingId: targetMeetingId,
+          sourceArtifactId: registeredSource.source.sourceArtifactId,
+          sourceRange,
+        }),
+        headers: participantHeaders,
+        method: "POST",
+      },
+    );
+    expect(proposalResponse.status).toBe(201);
+    const proposal = ProposeDisclosureResponseSchema.parse(
+      await proposalResponse.json(),
+    );
+    const previewResponse = await app.request("/api/v1/disclosures/preview", {
+      body: JSON.stringify({
+        candidateId: proposal.candidate.candidateId,
+        exactSnippet,
+        expectedPosition: 2,
+        idempotencyKey: "reset-private-preview",
+        meetingId: targetMeetingId,
+        sourceRange,
+      }),
+      headers: participantHeaders,
+      method: "POST",
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = PreviewDisclosureResponseSchema.parse(
+      await previewResponse.json(),
+    );
+    const approvalResponse = await app.request("/api/v1/disclosures/approve", {
+      body: JSON.stringify({
+        candidateId: proposal.candidate.candidateId,
+        expectedPosition: 3,
+        idempotencyKey: "reset-private-approval",
+        meetingId: targetMeetingId,
+        previewHash: preview.previewHash,
+      }),
+      headers: participantHeaders,
+      method: "POST",
+    });
+    expect(approvalResponse.status).toBe(200);
+    expect(
+      ApproveDisclosureResponseSchema.parse(await approvalResponse.json())
+        .evidence.exactSnippet,
+    ).toBe(exactSnippet);
+    const evidenceBeforeReset = await app.request(
+      `/api/v1/meetings/${targetMeetingId}/evidence`,
+      { headers: participantHeaders },
+    );
+    expect(evidenceBeforeReset.status).toBe(200);
+    expect(
+      ListSharedEvidenceResponseSchema.parse(await evidenceBeforeReset.json())
+        .evidence,
+    ).toHaveLength(1);
 
     const resetBody = {
-      expectedPosition: 0,
+      expectedPosition: 1,
       idempotencyKey: "reset-http-flagship",
       meetingId: targetMeetingId,
     };
     const participantReset = await app.request(
       `/api/v1/meetings/${targetMeetingId}/demo/reset`,
       {
-        body: JSON.stringify({ ...resetBody, expectedPosition: 1 }),
+        body: JSON.stringify({ ...resetBody, expectedPosition: 5 }),
         headers: participantHeaders,
         method: "POST",
       },
@@ -1896,7 +1962,10 @@ describe("Node HTTP flagship shell", () => {
         method: "POST",
       },
     );
-    expect(resetResponse.status).toBe(200);
+    expect(
+      resetResponse.status,
+      JSON.stringify(await resetResponse.clone().json()),
+    ).toBe(200);
     const reset = FacilitatorDemoResetResponseSchema.parse(
       await resetResponse.json(),
     );
@@ -1927,6 +1996,10 @@ describe("Node HTTP flagship shell", () => {
     const targetRecords = await runtime.decisions.events.load(targetMeetingId);
     expect(targetRecords.map(({ event }) => event.eventType)).toEqual([
       "ArtifactRegistered",
+      "DisclosureProposed",
+      "DisclosurePreviewed",
+      "DisclosureApproved",
+      "EvidenceShared",
       "DemoResetRequested",
       "DemoResetCompleted",
     ]);
@@ -1941,6 +2014,17 @@ describe("Node HTTP flagship shell", () => {
     expect(resetProjection?.privateWorkspaces).toEqual([]);
     expect(resetProjection?.shared.evidence).toEqual([]);
     expect(resetProjection?.shared.decisions).toEqual([]);
+
+    const participantEvidenceResponse = await app.request(
+      `/api/v1/meetings/${targetMeetingId}/evidence`,
+      { headers: participantHeaders },
+    );
+    expect(participantEvidenceResponse.status).toBe(200);
+    expect(
+      ListSharedEvidenceResponseSchema.parse(
+        await participantEvidenceResponse.json(),
+      ).evidence,
+    ).toEqual([]);
   });
 
   it("lets only the configured facilitator create a 3–8 user meeting", async () => {
@@ -2410,6 +2494,32 @@ describe("Node HTTP flagship shell", () => {
     expect(serializedShared).toContain(exactSnippet);
     expect(serializedShared).not.toContain("Private intro for the owner");
     expect(serializedShared).not.toContain("Private ending for the owner");
+    const privateBodyRead = vi.spyOn(runtime.disclosures.artifacts, "get");
+    privateBodyRead.mockClear();
+    const ownerEvidenceResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/evidence`,
+      { headers: safetyHeaders },
+    );
+    expect(ownerEvidenceResponse.status).toBe(200);
+    expect(privateBodyRead).not.toHaveBeenCalled();
+    privateBodyRead.mockRestore();
+    const legalProjectionResponse = await app.request(
+      `/api/v1/meetings/${meetingId}/projection`,
+      { headers: { authorization: `Bearer ${legal.bearerToken}` } },
+    );
+    expect(legalProjectionResponse.status).toBe(200);
+    expect(
+      RoleProjectionResponseSchema.parse(await legalProjectionResponse.json())
+        .shared.evidence,
+    ).toMatchObject([
+      {
+        confirmationStatus: "human_confirmed",
+        exactSnippet,
+        origin: "source",
+        provenance: "approved_exact_excerpt",
+        scope: "shared",
+      },
+    ]);
     const legalListAfterApproval = await app.request("/api/v1/meetings", {
       headers: { authorization: `Bearer ${legal.bearerToken}` },
     });
@@ -2430,7 +2540,15 @@ describe("Node HTTP flagship shell", () => {
         await legalEvidenceResponse.json(),
       ),
     ).toMatchObject({
-      evidence: [{ exactSnippet }],
+      evidence: [
+        {
+          confirmationStatus: "human_confirmed",
+          exactSnippet,
+          origin: "source",
+          provenance: "approved_exact_excerpt",
+          scope: "shared",
+        },
+      ],
       position: 1,
     });
   });

@@ -22,4 +22,4 @@ Useful narration:
 > take, the facilitator resets only this room and returns to the same known
 > Context state.
 
-Capture date: 2026-07-19. Feature slice: D7 guided flagship and scoped reset.
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: D7 guided flagship and scoped reset.

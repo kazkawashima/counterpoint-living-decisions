@@ -4,8 +4,11 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   CreateMeetingResponseSchema,
   LoginResponseSchema,
+  SharedDisplayProjectionResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { activateByKeyboard } from "../helpers/keyboard.js";
+import { uploadAndUsePrivateMarkdown } from "../helpers/private-source.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/shared-display");
 const clipDirectory = evidenceDirectory("clips/shared-display");
@@ -65,11 +68,17 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
     .getByRole("article")
     .filter({ hasText: meeting.purpose });
   await meetingCard.getByRole("button", { name: "Open workspace" }).click();
-  await page.getByRole("button", { name: "Create shared display" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Create shared display" }),
+    "Space",
+  );
   const activeDisplay = page.getByRole("group", {
     name: "Read-only display active",
   });
   await expect(activeDisplay).toBeVisible();
+  await expect(activeDisplay).toBeFocused();
+  await expect(activeDisplay).toHaveCSS("outline-style", "solid");
   const displayHref = await activeDisplay
     .getByRole("link", { name: "Open display" })
     .getAttribute("href");
@@ -100,12 +109,17 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
     displayPage.getByRole("button", { name: /commit|reset|display/iu }),
   ).toHaveCount(0);
   await expect(displayPage.getByText("participant-product")).toHaveCount(0);
+  await expect(displayPage.getByText("No Decision yet")).toBeVisible();
   await displayPage.screenshot({
     animations: "disabled",
     fullPage: true,
     path: `${screenshotDirectory}/2026-07-19-shared-display-empty-desktop.png`,
   });
 
+  await uploadAndUsePrivateMarkdown(page, {
+    filename: "shared-display-source.md",
+    text: exactSnippet,
+  });
   await page
     .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
@@ -114,6 +128,36 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
   await expect(
     displayPage.locator(".display-evidence blockquote"),
   ).toContainText(exactSnippet, { timeout: 8_000 });
+  await expect(
+    displayPage.locator(".display-evidence blockquote"),
+  ).toContainText("Source ref");
+  const displayUrl = new URL(displayHref);
+  const displayMeetingId = displayUrl.searchParams.get("displayMeetingId");
+  const displayToken = displayUrl.searchParams.get("displayToken");
+  if (displayMeetingId === null || displayToken === null) {
+    throw new Error("Shared display link is missing its scoped credential");
+  }
+  const sharedProjectionResponse = await displayPage.request.get(
+    `/api/v1/meetings/${encodeURIComponent(displayMeetingId)}/display?token=${encodeURIComponent(displayToken)}`,
+  );
+  expect(sharedProjectionResponse.status()).toBe(200);
+  const sharedProjection = SharedDisplayProjectionResponseSchema.parse(
+    await sharedProjectionResponse.json(),
+  );
+  const sourceArtifactId =
+    sharedProjection.shared.evidence[0]?.sourceArtifactId;
+  if (sourceArtifactId === undefined) {
+    throw new Error("Shared display evidence has no source reference");
+  }
+  const sourceReference = displayPage.locator("details.source-reference");
+  await expect(sourceReference).toHaveAttribute(
+    "aria-label",
+    `Source reference ${sourceArtifactId}`,
+  );
+  await sourceReference.locator("summary").click();
+  await expect(
+    sourceReference.getByText(sourceArtifactId, { exact: true }),
+  ).toBeVisible();
   await expect(
     displayPage.getByText("Regional launch readiness note"),
   ).toHaveCount(0);
@@ -142,7 +186,14 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
   });
   await mobileContext.close();
 
-  await activeDisplay.getByRole("button", { name: "End access" }).click();
+  await activateByKeyboard(
+    page,
+    activeDisplay.getByRole("button", { name: "End access" }),
+    "Space",
+  );
+  await expect(
+    page.getByRole("button", { name: "Create shared display" }),
+  ).toBeFocused();
   await expect(
     displayPage.getByRole("heading", {
       name: "Shared content is no longer available",
