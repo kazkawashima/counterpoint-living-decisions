@@ -100,7 +100,8 @@ crossed without a decision.
 
 ## UD-07 — Judge credential delivery path
 
-- **Status:** Pending preview inspection scheduled for 2026-07-20.
+- **Status:** Open after repo-side preview verification; Devpost submission
+  preview and logged-out visibility still require product-owner inspection.
 - **Decision needed:** Choose the non-public credential handoff after the actual
   Devpost submission preview is inspected.
 - **Preferred order:** Private Testing Instructions if verified non-public;
@@ -108,7 +109,7 @@ crossed without a decision.
 - **Blocks:** Final credential handoff.
 - **Does not block:** Authentication or judge-account implementation.
 - **Answer:** Expect Testing Instructions to work; product owner will verify the
-  preview and logged-out view on 2026-07-20.
+  actual Devpost preview and logged-out view before placing any credential.
 
 ## How to answer
 

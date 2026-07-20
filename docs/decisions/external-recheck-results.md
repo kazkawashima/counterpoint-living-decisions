@@ -121,9 +121,9 @@ Rechecked on 2026-07-20:
 - LGPL-3.0-or-later and MPL-2.0 identifiers occur only in development tooling
   (Sharp/libvips platform packages and Lightning CSS platform packages), not
   application runtime dependencies.
-- `docs/media/ASSET_MANIFEST.json` inventories 60 PNG and 12 WebM first-party
+- `docs/media/ASSET_MANIFEST.json` inventories 73 PNG and 12 WebM first-party
   synthetic browser captures by path, byte count, SHA-256, creator, origin, and
-  pending project rights status.
+  pending project rights status (85 assets total).
 - The Official Rules require authorization for third-party SDK/API/data use and
   compliance with applicable open-source licenses. Current submission guidance
   says a public repository should have a relevant open-source license.

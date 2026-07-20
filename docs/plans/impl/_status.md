@@ -1097,6 +1097,8 @@ demonstrably viewable.
 - Closed: UD-04 public-facing name is Descant — Living Decisions; historical and
   internal Counterpoint identifiers remain intentionally unchanged.
 - Open: UD-05 final message hierarchy and UD-07 credential path.
-- ER-07 preview inspection is scheduled for 2026-07-20.
+- ER-07 repository-side preview and logged-out/browser checks are closed for
+  this slice; actual Devpost submission-preview visibility and credential
+  handoff remain product-owner gates.
 - External rechecks are performed at their named implementation/submission
   gates.

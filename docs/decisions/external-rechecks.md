@@ -21,7 +21,10 @@ the named gate.
 Do not convert an unverified topic statement into a current fact. Record the
 date, exact source, and observed value when each item is closed.
 
-ER-07 is scheduled for product-owner inspection on 2026-07-20.
+The repository-side preview and logged-out/browser safety checks for ER-07 are
+complete. Product-owner inspection of the actual Devpost submission preview,
+including the logged-out view and any private Testing Instructions field,
+remains open before entering credentials.
 
 ER-03 was closed on 2026-07-19. ER-01, ER-02, and ER-08 were rechecked and
 closed for the current slice on 2026-07-20, with ER-01 still requiring the
