@@ -1071,6 +1071,11 @@ The canonical implementation-facing artifacts are:
   contains the preview URL, one Flagship path, synthetic-story boundary, and
   degraded/manual fallback, but no credential or Secret. The private Devpost
   field visibility check and actual credential handoff remain owner-owned.
+- The explicit Preview deployment is also recorded in
+  `docs/deployments/preview-2026-07-21.md` with the deployed implementation
+  commit, rendered config hash, migration boundary, named bindings, safety
+  flags, and credential-free verification summary. Production remains
+  intentionally undeployed and provider-disabled.
 
 ## Next executable slice
 

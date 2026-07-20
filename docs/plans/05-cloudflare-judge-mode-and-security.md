@@ -373,9 +373,12 @@ deployment boundary before it can be claimed as hosted evidence.
 
 - [x] Add preview and production deployment commands.
 - [x] Add manually approved main deployment workflow.
-- [ ] Run D1/DO migrations safely.
+- [x] Run D1/DO migrations safely for the approved Preview deployment;
+      production migration remains a separate release gate.
 - [x] Add health/readiness and post-deploy flagship smoke.
-- [ ] Record deployed commit/configuration.
+- [x] Record the approved Preview commit/configuration in
+      [`docs/deployments/preview-2026-07-21.md`](../deployments/preview-2026-07-21.md);
+      production remains un-deployed.
 - [x] Write rollback and judge-secret shutdown runbooks.
 
 C6 preparation notes:
@@ -399,14 +402,16 @@ C6 preparation notes:
   `staged-demo-rule-v1` through `DEMO_STORY_MODE`; it creates no provider call,
   Secret use, or usage reservation. Production rendering forces that flag off,
   so this is a synthetic preview story rather than production judge enablement.
-- Credential-free deployment records contain the commit, target, Worker name,
-  origin host, and hashes of the generated config and private deployment
-  status. No real deployment record exists until an approved deployment runs.
+- The approved Preview deployment record contains the commit, target, Worker
+  name, origin host, rendered config hash, migration boundary, named bindings,
+  safety flags, and credential-free verification summary. The private status
+  hash remains in ignored runner state; production has no deployment record
+  until its separate approval gate runs.
 - Rollback is binary-only and forward-schema-compatible; no D1 or Durable
   Object down migration is permitted. Judge shutdown revokes provider access
   and deletes the Worker Secret without reading or logging its value.
-- No remote resource, migration, deployment, secret, or repository visibility
-  was changed while preparing C6.
+- No production resource, migration, deployment, Secret, or repository
+  visibility was changed by the Preview closeout.
 
 ## Browser verification
 

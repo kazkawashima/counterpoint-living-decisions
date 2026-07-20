@@ -47,6 +47,14 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   secret、provider call、usage reservationを持たず、production用render configでは強制的に
   disabledになる。したがってpreviewのstaged demoは安全な合成導線であり、production
   judgeを有効化したことを意味しない。
+- READMEとjudge credential運用手順は、固定ログイン情報を漏洩しても本番権限にならない
+  synthetic local/demo fixtureとして明示し、本番judge credentialのrevoke・rotation・
+  Secret delete手順を記録している。ローカル/Preview E2Eはprovider disabled、provider
+  failure、usage capのいずれでも手動入力、状態、history/audit/exportが継続することを
+  確認している。
+- Previewの明示デプロイを、commit、config hash、migration境界、Worker/R2/DO binding、
+  safety flags、検証結果を含むcredential-free記録
+  `docs/deployments/preview-2026-07-21.md` に残した。productionは未デプロイ・未有効化である。
 - `221b6d5` preview deployでは security matrix 300/300、Cloudflare pool 142/142、
   health/readiness/auth smoke、Flagship smokeを通過し、実previewのPlaywrightでも
   `AT_RISK → facilitator review → REVIEW_REQUIRED → Action hold/reconsideration task`
@@ -88,7 +96,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       明示する。
 - [x] `Commit` 後に history、audit、exportを取得しても、未接続経路を artifact storage
       エラーとして誤表示しない。API失敗時は対象機能、原因、再試行または手動継続を示す。
-- [ ] OpenAI disabled、provider障害、judge cap到達のいずれでも、既存のroom状態、
+- [x] OpenAI disabled、provider障害、judge cap到達のいずれでも、既存のroom状態、
       手動excerpt、Decision編集、history、JSON exportを保持する。
 - [x] Flagship resetは対象meetingだけを初期状態へ戻し、再実行して同じ価値弧を再生できる。
 - [ ] 初見の通し実演を約3分以内に収める。機能追加で長くなった場合は任意機能を導線から
@@ -113,7 +121,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] `.env.example` は空のplaceholderと安全な説明だけを持ち、judge keyは記載しない。
       `OPENAI_API_KEY_JUDGE` と `JUDGE_IP_HMAC_SECRET` は別々のCloudflare Worker Secret
       とし、source、vars、D1、R2、DO、browser、ログへ複製しない。
-- [ ] 固定デモパスワードは実アカウントの認証情報ではなく合成demo-only credential
+- [x] 固定デモパスワードは実アカウントの認証情報ではなく合成demo-only credential
       と明示し、seed dataもすべて架空にする。公開後の漏洩を前提に、judge credentialは
       失効・rotateできる運用を確認する。
 - [ ] 直接依存・推移依存・同梱mediaのlicense/NOTICEを棚卸しし、公開切替前に

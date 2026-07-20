@@ -631,11 +631,11 @@ test("facilitator commits a grounded Decision that participants can revisit", as
       .filter({ hasText: "External event received" }),
   ).toContainText("Evaluation recorded · Human review still required");
   await expect(committedDecision).toContainText("AT_RISK · AI suggestion");
-  await expect(
-    committedDecision
-      .getByRole("status")
-      .filter({ hasText: "AI inferred · Human review required" }),
-  ).toBeVisible();
+  const invalidationReviewStatus = committedDecision
+    .getByRole("status")
+    .filter({ hasText: "Human review required" });
+  await expect(invalidationReviewStatus).toBeVisible();
+  await expect(invalidationReviewStatus).toContainText("AI inferred");
   await expect(
     facilitatorPage.getByText("REVIEW_REQUIRED has not been confirmed"),
   ).toBeVisible();
