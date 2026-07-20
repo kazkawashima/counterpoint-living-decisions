@@ -271,7 +271,13 @@ export async function injectDemoRegulatoryChange(
   if (authorization.kind !== "authorized" || context.role !== "facilitator") {
     return { code: "FORBIDDEN", kind: "failed" };
   }
+  const demoEventId = `demo-regulator:${input.idempotencyKey}`;
   const records = await dependencies.events.load(input.meetingId);
+  const priorReceipt = normalizeRecords(records).find(
+    (event): event is EventOf<"ExternalEventReceived"> =>
+      event.eventType === "ExternalEventReceived" &&
+      event.payload.externalEvent.id === demoEventId,
+  );
   const projection = replayMeeting(
     meetingId(input.meetingId),
     normalizeRecords(records),
@@ -281,7 +287,10 @@ export async function injectDemoRegulatoryChange(
       decision.status === "MONITORING" &&
       decision.monitorCondition.registrationId !== undefined,
   );
-  if (monitoredDecision?.monitorCondition.registrationId === undefined) {
+  const registrationId =
+    priorReceipt?.payload.externalEvent.monitorRegistrationId ??
+    monitoredDecision?.monitorCondition.registrationId;
+  if (registrationId === undefined) {
     return { code: "MONITOR_REGISTRATION_NOT_FOUND", kind: "failed" };
   }
   return receiveRegulatoryChange(
@@ -294,11 +303,11 @@ export async function injectDemoRegulatoryChange(
       description:
         "Staged demo event: a synthetic regional regulation changes the approval gate.",
       effectiveAt: "2026-08-01T00:00:00.000Z",
-      eventId: `demo-regulator:${input.idempotencyKey}`,
+      eventId: demoEventId,
       eventType: "regulatory_change",
       jurisdiction: "European Union",
       meetingId: input.meetingId,
-      monitorRegistrationId: monitoredDecision.monitorCondition.registrationId,
+      monitorRegistrationId: registrationId,
       payloadHash: "sha256:c3RhZ2VkLWRlbW8tcmVndWxhdG9yeS1ldmVudA",
       source: "Counterpoint staged synthetic regulator",
       sourceReference: "demo://regulatory-change/eu-approval-gate",

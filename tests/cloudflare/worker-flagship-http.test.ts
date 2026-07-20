@@ -4,10 +4,18 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
-import type { PrivateDisclosureProposal } from "@counterpoint/adapters-openai";
+import { fingerprintJudgeStructuredInput } from "../../apps/worker/src/judge-structured-ai.js";
+import type {
+  AssumptionInvalidationEvaluation,
+  AssumptionInvalidationEvaluationInput,
+  PrivateDisclosureProposal,
+  SharedDecisionSynthesis,
+  SharedDecisionSynthesisInput,
+} from "@counterpoint/adapters-openai";
 import {
   ApproveDisclosureResponseSchema,
   CommitDecisionResponseSchema,
+  DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   FacilitatorDemoResetResponseSchema,
   InjectDemoRegulatoryChangeResponseSchema,
@@ -40,7 +48,7 @@ function workerEnv(): Env {
     DB: env.DB,
     JUDGE_REALTIME_CALLS: env.JUDGE_REALTIME_CALLS,
     MEETINGS: env.MEETINGS,
-    OPENAI_MODE: env.OPENAI_MODE,
+    OPENAI_MODE: "deterministic",
     OPENAI_MODEL: env.OPENAI_MODEL,
     RUNTIME_MODE: env.RUNTIME_MODE,
     JUDGE_MANAGED_REALTIME_ROUTE_ENABLED:
@@ -55,6 +63,7 @@ function judgeWorkerEnv(overrides: Partial<Env> = {}): Env {
     JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
     JUDGE_USER_ID: "product",
     OPENAI_API_KEY_JUDGE: "test-only-never-sent",
+    OPENAI_MODE: "disabled",
     ...overrides,
   };
 }
@@ -181,6 +190,101 @@ function meteredProposal(
     },
     exactSnippet,
     sourceRange: { end: exactSnippet.length, start: 0 },
+  };
+}
+
+function meteredDecision(
+  input: SharedDecisionSynthesisInput,
+): SharedDecisionSynthesis {
+  const evidence = input.evidence[0];
+  const ownerParticipantId = input.participantIds[0];
+  if (evidence === undefined || ownerParticipantId === undefined) {
+    throw new Error("Decision fake requires evidence and a participant.");
+  }
+  const draft = {
+    action: {
+      affectedPremiseIndex: 0 as const,
+      ownerParticipantId,
+      scope: "Run the staged pilot.",
+    },
+    confidence: 0.95,
+    dissent: {
+      reason: "Retain the rollout-risk concern.",
+      retained: true,
+    },
+    monitorCondition: "Review regulatory changes weekly.",
+    outcome: "Run a staged rollout with an explicit stop condition.",
+    premise: {
+      evidenceReferenceIds: [evidence.evidenceId],
+      statement: "A staged pilot limits rollout risk.",
+    },
+    reason: "Provider-free metered fake.",
+    title: "Staged rollout",
+  };
+  return {
+    ai: {
+      candidates: [draft],
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      inputReferenceIds: [evidence.evidenceId],
+      model: "gpt-5.6",
+      operation: "shared_decision_synthesis",
+      promptVersion: "shared-decision-v1",
+      schemaVersion: "1",
+    },
+    billing: {
+      attemptCount: 1,
+      attempts: [{ inputTokens: 240, model: "gpt-5.6", outputTokens: 40 }],
+      inputTokens: 240,
+      outputTokens: 40,
+    },
+    draft,
+  };
+}
+
+function meteredInvalidation(
+  input: AssumptionInvalidationEvaluationInput,
+): AssumptionInvalidationEvaluation {
+  const action = input.actions[0];
+  const evidence = input.evidence[0];
+  const premise = input.premises[0];
+  if (action === undefined || evidence === undefined || premise === undefined) {
+    throw new Error(
+      "Invalidation fake requires an Action, evidence, and premise.",
+    );
+  }
+  const suggestion = {
+    affectedActionIds: [action.actionId],
+    affectedPremiseIds: [premise.premiseId],
+    confidence: 0.98,
+    evidenceReferenceIds: [
+      evidence.evidenceReferenceId,
+      input.externalEvent.sourceReference,
+    ],
+    reason: "The regulatory change invalidates the rollout premise.",
+  };
+  return {
+    ai: {
+      candidates: [suggestion],
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      inputReferenceIds: [
+        input.externalEvent.externalEventId,
+        input.decision.revisionId,
+        premise.premiseId,
+        action.actionId,
+        ...suggestion.evidenceReferenceIds,
+      ],
+      model: "gpt-5.6",
+      operation: "assumption_invalidation",
+      promptVersion: "assumption-invalidation-v1",
+      schemaVersion: "1",
+    },
+    billing: {
+      attemptCount: 1,
+      attempts: [{ inputTokens: 180, model: "gpt-5.6", outputTokens: 30 }],
+      inputTokens: 180,
+      outputTokens: 30,
+    },
+    suggestion,
   };
 }
 
@@ -1368,6 +1472,485 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
     expect(rows).not.toContain("test-only-never-sent");
   });
 
+  it("shares content-free D1 claims and actual settlement across all three operations", async () => {
+    let notifyDecisionStarted!: () => void;
+    const decisionStarted = new Promise<void>((resolve) => {
+      notifyDecisionStarted = resolve;
+    });
+    let releaseDecision!: () => void;
+    const decisionBlocked = new Promise<void>((resolve) => {
+      releaseDecision = resolve;
+    });
+    let notifyInvalidationStarted!: () => void;
+    const invalidationStarted = new Promise<void>((resolve) => {
+      notifyInvalidationStarted = resolve;
+    });
+    let releaseInvalidation!: () => void;
+    const invalidationBlocked = new Promise<void>((resolve) => {
+      releaseInvalidation = resolve;
+    });
+    const proposer = {
+      propose: vi.fn(
+        (input: { readonly sourceArtifactId: string; readonly text: string }) =>
+          Promise.resolve(meteredProposal(input.sourceArtifactId, input.text)),
+      ),
+    };
+    const synthesizer = {
+      synthesize: vi.fn(async (input: SharedDecisionSynthesisInput) => {
+        notifyDecisionStarted();
+        await decisionBlocked;
+        return meteredDecision(input);
+      }),
+    };
+    const evaluator = {
+      evaluate: vi.fn(async (input: AssumptionInvalidationEvaluationInput) => {
+        notifyInvalidationStarted();
+        await invalidationBlocked;
+        const { billing: _billing, ...evaluation } = meteredInvalidation(input);
+        void _billing;
+        return evaluation;
+      }),
+    };
+    const handler = createWorkerHandler({
+      judgeAssumptionInvalidationEvaluator: evaluator,
+      judgePrivateDisclosureProposer: proposer,
+      judgeSharedDecisionSynthesizer: synthesizer,
+    });
+    const environment = judgeWorkerEnv();
+    const authorization = `Bearer ${await login(handler, environment)}`;
+    const post = async (path: string, body: unknown) =>
+      handler.fetch!(
+        workerRequest(
+          new Request(`https://203.0.113.40${path}`, {
+            body: JSON.stringify(body),
+            headers: {
+              authorization,
+              "CF-Connecting-IP": "203.0.113.40",
+              "content-type": "application/json",
+            },
+            method: "POST",
+          }),
+        ),
+        environment,
+        {} as ExecutionContext,
+      );
+    await resetFlagship({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-all-operations-reset",
+    });
+
+    const privateText =
+      "Confidential staged rollout constraint for all-operation proof.";
+    const source = await registerSource({
+      authorization,
+      environment,
+      handler,
+      idempotencyKey: "judge-all-operations-source",
+      text: privateText,
+    });
+    const proposalResponse = await handler.fetch!(
+      workerRequest(
+        proposeRequest({
+          authorization,
+          expectedPosition: source.position,
+          idempotencyKey: "judge-all-operations-proposal",
+          sourceArtifactId: source.sourceArtifactId,
+          sourceText: privateText,
+        }),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(proposalResponse.status).toBe(201);
+    const proposal = ProposeDisclosureResponseSchema.parse(
+      await json(proposalResponse),
+    );
+    const previewResponse = await post("/api/v1/disclosures/preview", {
+      candidateId: proposal.candidate.candidateId,
+      exactSnippet: proposal.candidate.outgoingPayload.exactSnippet,
+      expectedPosition: proposal.position,
+      idempotencyKey: "judge-all-operations-preview",
+      meetingId: FLAGSHIP_MEETING_ID,
+      sourceRange: proposal.candidate.outgoingPayload.sourceRange,
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = PreviewDisclosureResponseSchema.parse(
+      await json(previewResponse),
+    );
+    const approvalResponse = await post("/api/v1/disclosures/approve", {
+      candidateId: proposal.candidate.candidateId,
+      expectedPosition: preview.position,
+      idempotencyKey: "judge-all-operations-approval",
+      meetingId: FLAGSHIP_MEETING_ID,
+      previewHash: preview.previewHash,
+    });
+    expect(approvalResponse.status).toBe(200);
+    const approval = ApproveDisclosureResponseSchema.parse(
+      await json(approvalResponse),
+    );
+
+    const decisionRequest = {
+      assistance: "ai_preferred",
+      expectedPosition: approval.position,
+      idempotencyKey: "judge-all-operations-decision",
+      meetingId: FLAGSHIP_MEETING_ID,
+    } as const;
+    const decisionConflictIdempotencyKey =
+      "judge-all-operations-decision-conflict";
+    const decisionConflictClaimKey = await fingerprintJudgeStructuredInput({
+      idempotencyKey: decisionConflictIdempotencyKey,
+      meetingId: FLAGSHIP_MEETING_ID,
+      operation: "shared_decision_synthesis",
+    });
+    const nowEpoch = Math.floor(Date.now() / 1_000);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO judge_managed_ai_operation_claims (
+             claim_key_hash,
+             request_fingerprint,
+             operation,
+             model,
+             pricing_version,
+             created_at_epoch,
+             expires_at_epoch
+           ) VALUES (?, ?, 'shared_decision_synthesis', 'gpt-5.6', ?, ?, ?)`,
+      ).bind(
+          decisionConflictClaimKey,
+          `sha256:${"d".repeat(64)}`,
+          "conflicting-pricing-v1",
+        nowEpoch,
+        nowEpoch + 120,
+      ),
+      env.DB.prepare(
+        `INSERT INTO judge_managed_ai_operation_lifecycle (
+             claim_key_hash,
+             status
+           ) VALUES (?, 'legacy_blocked')`,
+      ).bind(decisionConflictClaimKey),
+    ]);
+    const decisionConflict = await post("/api/v1/decisions/candidates", {
+      ...decisionRequest,
+      idempotencyKey: decisionConflictIdempotencyKey,
+    });
+    expect(decisionConflict.status).toBe(409);
+    await expect(json(decisionConflict)).resolves.toMatchObject({
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    expect(synthesizer.synthesize).not.toHaveBeenCalled();
+
+    const decisionResponsePromise = post(
+      "/api/v1/decisions/candidates",
+      decisionRequest,
+    );
+    await decisionStarted;
+    const concurrentDecision = await post(
+      "/api/v1/decisions/candidates",
+      decisionRequest,
+    );
+    expect(concurrentDecision.status).toBe(503);
+    await expect(json(concurrentDecision)).resolves.toMatchObject({
+      code: "OPENAI_UNAVAILABLE",
+    });
+    expect(synthesizer.synthesize).toHaveBeenCalledTimes(1);
+    releaseDecision();
+    const decisionResponse = await decisionResponsePromise;
+    expect(decisionResponse.status).toBe(201);
+    const decisionCandidate = SynthesizeSharedDecisionResponseSchema.parse(
+      await json(decisionResponse),
+    );
+    const decisionReplay = await post(
+      "/api/v1/decisions/candidates",
+      decisionRequest,
+    );
+    expect(decisionReplay.status).toBe(201);
+    await expect(json(decisionReplay)).resolves.toMatchObject({
+      candidate: decisionCandidate.candidate,
+    });
+    expect(synthesizer.synthesize).toHaveBeenCalledTimes(1);
+
+    const premiseCandidate =
+      decisionCandidate.candidate.draft.premiseCandidates[0];
+    const actionCandidate =
+      decisionCandidate.candidate.draft.actionCandidates[0];
+    if (premiseCandidate === undefined || actionCandidate === undefined) {
+      throw new Error("Managed Decision did not contain premise and Action.");
+    }
+    const dispositionRequest =
+      DispositionSharedDecisionCandidateRequestSchema.parse({
+        actions: [
+          {
+            ownerParticipantId: actionCandidate.ownerParticipantId,
+            scope: actionCandidate.scope,
+          },
+        ],
+        candidateId: decisionCandidate.candidate.candidateId,
+        dissent: decisionCandidate.candidate.draft.dissentCandidates.map(
+          ({ reason, retained }) => ({ reason, retained }),
+        ),
+        expectedPosition: decisionCandidate.position,
+        idempotencyKey: "judge-all-operations-disposition",
+        meetingId: FLAGSHIP_MEETING_ID,
+        monitorCondition: decisionCandidate.candidate.draft.monitorCondition,
+        outcome: decisionCandidate.candidate.draft.outcome,
+        premiseDispositions: [
+          {
+            candidateId: premiseCandidate.candidateId,
+            disposition: "confirmed",
+            premise: {
+              evidenceReferenceIds: [approval.evidence.evidenceId],
+              statement: premiseCandidate.statement,
+            },
+          },
+        ],
+        reason: "Facilitator accepted the metered Decision candidate.",
+        title: decisionCandidate.candidate.draft.title,
+      });
+    const dispositionResponse = await post(
+      "/api/v1/decisions/candidates/disposition",
+      dispositionRequest,
+    );
+    const dispositionJson = await json(dispositionResponse);
+    if (dispositionResponse.status !== 200) {
+      throw new Error(JSON.stringify(dispositionJson));
+    }
+    expect({
+      body: dispositionJson,
+      status: dispositionResponse.status,
+    }).toMatchObject({ status: 200 });
+    const disposition =
+      DispositionSharedDecisionCandidateResponseSchema.parse(dispositionJson);
+    const premise = disposition.premises[0];
+    const action = disposition.actions[0];
+    if (premise === undefined || action === undefined) {
+      throw new Error("Decision disposition did not materialize state.");
+    }
+    const draftResponse = await post("/api/v1/decisions/drafts", {
+      actionIds: [action.actionId],
+      changeReason: "Create monitored Decision for invalidation proof.",
+      dissentIds: [],
+      evidenceIds: [approval.evidence.evidenceId],
+      expectedPosition: disposition.position,
+      idempotencyKey: "judge-all-operations-draft",
+      meetingId: FLAGSHIP_MEETING_ID,
+      monitorCondition: decisionCandidate.candidate.draft.monitorCondition,
+      outcome: decisionCandidate.candidate.draft.outcome,
+      premiseIds: [premise.premiseId],
+      title: decisionCandidate.candidate.draft.title,
+    });
+    expect(draftResponse.status).toBe(201);
+    const draft = SaveDecisionDraftResponseSchema.parse(
+      await json(draftResponse),
+    );
+    const readyResponse = await post("/api/v1/decisions/ready", {
+      decisionId: draft.decision.decisionId,
+      expectedPosition: draft.position,
+      idempotencyKey: "judge-all-operations-ready",
+      meetingId: FLAGSHIP_MEETING_ID,
+    });
+    expect(readyResponse.status).toBe(200);
+    const ready = MarkDecisionReadyResponseSchema.parse(
+      await json(readyResponse),
+    );
+    const commitResponse = await post("/api/v1/decisions/commit", {
+      decisionId: ready.decision.decisionId,
+      expectedPosition: ready.position,
+      idempotencyKey: "judge-all-operations-commit",
+      meetingId: FLAGSHIP_MEETING_ID,
+    });
+    expect(commitResponse.status).toBe(200);
+    const commit = CommitDecisionResponseSchema.parse(
+      await json(commitResponse),
+    );
+    const monitoringResponse = await post("/api/v1/decisions/monitoring", {
+      decisionId: commit.decision.decisionId,
+      expectedPosition: commit.position,
+      idempotencyKey: "judge-all-operations-monitoring",
+      meetingId: FLAGSHIP_MEETING_ID,
+    });
+    expect(monitoringResponse.status).toBe(200);
+
+    const invalidationConflictIdempotencyKey =
+      "judge-all-operations-event-conflict";
+    const invalidationConflictEventId = `demo-regulator:${invalidationConflictIdempotencyKey}`;
+    const invalidationConflictClaimKey = await fingerprintJudgeStructuredInput({
+      externalEventId: invalidationConflictEventId,
+      meetingId: FLAGSHIP_MEETING_ID,
+      operation: "assumption_invalidation",
+      revisionId: commit.decision.activeRevisionId,
+    });
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO judge_managed_ai_operation_claims (
+             claim_key_hash,
+             request_fingerprint,
+             operation,
+             model,
+             pricing_version,
+             created_at_epoch,
+             expires_at_epoch
+           ) VALUES (?, ?, 'assumption_invalidation', 'gpt-5.6', ?, ?, ?)`,
+      ).bind(
+          invalidationConflictClaimKey,
+          `sha256:${"e".repeat(64)}`,
+          "conflicting-pricing-v1",
+        nowEpoch,
+        nowEpoch + 120,
+      ),
+      env.DB.prepare(
+        `INSERT INTO judge_managed_ai_operation_lifecycle (
+             claim_key_hash,
+             status
+           ) VALUES (?, 'legacy_blocked')`,
+      ).bind(invalidationConflictClaimKey),
+    ]);
+    const eventPath = `/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/regulatory-changes`;
+    const invalidationConflict = await post(eventPath, {
+      idempotencyKey: invalidationConflictIdempotencyKey,
+    });
+    expect(invalidationConflict.status).toBe(202);
+    await expect(json(invalidationConflict)).resolves.toMatchObject({
+      evaluationStatus: "pending",
+      receiptStatus: "received",
+    });
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+
+    const eventRequest = {
+      idempotencyKey: "judge-all-operations-event",
+    };
+    const eventResponsePromise = post(eventPath, eventRequest);
+    await invalidationStarted;
+    const concurrentEvent = await post(eventPath, eventRequest);
+    expect(concurrentEvent.status).toBe(202);
+    await expect(json(concurrentEvent)).resolves.toMatchObject({
+      evaluationStatus: "pending",
+      receiptStatus: "received",
+    });
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    releaseInvalidation();
+    const eventResponse = await eventResponsePromise;
+    expect(eventResponse.status).toBe(202);
+    const event = InjectDemoRegulatoryChangeResponseSchema.parse(
+      await json(eventResponse),
+    );
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    expect(event.evaluationStatus).toBe("pending");
+    const evaluationsResponse = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://203.0.113.40/api/v1/meetings/${FLAGSHIP_MEETING_ID}/invalidation-evaluations`,
+          {
+            headers: {
+              authorization,
+              "CF-Connecting-IP": "203.0.113.40",
+            },
+            method: "GET",
+          },
+        ),
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(evaluationsResponse.status).toBe(200);
+    const evaluations = ListInvalidationEvaluationsResponseSchema.parse(
+      await json(evaluationsResponse),
+    );
+    expect(evaluations.evaluations).toEqual([
+      expect.objectContaining({
+        externalEventId: event.event.eventId,
+        operation: "assumption_invalidation",
+      }),
+    ]);
+    const eventReplay = await post(eventPath, eventRequest);
+    const eventReplayJson = await json(eventReplay);
+    expect(eventReplay.status).toBe(202);
+    expect(eventReplayJson).toMatchObject({
+      event: { eventId: event.event.eventId },
+    });
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+
+    const reservations = await env.DB.prepare(
+      `
+        SELECT *
+        FROM judge_usage_reservations
+        ORDER BY operation ASC
+      `,
+    ).all<Record<string, unknown>>();
+    expect(
+      reservations.results.map((row) => ({
+        actualCostMicroUsd: row.actual_cost_micro_usd,
+        actualGenerationCount: row.actual_generation_count,
+        operation: row.operation,
+        status: row.status,
+      })),
+    ).toEqual([
+      {
+        actualCostMicroUsd: 5_500_000,
+        actualGenerationCount: 2,
+        operation: "assumption_invalidation",
+        status: "finalized",
+      },
+      {
+        actualCostMicroUsd: 1200,
+        actualGenerationCount: 1,
+        operation: "private_evidence_disclosure",
+        status: "finalized",
+      },
+      {
+        actualCostMicroUsd: 2400,
+        actualGenerationCount: 1,
+        operation: "shared_decision_synthesis",
+        status: "finalized",
+      },
+    ]);
+    await expect(
+      env.DB.prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM judge_managed_ai_operation_lifecycle
+          WHERE status = 'settled'
+        `,
+      ).first<{ count: number }>(),
+    ).resolves.toMatchObject({ count: 3 });
+    const claims = await env.DB.prepare(
+      `
+        SELECT claims.*, lifecycle.*
+        FROM judge_managed_ai_operation_claims AS claims
+        JOIN judge_managed_ai_operation_lifecycle AS lifecycle
+          USING (claim_key_hash)
+        ORDER BY claims.operation, claims.claim_key_hash
+      `,
+    ).all<Record<string, unknown>>();
+    const claimStates = claims.results.map(({ operation, status }) => ({
+      operation,
+      status,
+    }));
+    expect(claimStates).toHaveLength(5);
+    expect(claimStates).toEqual(
+      expect.arrayContaining([
+        { operation: "assumption_invalidation", status: "legacy_blocked" },
+        { operation: "assumption_invalidation", status: "settled" },
+        { operation: "private_evidence_disclosure", status: "settled" },
+        { operation: "shared_decision_synthesis", status: "legacy_blocked" },
+        { operation: "shared_decision_synthesis", status: "settled" },
+      ]),
+    );
+    const durableRows = JSON.stringify([
+      ...reservations.results,
+      ...claims.results,
+    ]);
+    expect(durableRows).not.toContain(privateText);
+    expect(durableRows).not.toContain(source.sourceArtifactId);
+    expect(durableRows).not.toContain(
+      decisionCandidate.candidate.draft.outcome,
+    );
+    expect(durableRows).not.toContain("regulatory_change");
+    expect(durableRows).not.toContain("test-only-never-sent");
+    expect(durableRows).not.toContain("203.0.113.40");
+    expect(proposer.propose).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
   it("suppresses a concurrent duplicate and conflicts changed source identity or content", async () => {
     let releaseProvider!: () => void;
     const providerBlocked = new Promise<void>((resolve) => {
@@ -1482,33 +2065,62 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
     expect(proposer.propose).toHaveBeenCalledTimes(1);
   });
 
-  it("denies exhausted and ordinary-user managed work before the provider", async () => {
-    const proposer = {
-      propose: vi.fn(
-        (input: { readonly sourceArtifactId: string; readonly text: string }) =>
-          Promise.resolve(meteredProposal(input.sourceArtifactId, input.text)),
-      ),
-    };
-    const handler = createWorkerHandler({
-      judgePrivateDisclosureProposer: proposer,
-    });
-    const environment = judgeWorkerEnv();
-    const authorization = `Bearer ${await login(handler, environment)}`;
-    await resetFlagship({
-      authorization,
-      environment,
-      handler,
-      idempotencyKey: "judge-structured-exhausted-reset",
-    });
-    const source = await registerSource({
-      authorization,
-      environment,
-      handler,
-      idempotencyKey: "judge-structured-exhausted-source",
-      text: "Budget protected source.",
-    });
-    await env.DB.prepare(
-      `
+  it.each([
+    {
+      costMicroUsd: 25_000_000,
+      generationCount: 0,
+      label: "cost",
+      limit: "cost",
+      tokenCount: 0,
+    },
+    {
+      costMicroUsd: 0,
+      generationCount: 0,
+      label: "tokens",
+      limit: "tokens",
+      tokenCount: 2_171_200,
+    },
+    {
+      costMicroUsd: 0,
+      generationCount: 8,
+      label: "generations",
+      limit: "generation",
+      tokenCount: 0,
+    },
+  ] as const)(
+    "denies exhausted $label managed work before the provider",
+    async ({ costMicroUsd, generationCount, limit, tokenCount }) => {
+      const proposer = {
+        propose: vi.fn(
+          (input: {
+            readonly sourceArtifactId: string;
+            readonly text: string;
+          }) =>
+            Promise.resolve(
+              meteredProposal(input.sourceArtifactId, input.text),
+            ),
+        ),
+      };
+      const handler = createWorkerHandler({
+        judgePrivateDisclosureProposer: proposer,
+      });
+      const environment = judgeWorkerEnv();
+      const authorization = `Bearer ${await login(handler, environment)}`;
+      await resetFlagship({
+        authorization,
+        environment,
+        handler,
+        idempotencyKey: "judge-structured-exhausted-reset",
+      });
+      const source = await registerSource({
+        authorization,
+        environment,
+        handler,
+        idempotencyKey: "judge-structured-exhausted-source",
+        text: "Budget protected source.",
+      });
+      await env.DB.prepare(
+        `
         INSERT INTO judge_usage_reservations (
           reservation_id,
           request_fingerprint,
@@ -1541,15 +2153,15 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
           'test_budget',
           'test-model',
           'test-v1',
-          25000000,
+          ?,
+          ?,
           0,
+          ?,
           0,
+          ?,
+          ?,
           0,
-          0,
-          25000000,
-          0,
-          0,
-          0,
+          ?,
           0,
           'finalized',
           unixepoch(),
@@ -1557,59 +2169,71 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
           unixepoch()
         )
       `,
-    )
-      .bind(FLAGSHIP_MEETING_ID)
-      .run();
+      )
+        .bind(
+          FLAGSHIP_MEETING_ID,
+          costMicroUsd,
+          tokenCount,
+          generationCount,
+          costMicroUsd,
+          tokenCount,
+          generationCount,
+        )
+        .run();
 
-    const exhausted = await handler.fetch!(
-      workerRequest(
-        proposeRequest({
-          authorization,
-          expectedPosition: source.position,
-          idempotencyKey: "judge-structured-exhausted-proposal",
-          sourceArtifactId: source.sourceArtifactId,
-        }),
-      ),
-      environment,
-      {} as ExecutionContext,
-    );
-    const exhaustedBody = await json(exhausted);
-    expect({ body: exhaustedBody, status: exhausted.status }).toMatchObject({
-      status: 429,
-    });
-    expect(exhaustedBody).toMatchObject({
-      code: "USAGE_LIMIT_REACHED",
-      details: { limit: "cost" },
-    });
-    expect(proposer.propose).not.toHaveBeenCalled();
+      const exhausted = await handler.fetch!(
+        workerRequest(
+          proposeRequest({
+            authorization,
+            expectedPosition: source.position,
+            idempotencyKey: "judge-structured-exhausted-proposal",
+            sourceArtifactId: source.sourceArtifactId,
+          }),
+        ),
+        environment,
+        {} as ExecutionContext,
+      );
+      const exhaustedBody = await json(exhausted);
+      expect({ body: exhaustedBody, status: exhausted.status }).toMatchObject({
+        status: 429,
+      });
+      expect(exhaustedBody).toMatchObject({
+        code: "USAGE_LIMIT_REACHED",
+        details: { limit },
+      });
+      expect(proposer.propose).not.toHaveBeenCalled();
 
-    const ordinaryEnvironment = judgeWorkerEnv({
-      JUDGE_USER_ID: "product",
-    });
-    const ordinaryAuthorization = `Bearer ${await login(
-      handler,
-      ordinaryEnvironment,
-      "safety",
-      "counterpoint-safety",
-    )}`;
-    const ordinary = await handler.fetch!(
-      workerRequest(
-        proposeRequest({
-          authorization: ordinaryAuthorization,
-          expectedPosition: source.position,
-          idempotencyKey: "judge-structured-ordinary-proposal",
-          sourceArtifactId: source.sourceArtifactId,
-        }),
-      ),
-      ordinaryEnvironment,
-      {} as ExecutionContext,
-    );
-    expect(ordinary.status).toBe(403);
-    await expect(json(ordinary)).resolves.toMatchObject({
-      code: "JUDGE_MODE_FORBIDDEN",
-    });
-    expect(proposer.propose).not.toHaveBeenCalled();
-  });
+      if (limit !== "cost") {
+        return;
+      }
+      const ordinaryEnvironment = judgeWorkerEnv({
+        JUDGE_USER_ID: "product",
+      });
+      const ordinaryAuthorization = `Bearer ${await login(
+        handler,
+        ordinaryEnvironment,
+        "safety",
+        "counterpoint-safety",
+      )}`;
+      const ordinary = await handler.fetch!(
+        workerRequest(
+          proposeRequest({
+            authorization: ordinaryAuthorization,
+            expectedPosition: source.position,
+            idempotencyKey: "judge-structured-ordinary-proposal",
+            sourceArtifactId: source.sourceArtifactId,
+          }),
+        ),
+        ordinaryEnvironment,
+        {} as ExecutionContext,
+      );
+      expect(ordinary.status).toBe(403);
+      await expect(json(ordinary)).resolves.toMatchObject({
+        code: "JUDGE_MODE_FORBIDDEN",
+      });
+      expect(proposer.propose).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps manual work off the ledger and fails closed when live wiring is unsafe", async () => {
     const proposer = {
@@ -1682,6 +2306,11 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       },
       {
         environment: judgeWorkerEnv({
+          OPENAI_MODE: "deterministic",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({
           JUDGE_IP_HMAC_SECRET: "short",
           OPENAI_MODE: "disabled",
         }),
@@ -1733,6 +2362,16 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       await expect(json(response)).resolves.toMatchObject({
         code: "OPENAI_UNAVAILABLE",
       });
+      await expect(
+        env.DB.prepare(
+          "SELECT COUNT(*) AS count FROM judge_usage_reservations",
+        ).first<{ count: number }>(),
+      ).resolves.toMatchObject({ count: 0 });
+      await expect(
+        env.DB.prepare(
+          "SELECT COUNT(*) AS count FROM judge_managed_ai_operation_claims",
+        ).first<{ count: number }>(),
+      ).resolves.toMatchObject({ count: 0 });
     }
     expect(proposer.propose).not.toHaveBeenCalled();
   });

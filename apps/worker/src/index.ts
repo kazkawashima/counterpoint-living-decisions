@@ -6,9 +6,13 @@ import {
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
 import {
+  ASSUMPTION_INVALIDATION_OPERATION,
+  DECISION_SYNTHESIS_OPERATION,
   OpenAiPrivateDisclosureModel,
   OpenAiPrivateDisclosureProposer,
   OpenAiRealtimeClientSecretIssuer,
+  createOpenAiAssumptionInvalidationEvaluator,
+  createOpenAiSharedDecisionSynthesizer,
 } from "@counterpoint/adapters-openai";
 import {
   apiErrorResponse,
@@ -35,10 +39,21 @@ import { handleJudgeManagedRealtimeHttp } from "./judge-managed-realtime-http.js
 import { handleJudgeUsageSummaryHttp } from "./judge-usage-http.js";
 import type { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
 import type {
+  ConcreteAssumptionInvalidationEvaluator,
+  JudgeAssumptionInvalidationRuntimeDependencies,
+} from "./judge-assumption-invalidation.js";
+import type {
   ConcretePrivateDisclosureProposer,
   JudgePrivateDisclosureRuntimeDependencies,
 } from "./judge-private-disclosure.js";
-import { reconcileJudgeManagedStructuredAiOperations } from "./judge-managed-structured-ai.js";
+import type {
+  ConcreteSharedDecisionSynthesizer,
+  JudgeSharedDecisionRuntimeDependencies,
+} from "./judge-shared-decision.js";
+import {
+  reconcileJudgeManagedStructuredAiOperations,
+  type JudgeManagedStructuredAiReconcileRequest,
+} from "./judge-managed-structured-ai.js";
 import {
   JUDGE_STRUCTURED_AI_DESCRIPTORS,
   PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
@@ -46,11 +61,13 @@ import {
   PRIVATE_DISCLOSURE_MODEL,
   PRIVATE_DISCLOSURE_OPERATION,
   PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
-  createJudgePrivateDisclosureUsageLimiter,
+  createJudgeStructuredAiUsageLimiter,
+  type JudgeStructuredAiOperation,
 } from "./judge-structured-ai.js";
 import {
   createWorkerFlagshipDependencies,
   handleWorkerFlagshipHttp,
+  type WorkerFlagshipHttpDependencies,
 } from "./worker-flagship-http.js";
 
 export { JudgeRealtimeCallController } from "./judge-realtime-call-controller.js";
@@ -96,7 +113,9 @@ export type Env = Readonly<
 >;
 
 export interface CreateWorkerHandlerOptions {
+  readonly judgeAssumptionInvalidationEvaluator?: ConcreteAssumptionInvalidationEvaluator;
   readonly judgePrivateDisclosureProposer?: ConcretePrivateDisclosureProposer;
+  readonly judgeSharedDecisionSynthesizer?: ConcreteSharedDecisionSynthesizer;
 }
 
 interface DependencyProbe {
@@ -160,60 +179,114 @@ function judgeStructuredAiRouteConfigured(env: Env): boolean {
     judgeUserId(env) !== undefined &&
     nonEmptyTrimmed(apiKey) &&
     nonEmptyTrimmed(ipSecret) &&
-    apiKey !== ipSecret
+    apiKey !== ipSecret &&
+    env.OPENAI_MODE === "disabled"
   );
 }
 
-async function createJudgePrivateDisclosureRuntime(
+type JudgeStructuredAiRuntimeDependencies = Pick<
+  WorkerFlagshipHttpDependencies,
+  | "judgeAssumptionInvalidation"
+  | "judgePrivateDisclosure"
+  | "judgeSharedDecision"
+>;
+
+async function createJudgeStructuredAiRuntime(
   env: Env,
   request: Request,
   clock: () => string,
-  injectedProposer?: ConcretePrivateDisclosureProposer,
-): Promise<JudgePrivateDisclosureRuntimeDependencies | undefined> {
+  operation: JudgeStructuredAiOperation,
+  options: CreateWorkerHandlerOptions,
+): Promise<JudgeStructuredAiRuntimeDependencies> {
   if (!judgeStructuredAiRouteConfigured(env)) {
-    return undefined;
+    return {};
   }
   const ipReservation = await resolveJudgeIpReservationInput(
     request,
     env.JUDGE_IP_HMAC_SECRET,
   );
   if (ipReservation === undefined) {
-    return undefined;
+    return {};
   }
-  const proposer =
-    injectedProposer ??
-    new OpenAiPrivateDisclosureProposer({
-      maxAttempts: PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
-      model: PRIVATE_DISCLOSURE_MODEL,
-      modelAdapter: new OpenAiPrivateDisclosureModel({
-        apiKey: env.OPENAI_API_KEY_JUDGE!,
-        maxOutputTokens: PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS,
-        timeoutMs: PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
-      }),
-    });
+  const descriptor = JUDGE_STRUCTURED_AI_DESCRIPTORS[operation];
   const claims = new D1ManagedAiOperationClaimRepository(env.DB);
-  const usage = createJudgePrivateDisclosureUsageLimiter(env.DB, {
+  const usage = createJudgeStructuredAiUsageLimiter(env.DB, operation, {
     clock,
     hashIp: ipReservation.hashIp,
     ids: (namespace) => `${namespace}-${crypto.randomUUID()}`,
   });
-  return {
+  const shared = {
     claims,
     ipAddress: ipReservation.ipAddress,
     nextReservationId: () => `judge-ai:${crypto.randomUUID()}`,
-    proposer,
-    reconcile: async ({ limit, nowEpoch }) => {
+    reconcile: async ({
+      limit,
+      nowEpoch,
+    }: JudgeManagedStructuredAiReconcileRequest) => {
       await reconcileJudgeManagedStructuredAiOperations({
         claims,
         limit,
         nowEpoch,
-        retentionSeconds:
-          JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION]
-            .retentionSeconds,
+        retentionSeconds: descriptor.retentionSeconds,
         usage,
       });
     },
     usage,
+  };
+  if (operation === PRIVATE_DISCLOSURE_OPERATION) {
+    const proposer =
+      options.judgePrivateDisclosureProposer ??
+      new OpenAiPrivateDisclosureProposer({
+        maxAttempts: PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
+        model: PRIVATE_DISCLOSURE_MODEL,
+        modelAdapter: new OpenAiPrivateDisclosureModel({
+          apiKey: env.OPENAI_API_KEY_JUDGE!,
+          maxOutputTokens: PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS,
+          timeoutMs: PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
+        }),
+      });
+    return {
+      judgePrivateDisclosure: {
+        ...shared,
+        proposer,
+      } satisfies JudgePrivateDisclosureRuntimeDependencies,
+    };
+  }
+  if (operation === DECISION_SYNTHESIS_OPERATION) {
+    const synthesizer =
+      options.judgeSharedDecisionSynthesizer ??
+      createOpenAiSharedDecisionSynthesizer({
+        apiKey: env.OPENAI_API_KEY_JUDGE!,
+        maxAttempts: descriptor.reservedUsage.generationCount,
+        maxOutputTokens:
+          descriptor.reservedUsage.estimatedOutputTokens /
+          descriptor.reservedUsage.generationCount,
+        model: PRIVATE_DISCLOSURE_MODEL,
+        timeoutMs: descriptor.providerTimeoutMs,
+      });
+    return {
+      judgeSharedDecision: {
+        ...shared,
+        synthesizer,
+      } satisfies JudgeSharedDecisionRuntimeDependencies,
+    };
+  }
+  const evaluator =
+    options.judgeAssumptionInvalidationEvaluator ??
+    createOpenAiAssumptionInvalidationEvaluator({
+      apiKey: env.OPENAI_API_KEY_JUDGE!,
+      maxAttempts: descriptor.reservedUsage.generationCount,
+      maxOutputTokens:
+        descriptor.reservedUsage.estimatedOutputTokens /
+        descriptor.reservedUsage.generationCount,
+      model: PRIVATE_DISCLOSURE_MODEL,
+      timeoutMs: descriptor.providerTimeoutMs,
+    });
+  return {
+    judgeAssumptionInvalidation: {
+      ...shared,
+      evaluator,
+    } satisfies JudgeAssumptionInvalidationRuntimeDependencies,
   };
 }
 
@@ -480,21 +553,33 @@ export function createWorkerHandler(
           now: () =>
             new Date(Math.floor(Date.now() / 1_000) * 1_000).toISOString(),
         };
-        const judgePrivateDisclosure =
-          flagshipOperation === "propose-disclosure"
-            ? await createJudgePrivateDisclosureRuntime(
+        const judgeStructuredAi =
+          flagshipOperation === "propose-disclosure" ||
+          flagshipOperation === "prepare-decision-candidate" ||
+          flagshipOperation === "inject-demo-regulatory-change"
+            ? await createJudgeStructuredAiRuntime(
                 env,
                 request,
                 flagshipClock.now,
-                options.judgePrivateDisclosureProposer,
+                flagshipOperation === "propose-disclosure"
+                  ? PRIVATE_DISCLOSURE_OPERATION
+                  : flagshipOperation === "prepare-decision-candidate"
+                    ? DECISION_SYNTHESIS_OPERATION
+                    : ASSUMPTION_INVALIDATION_OPERATION,
+                options,
               )
-            : undefined;
+            : {};
         return handleWorkerFlagshipHttp({
           correlationId,
           dependencies: {
-            ...createWorkerFlagshipDependencies(env, {
-              clock: flagshipClock,
-            }),
+            ...createWorkerFlagshipDependencies(
+              String(env.JUDGE_STRUCTURED_AI_ROUTE_ENABLED) === "enabled"
+                ? { ...env, OPENAI_MODE: "disabled" }
+                : env,
+              {
+                clock: flagshipClock,
+              },
+            ),
             ...(allowlistedJudgeUserId === undefined
               ? {}
               : {
@@ -502,9 +587,7 @@ export function createWorkerHandler(
                     judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
                   },
                 }),
-            ...(judgePrivateDisclosure === undefined
-              ? {}
-              : { judgePrivateDisclosure }),
+            ...judgeStructuredAi,
           },
           ...(meetingId === undefined ? {} : { meetingId }),
           operation: flagshipOperation,

@@ -75,12 +75,9 @@ export const JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION =
 export const PRIVATE_DISCLOSURE_OPERATION =
   ADAPTER_PRIVATE_DISCLOSURE_OPERATION;
 export const PRIVATE_DISCLOSURE_MODEL = DEFAULT_OPENAI_MODEL;
-export const PRIVATE_DISCLOSURE_PRICING_VERSION =
-  `openai-gpt-5.6-conservative-2026-07-20+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
-export const DECISION_SYNTHESIS_PRICING_VERSION =
-  `openai-gpt-5.6-decision-2026-07-20+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
-export const ASSUMPTION_INVALIDATION_PRICING_VERSION =
-  `openai-gpt-5.6-invalidation-2026-07-20+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
+export const PRIVATE_DISCLOSURE_PRICING_VERSION = `openai-gpt-5.6-conservative-2026-07-20+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
+export const DECISION_SYNTHESIS_PRICING_VERSION = `openai-gpt-5.6-decision-2026-07-20+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
+export const ASSUMPTION_INVALIDATION_PRICING_VERSION = `openai-gpt-5.6-invalidation-2026-07-20+${JUDGE_STRUCTURED_INPUT_CANONICALIZATION_VERSION}`;
 export const PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS =
   JUDGE_STRUCTURED_AI_PROVIDER_TIMEOUT_MS;
 export const PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS = 700;
@@ -177,17 +174,34 @@ export function createJudgePrivateDisclosureUsageLimiter(
     readonly ids: (namespace: string) => string;
   },
 ): D1UsageLimiter {
+  return createJudgeStructuredAiUsageLimiter(
+    database,
+    PRIVATE_DISCLOSURE_OPERATION,
+    options,
+  );
+}
+
+export function createJudgeStructuredAiUsageLimiter(
+  database: D1Database,
+  operation: JudgeStructuredAiOperation,
+  options: {
+    readonly clock: () => string;
+    readonly hashIp: (ipAddress: string) => Promise<string>;
+    readonly ids: (namespace: string) => string;
+  },
+): D1UsageLimiter {
+  const descriptor = JUDGE_STRUCTURED_AI_DESCRIPTORS[operation];
   return new D1UsageLimiter(database, {
     clock: options.clock,
     hashIp: options.hashIp,
     ids: options.ids,
     limits: {
       ...JUDGE_GLOBAL_USAGE_LIMITS,
-      reservationTtlSeconds: PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS,
+      reservationTtlSeconds: descriptor.claimLeaseSeconds,
     },
-    model: PRIVATE_DISCLOSURE_MODEL,
-    operation: PRIVATE_DISCLOSURE_OPERATION,
-    pricingVersion: PRIVATE_DISCLOSURE_PRICING_VERSION,
+    model: DEFAULT_OPENAI_MODEL,
+    operation,
+    pricingVersion: descriptor.pricingVersion,
   });
 }
 
@@ -309,9 +323,7 @@ export function calculateJudgeStructuredAiActualUsage(
 
 function tokenRates(model: string): TokenRates {
   if (!Object.hasOwn(GPT_5_6_TOKEN_RATES, model)) {
-    throw new RangeError(
-      `Unsupported structured AI response model: ${model}`,
-    );
+    throw new RangeError(`Unsupported structured AI response model: ${model}`);
   }
   return GPT_5_6_TOKEN_RATES[model as keyof typeof GPT_5_6_TOKEN_RATES];
 }
@@ -381,10 +393,8 @@ function assertWithinReservation(
   assertBilling(billing);
   if (
     billing.attemptCount > descriptor.reservedUsage.generationCount ||
-    billing.inputTokens >
-      descriptor.reservedUsage.estimatedInputTokens ||
-    billing.outputTokens >
-      descriptor.reservedUsage.estimatedOutputTokens
+    billing.inputTokens > descriptor.reservedUsage.estimatedInputTokens ||
+    billing.outputTokens > descriptor.reservedUsage.estimatedOutputTokens
   ) {
     throw new RangeError("Structured AI actual usage exceeds its reservation.");
   }
@@ -460,9 +470,7 @@ function canonicalValue(value: unknown, parentKey?: string): unknown {
     if (
       (prototype !== Object.prototype && prototype !== null) ||
       ownKeys.some((key) => typeof key === "symbol") ||
-      ownKeys.some(
-        (key) => !isEnumerableDataProperty(descriptors[String(key)]),
-      )
+      ownKeys.some((key) => !isEnumerableDataProperty(descriptors[String(key)]))
     ) {
       throw new TypeError("Structured AI input contains a non-JSON value.");
     }
@@ -470,10 +478,7 @@ function canonicalValue(value: unknown, parentKey?: string): unknown {
       ownKeys
         .map(String)
         .toSorted(compareStrings)
-        .map((key) => [
-          key,
-          canonicalValue(descriptors[key]!.value, key),
-        ]),
+        .map((key) => [key, canonicalValue(descriptors[key]!.value, key)]),
     );
   }
   if (
