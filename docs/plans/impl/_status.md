@@ -1135,6 +1135,21 @@ The canonical implementation-facing artifacts are:
   the separate hosted C5 requirement, production judge/provider proof, or any
   owner-controlled submission gate.
 
+## 2026-07-21 submission-claim parity audit
+
+- The repository-side submission surfaces checked together were `README.md`,
+  `docs/submission-testing-instructions.md`, `docs/topics/README.md`, and the
+  external Preview browser assertions. They consistently present `Descant —
+  Living Decisions`, the `Work & Productivity` category, synthetic staged
+  fixtures, the manual fallback, and the distinction between staged demo rules
+  and live/provider-funded AI.
+- Historical `Counterpoint` references remain confined to source-history,
+  internal namespace, or migration-context documentation. They are not being
+  treated as the current public product name.
+- The actual Devpost title/description and public/private field visibility are
+  external owner-controlled surfaces; this repository audit cannot close that
+  comparison gate or the open UD-05 message hierarchy.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
