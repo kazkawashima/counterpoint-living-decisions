@@ -111,13 +111,13 @@ defaults.
       separate production HMAC Secret and no raw-IP persistence.
 - [x] Persist one server-owned opaque call handle per reservation and require
       exact session/user/participant/meeting ownership on lookup/termination.
-- [ ] Wire every judge billable path through a reservation before provider
+- [x] Wire every judge billable path through a reservation before provider
       work.
-- [ ] Enforce the USD 25 rolling-24-hour currency boundary before billable work.
+- [x] Enforce the USD 25 rolling-24-hour currency boundary before billable work.
 - [x] Treat the USD 50 provider alert as secondary warning only.
 - [ ] Derive secondary production limits from measured flagship usage.
-- [ ] Check limits before billable work.
-- [ ] Fail closed with `USAGE_LIMIT_REACHED`.
+- [x] Check limits before billable work.
+- [x] Fail closed with `USAGE_LIMIT_REACHED`.
 - [x] Keep manual degraded mode available.
 - [x] Add operator visibility without private content.
 
@@ -301,9 +301,21 @@ C4 foundation notes:
 - Provider-free Worker integration proves success settlement, exact replay,
   concurrent duplicate suppression, changed-source conflict, exhausted-budget
   denial, ordinary-user denial, manual zero-ledger behavior, disabled and
-  unsafe configuration failure, and content-free D1 rows. Shared Decision and
-  invalidation structured-output billing, measured production limits, and a
-  successful approved-provider lifecycle remain open.
+  unsafe configuration failure, and content-free D1 rows.
+- Private disclosure, shared Decision synthesis, and assumption invalidation
+  now share one durable managed-operation lifecycle. Migration 0011 records
+  reservation leases, provider-start state, settled tombstones, and 25-hour
+  reuse boundaries. Migration 0012 keeps request fingerprints unique while a
+  reservation is active but permits the same logical operation to reserve
+  again only after the claim repository has admitted post-retention reuse.
+  Automatic and operator reconciliation compare the exact same canonical
+  model, operation, pricing-version, fingerprint, and reservation identity.
+- The production Worker bundle contains no deterministic provider. Provider-
+  free fakes exist only through explicit test dependency injection. With the
+  gate or provider disabled, structured operations fail closed or retain a
+  durable pending receipt while manual text and manual controls remain
+  available. Measured production limits and a successful approved-provider
+  lifecycle remain open.
 
 ### C5 — Security hardening
 
@@ -362,7 +374,7 @@ deployment boundary before it can be claimed as hosted evidence.
 - [x] Add preview and production deployment commands.
 - [x] Add manually approved main deployment workflow.
 - [ ] Run D1/DO migrations safely.
-- [ ] Add health/readiness and post-deploy flagship smoke.
+- [x] Add health/readiness and post-deploy flagship smoke.
 - [ ] Record deployed commit/configuration.
 - [x] Write rollback and judge-secret shutdown runbooks.
 

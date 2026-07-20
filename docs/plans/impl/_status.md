@@ -577,18 +577,18 @@ The canonical implementation-facing artifacts are:
   Actions, after which the same Worker path reaches `DRAFT` → `DECISION_READY`
   → `COMMITTED`. The external-host Cloudflare test covers this full
   source-to-Commitment journey without an OpenAI call.
-- The hosted flagship now also reaches `MONITORING` through the authenticated
-  Worker path. The local preview Worker uses an explicit deterministic
-  evaluator without a provider key, so a facilitator-only demo regulatory
-  change reaches `AT_RISK`; the same facilitator-only review route reaches
-  `REVIEW_REQUIRED`, holds the affected Action, and creates a reconsideration
-  task. The live provider evaluator remains a separate, explicitly gated
-  deployment concern, while rendered remote deployment configs remain
-  provider-disabled until the judge gate is approved.
-- Worker deterministic mode now wires both AI-preferred private disclosure and
-  shared Decision synthesis in addition to invalidation evaluation. Manual
-  disclosure requests explicitly remove the proposer dependency, preserving
-  the manual fallback and truthful `human_selected`/`ai_assisted` origin.
+- The hosted flagship reaches `MONITORING` through the authenticated Worker
+  path. Provider-free integration dependencies exercise the staged regulatory
+  event, `AT_RISK`, `REVIEW_REQUIRED`, Action hold, and reconsideration task
+  without entering the production Worker bundle. Rendered preview and
+  production configs keep provider access disabled until the separate judge
+  gate is approved.
+- Judge-funded private disclosure, shared Decision synthesis, and assumption
+  invalidation now use the same request-scoped managed lifecycle only after the
+  exact gate, allowlisted judge, current authorization, canonical request IP,
+  and both required Worker Secrets are present. Manual paths remove provider
+  dependencies, create no judge claim or ledger row, and preserve truthful
+  `human_selected`/`ai_assisted` origin.
 - Hosted demo reset is now wired through the same authorization, event, and
   projection boundaries. It clears private/shared read models without rewinding
   the event cursor, supports exact idempotent replay, and rejects participant
@@ -598,10 +598,9 @@ The canonical implementation-facing artifacts are:
 - A reusable authenticated Cloudflare flagship smoke now exercises the real HTTP
   lifecycle from login/reset through private text, disclosure
   preview/approval, manual candidate/disposition, DRAFT, READY, COMMITTED,
-  MONITORING, demo invalidation/review, and reset replay. Local Wrangler smoke
-  runs it with deterministic invalidation enabled; the approved deployment
-  driver runs the same product lifecycle with invalidation opt-in only, keeping
-  remote provider access disabled by default.
+  MONITORING, staged invalidation/review, and reset replay. The approved
+  deployment driver keeps remote provider access disabled by default; provider
+  work and its successful lifecycle proof remain a separate approval gate.
 - A Worker-specific Playwright browser project now runs against Wrangler's
   `0.0.0.0` server and passed the external-style Product journey: SPA load,
   login, assigned Work & Productivity meeting, workspace render, and same-host
@@ -632,13 +631,13 @@ The canonical implementation-facing artifacts are:
   no account, IP, meeting, reservation, provider, credential, or content
   fields and remains available while provider access and the managed-call
   route are disabled.
-- C4 is not complete: broader judge billable-path coverage and measured
-  flagship limits remain.
-  The managed realtime route adapter now includes explicit duplicate-start and
-  changed-payload unit coverage, a four-case Worker gate suite, and Cloudflare
-  integration coverage; it remains disabled by default.
-  Full hosted security-matrix rerun and approved provider enablement remain
-  later slices.
+- All locally implemented judge billable paths now reserve before provider
+  work and share the fixed USD 25 rolling-24-hour ceiling. Managed Realtime and
+  all three structured-output operations have duplicate suppression, immutable
+  identity checks, typed `USAGE_LIMIT_REACHED`, and fail-closed provider gates.
+  The managed Realtime and structured-AI routes remain disabled by default.
+  Measured secondary limits, the full hosted security-matrix rerun, and
+  approved provider enablement remain later gates.
 - The real Worker-to-Durable-Object binding now has a provider-free integration
   proof in addition to the synthetic-controller path. The request reaches the
   registered `JUDGE_REALTIME_CALLS` namespace, observes the DO's
@@ -689,6 +688,12 @@ The canonical implementation-facing artifacts are:
   changed source content conflicts, and a generation-bound release cannot
   remove a newer claim. Manual and ordinary-user paths remain provider- and
   ledger-free.
+- Shared Decision synthesis and assumption invalidation use operation-specific
+  decorators around the same lifecycle. Their request fingerprints bind model,
+  pricing/canonicalization version, authorized scope, application identity,
+  and canonical structured input. External-event receipt persistence remains
+  durable before invalidation limit/provider outcomes, so 429 and 202 pending
+  responses do not hide accepted text or remove manual recovery.
 - The bounded OpenAI adapter reports content-free per-attempt token usage only
   to the Worker orchestrator. The path reserves USD 5.50 and at most two
   generations inside the fixed USD 25 rolling-24-hour limits before provider
@@ -701,12 +706,18 @@ The canonical implementation-facing artifacts are:
   unsafe-configuration, and D1 privacy behavior. Independent spec and quality
   review found and closed all Critical/Important findings. No provider request,
   Secret registration, remote mutation, or UI change occurred in this slice.
-- The current regular baseline is 698 Vitest tests, the contract project passes
-  118 tests, and the Cloudflare pool passes 11 files and 101 tests. Formatting,
+- Migration 0011 adds the durable reserved/provider-started/settled lifecycle
+  and bounded reconciliation. Migration 0012 keeps a request fingerprint unique
+  only while its usage reservation is active, preserving concurrent duplicate
+  suppression while allowing the same logical operation after the claim's
+  25-hour retention boundary. Worker readiness now requires the exact 0012
+  migration set.
+- The current regular baseline is 804 Vitest tests, the contract project passes
+  129 tests, and the Cloudflare pool passes 11 files and 141 tests. Formatting,
   ESLint, typecheck, build, architecture, secret scan, environment, generated
   Worker types, and Cloudflare configuration checks pass. The Worker-specific
-  browser E2E passes its external-style Wrangler journey, and the complete
-  browser suite passes all 16 cases in one run. Since no UI changed, no new
+  browser E2E passes both external-style Wrangler cases, and the complete Node
+  browser suite passes all 18 cases in one run. Since no UI changed, no new
   visual capture was retained. Reel shooting and reel-material organization
   remain deferred from the active goal; product visibility stays the priority.
 
@@ -721,10 +732,9 @@ The product is locally viewable through both Node and Wrangler, and the
 credential-free judge browser path is implemented. The next visibility gate is
 an explicitly approved preview deployment, followed by logged-out/incognito
 and authenticated judge smoke. Before enabling provider work, measure the
-flagship to replace full-cap-per-attempt settlement with safe derived limits
-and complete shared-Decision and invalidation structured-output billing. The
-hosted C5 security-matrix rerun and provider/deployment proof remain behind the
-approved remote boundary.
+flagship to replace full-cap-per-attempt settlement with safe derived limits.
+The hosted C5 security-matrix rerun and successful provider/deployment proof
+remain behind the approved remote boundary.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is
