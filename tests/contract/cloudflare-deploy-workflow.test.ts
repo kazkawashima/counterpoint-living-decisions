@@ -10,6 +10,10 @@ const driverUrl = new URL(
   "../../scripts/cloudflare-deploy.sh",
   import.meta.url,
 );
+const approvalUrl = new URL(
+  "../../scripts/cloudflare-remote-approval.sh",
+  import.meta.url,
+);
 
 describe("manually approved Cloudflare deployment workflow", () => {
   it("is dispatch-only, main-only, environment-protected, and secret-minimal", async () => {
@@ -31,15 +35,22 @@ describe("manually approved Cloudflare deployment workflow", () => {
   });
 
   it("keeps every remote phase guarded and its raw output in ignored runner state", async () => {
-    const driver = await readFile(driverUrl, "utf8");
+    const [driver, approval] = await Promise.all([
+      readFile(driverUrl, "utf8"),
+      readFile(approvalUrl, "utf8"),
+    ]);
 
     expect(driver).toContain(
+      'source "$script_dir/cloudflare-remote-approval.sh"',
+    );
+    expect(driver).toContain('assert_cloudflare_remote_approval "$target"');
+    expect(approval).toContain(
       'if [[ "${CLOUDFLARE_DEPLOYMENT_APPROVED:-}" != "$target" ]]',
     );
-    expect(driver).toContain(
+    expect(approval).toContain(
       'if [[ "$target" == "production" && "${CLOUDFLARE_PRODUCTION_CONFIRMATION:-}" != "counterpoint-production" ]]',
     );
-    expect(driver).toContain('if [[ -n "$(git status --porcelain)" ]]');
+    expect(approval).toContain('if [[ -n "$(git status --porcelain)" ]]');
     expect(driver).toContain('run_private "forward D1 migrations"');
     expect(driver).toContain('run_private "strict Worker deploy"');
     expect(driver).toContain('private_log=".wrangler/deploy/');

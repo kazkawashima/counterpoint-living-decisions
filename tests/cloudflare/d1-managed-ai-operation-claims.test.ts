@@ -114,6 +114,52 @@ async function insertLegacyClaim(
   ]);
 }
 
+async function insertReservedUsage(
+  input: ReturnType<typeof lifecycleClaim>,
+): Promise<void> {
+  await env.DB.withSession("first-primary")
+    .prepare(
+      `
+        INSERT INTO judge_usage_reservations (
+          reservation_id,
+          request_fingerprint,
+          account_id,
+          ip_hash,
+          meeting_id,
+          operation,
+          model,
+          pricing_version,
+          status,
+          reserved_cost_micro_usd,
+          reserved_input_tokens,
+          reserved_output_tokens,
+          reserved_generation_count,
+          reserved_realtime_seconds,
+          reserved_at_epoch,
+          active_until_epoch
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?, ?, ?, ?)
+      `,
+    )
+    .bind(
+      input.reservationId,
+      input.requestFingerprint,
+      "judge",
+      `hmac-sha256:${"a".repeat(64)}`,
+      "meeting",
+      input.operation,
+      input.model,
+      input.pricingVersion,
+      5_500_000,
+      540_000,
+      1_400,
+      2,
+      0,
+      input.createdAtEpoch,
+      input.leaseExpiresAtEpoch,
+    )
+    .run();
+}
+
 function synchronizedLifecycleReadDatabase(): D1Database {
   const session = env.DB.withSession("first-primary");
   let releaseReaders: (() => void) | undefined;
@@ -153,9 +199,7 @@ function synchronizedLifecycleReadDatabase(): D1Database {
         return (query: string) =>
           wrapStatement(
             target.prepare(query),
-            query.includes(
-              "FROM judge_managed_ai_operation_claims AS claims",
-            ),
+            query.includes("FROM judge_managed_ai_operation_claims AS claims"),
           );
       }
       return Reflect.get(target, property, receiver) as unknown;
@@ -697,10 +741,7 @@ describe("D1 managed-AI operation claims", () => {
 
     expect(reserved).toMatchObject({ kind: "reserved" });
     expect(replayed).toMatchObject({ kind: "replayed" });
-    if (
-      reserved?.kind !== "reserved" ||
-      replayed?.kind !== "replayed"
-    ) {
+    if (reserved?.kind !== "reserved" || replayed?.kind !== "replayed") {
       throw new Error("Expected one reserved winner and one replayed loser");
     }
     expect(replayed.claim).toEqual(reserved.claim);
@@ -840,5 +881,207 @@ describe("D1 managed-AI operation claims", () => {
         settledAtEpoch: input.createdAtEpoch,
       }),
     ).rejects.toThrow(TypeError);
+  });
+
+  it("lists at most twenty stale lifecycle rows ordered by stale timestamp and claim hash without content", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const staleInputs = Array.from({ length: 23 }, (_, index) => {
+      const suffix = String.fromCharCode(65 + index);
+      const createdAtEpoch = NOW_EPOCH - 1_000 + index;
+      return lifecycleClaim(suffix, createdAtEpoch);
+    });
+    for (const input of staleInputs) {
+      await repository.reserveClaim(input);
+    }
+    const providerStarted = staleInputs[5]!;
+    await repository.markProviderStarted({
+      claimKeyHash: providerStarted.claimKeyHash,
+      createdAtEpoch: providerStarted.createdAtEpoch,
+      expectedStatus: "reserved",
+      providerStartedAtEpoch: providerStarted.createdAtEpoch + 1,
+      requestFingerprint: providerStarted.requestFingerprint,
+      reservationId: providerStarted.reservationId,
+    });
+    const active = lifecycleClaim("z", NOW_EPOCH);
+    await repository.reserveClaim(active);
+    const settled = staleInputs[6]!;
+    await repository.markProviderStarted({
+      claimKeyHash: settled.claimKeyHash,
+      createdAtEpoch: settled.createdAtEpoch,
+      expectedStatus: "reserved",
+      providerStartedAtEpoch: settled.createdAtEpoch + 1,
+      requestFingerprint: settled.requestFingerprint,
+      reservationId: settled.reservationId,
+    });
+    await repository.markSettled({
+      claimKeyHash: settled.claimKeyHash,
+      createdAtEpoch: settled.createdAtEpoch,
+      expectedStatus: "provider_started",
+      requestFingerprint: settled.requestFingerprint,
+      reservationId: settled.reservationId,
+      reuseAfterEpoch: NOW_EPOCH + 25 * 60 * 60,
+      settledAtEpoch: NOW_EPOCH,
+    });
+
+    const rows = await repository.listStale({
+      limit: 20,
+      nowEpoch: NOW_EPOCH,
+    });
+
+    expect(rows).toHaveLength(20);
+    expect(rows).toEqual(
+      [...rows].sort(
+        (left, right) =>
+          left.staleAtEpoch - right.staleAtEpoch ||
+          left.claimKeyHash.localeCompare(right.claimKeyHash),
+      ),
+    );
+    expect(rows.some((row) => row.claimKeyHash === active.claimKeyHash)).toBe(
+      false,
+    );
+    expect(rows.some((row) => row.claimKeyHash === settled.claimKeyHash)).toBe(
+      false,
+    );
+    expect(rows.some((row) => row.status === "provider_started")).toBe(true);
+    expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
+      "claimKeyHash",
+      "createdAtEpoch",
+      "expiresAtEpoch",
+      "leaseExpiresAtEpoch",
+      "model",
+      "operation",
+      "pricingVersion",
+      "providerStartedAtEpoch",
+      "requestFingerprint",
+      "reservationId",
+      "reuseAfterEpoch",
+      "settledAtEpoch",
+      "staleAtEpoch",
+      "status",
+    ]);
+    expect(JSON.stringify(rows)).not.toMatch(/source|prompt|output|secret/iu);
+  });
+
+  it("atomically releases only an exact expired pre-provider generation", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const input = {
+      ...lifecycleClaim("y", NOW_EPOCH - 1_000),
+      requestFingerprint: fingerprint("y"),
+    };
+    await repository.reserveClaim(input);
+    await insertReservedUsage(input);
+    const mutation = {
+      claimKeyHash: input.claimKeyHash,
+      createdAtEpoch: input.createdAtEpoch,
+      expectedStatus: "reserved" as const,
+      requestFingerprint: input.requestFingerprint,
+      reservationId: input.reservationId,
+    };
+
+    await expect(
+      repository.releaseExpiredReserved(
+        { ...mutation, createdAtEpoch: mutation.createdAtEpoch + 1 },
+        NOW_EPOCH,
+      ),
+    ).resolves.toBe("unavailable");
+    await expect(lifecycleRow(input.claimKeyHash)).resolves.not.toBeNull();
+    await expect(
+      env.DB.prepare(
+        "SELECT status FROM judge_usage_reservations WHERE reservation_id = ?",
+      )
+        .bind(input.reservationId)
+        .first<{ status: string }>(),
+    ).resolves.toEqual({ status: "reserved" });
+
+    await expect(
+      repository.releaseExpiredReserved(mutation, NOW_EPOCH),
+    ).resolves.toBe("released");
+    await expect(lifecycleRow(input.claimKeyHash)).resolves.toBeNull();
+    await expect(
+      env.DB.prepare(
+        "SELECT status FROM judge_usage_reservations WHERE reservation_id = ?",
+      )
+        .bind(input.reservationId)
+        .first<{ status: string }>(),
+    ).resolves.toEqual({ status: "released" });
+  });
+
+  it("never releases provider-started usage during reconciliation", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const input = {
+      ...lifecycleClaim("x", NOW_EPOCH - 1_000),
+      requestFingerprint: fingerprint("x"),
+    };
+    await repository.reserveClaim(input);
+    await insertReservedUsage(input);
+    await repository.markProviderStarted({
+      claimKeyHash: input.claimKeyHash,
+      createdAtEpoch: input.createdAtEpoch,
+      expectedStatus: "reserved",
+      providerStartedAtEpoch: input.createdAtEpoch + 1,
+      requestFingerprint: input.requestFingerprint,
+      reservationId: input.reservationId,
+    });
+
+    await expect(
+      repository.releaseExpiredReserved(
+        {
+          claimKeyHash: input.claimKeyHash,
+          createdAtEpoch: input.createdAtEpoch,
+          expectedStatus: "reserved",
+          requestFingerprint: input.requestFingerprint,
+          reservationId: input.reservationId,
+        },
+        NOW_EPOCH,
+      ),
+    ).resolves.toBe("unavailable");
+    await expect(
+      env.DB.prepare(
+        "SELECT status FROM judge_usage_reservations WHERE reservation_id = ?",
+      )
+        .bind(input.reservationId)
+        .first<{ status: string }>(),
+    ).resolves.toEqual({ status: "reserved" });
+  });
+
+  it("full-finalizes a reservation through the shared reconciliation statement", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const input = {
+      ...lifecycleClaim("w", NOW_EPOCH - 1_000),
+      requestFingerprint: fingerprint("w"),
+    };
+    await repository.reserveClaim(input);
+    await insertReservedUsage(input);
+
+    await expect(
+      repository.finalizeFullReservation(input.reservationId, NOW_EPOCH),
+    ).resolves.toBe("finalized");
+    await expect(
+      env.DB.prepare(
+        `SELECT
+           status,
+           actual_cost_micro_usd,
+           actual_input_tokens,
+           actual_output_tokens,
+           actual_generation_count,
+           actual_realtime_seconds,
+           finalized_at_epoch
+         FROM judge_usage_reservations
+         WHERE reservation_id = ?`,
+      )
+        .bind(input.reservationId)
+        .first(),
+    ).resolves.toEqual({
+      actual_cost_micro_usd: 5_500_000,
+      actual_generation_count: 2,
+      actual_input_tokens: 540_000,
+      actual_output_tokens: 1_400,
+      actual_realtime_seconds: 0,
+      finalized_at_epoch: NOW_EPOCH,
+      status: "finalized",
+    });
+    await expect(
+      repository.finalizeFullReservation(input.reservationId, NOW_EPOCH + 1),
+    ).resolves.toBe("unavailable");
   });
 });

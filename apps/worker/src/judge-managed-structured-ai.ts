@@ -7,6 +7,7 @@ import type {
   ManagedAiOperationReserveClaim,
   ManagedAiOperationReserveClaimResult,
   ManagedAiOperationSettlement,
+  ManagedAiOperationStaleClaim,
   ManagedUsageReservation,
 } from "@counterpoint/adapters-cloudflare";
 import type { UsageRequest, UsageSubject } from "@counterpoint/ports";
@@ -57,6 +58,25 @@ export interface JudgeManagedStructuredAiClaimRepository {
   ): Promise<"taken_over" | "unavailable">;
 }
 
+export interface JudgeManagedStructuredAiReconciliationClaimRepository extends JudgeManagedStructuredAiClaimRepository {
+  abandonExpiredReserved(
+    input: ManagedAiOperationReservedAbandonment,
+    nowEpoch: number,
+  ): Promise<"abandoned" | "unavailable">;
+  finalizeFullReservation(
+    reservationId: string,
+    finalizedAtEpoch: number,
+  ): Promise<"finalized" | "unavailable">;
+  listStale(input: {
+    readonly limit: number;
+    readonly nowEpoch: number;
+  }): Promise<readonly ManagedAiOperationStaleClaim[]>;
+  releaseExpiredReserved(
+    input: ManagedAiOperationReservedAbandonment,
+    releasedAtEpoch: number,
+  ): Promise<"released" | "unavailable">;
+}
+
 export interface JudgeManagedStructuredAiUsageLimiter {
   finalize(reservationId: string, actual: UsageRequest): Promise<void>;
   findReservation(
@@ -76,6 +96,149 @@ export interface JudgeManagedStructuredAiUsageLimiter {
 export interface JudgeManagedStructuredAiReconcileRequest {
   readonly limit: 20;
   readonly nowEpoch: number;
+}
+
+export interface JudgeManagedStructuredAiReconciliationResult {
+  readonly attempted: number;
+  readonly failed: number;
+  readonly released: number;
+  readonly settled: number;
+}
+
+export async function reconcileJudgeManagedStructuredAiOperations(input: {
+  readonly claims: JudgeManagedStructuredAiReconciliationClaimRepository;
+  readonly limit: number;
+  readonly nowEpoch: number;
+  readonly retentionSeconds: number;
+  readonly usage: Pick<
+    JudgeManagedStructuredAiUsageLimiter,
+    "finalize" | "findReservation" | "release"
+  >;
+}): Promise<JudgeManagedStructuredAiReconciliationResult> {
+  if (
+    !Number.isSafeInteger(input.limit) ||
+    input.limit < 1 ||
+    input.limit > 20
+  ) {
+    throw new TypeError("Reconciliation limit must be from 1 through 20");
+  }
+  const nowEpoch = validatedEpoch(input.nowEpoch);
+  if (
+    !Number.isSafeInteger(input.retentionSeconds) ||
+    input.retentionSeconds !== 25 * 60 * 60
+  ) {
+    throw new TypeError("Reconciliation retention must be exactly 25 hours");
+  }
+  const rows = await input.claims.listStale({
+    limit: input.limit,
+    nowEpoch,
+  });
+  if (rows.length > input.limit) {
+    throw new Error("Reconciliation repository exceeded its bounded limit");
+  }
+  const counts = {
+    attempted: rows.length,
+    failed: 0,
+    released: 0,
+    settled: 0,
+  };
+  for (const claim of rows) {
+    try {
+      const reservation = await input.usage.findReservation(
+        claim.reservationId,
+      );
+      if (claim.status === "reserved") {
+        if (reservation !== undefined) {
+          assertReconciliationReservationMatches(claim, reservation);
+        }
+        if (reservation?.status === "finalized") {
+          assertFinalizedReservation(reservation);
+          const settled = await input.claims.markSettled({
+            ...reservedMutation(claim),
+            expectedStatus: "reserved",
+            reuseAfterEpoch: nowEpoch + input.retentionSeconds,
+            settledAtEpoch: nowEpoch,
+          });
+          if (settled !== "settled") {
+            throw new Error("Reserved reconciliation settlement unavailable");
+          }
+          counts.settled += 1;
+          continue;
+        }
+        if (
+          reservation !== undefined &&
+          reservation.status !== "reserved" &&
+          reservation.status !== "released"
+        ) {
+          throw new Error("Reserved claim has an invalid reservation state");
+        }
+        const released =
+          reservation?.status === "reserved"
+            ? await input.claims.releaseExpiredReserved(
+                reservedMutation(claim),
+                nowEpoch,
+              )
+            : await input.claims.abandonExpiredReserved(
+                reservedMutation(claim),
+                nowEpoch,
+              );
+        if (released !== "released" && released !== "abandoned") {
+          throw new Error("Reserved reconciliation release unavailable");
+        }
+        counts.released += 1;
+        continue;
+      }
+
+      if (reservation === undefined) {
+        throw new Error("Provider-started reservation is missing");
+      }
+      assertReconciliationReservationMatches(claim, reservation);
+      if (reservation.status === "reserved") {
+        const finalized = await input.claims.finalizeFullReservation(
+          claim.reservationId,
+          nowEpoch,
+        );
+        if (finalized !== "finalized") {
+          throw new Error("Provider full finalization unavailable");
+        }
+      } else if (reservation.status === "finalized") {
+        assertFinalizedReservation(reservation);
+      } else {
+        throw new Error("Provider-started reservation was released");
+      }
+      const settled = await input.claims.markSettled({
+        claimKeyHash: claim.claimKeyHash,
+        createdAtEpoch: claim.createdAtEpoch,
+        expectedStatus: "provider_started",
+        requestFingerprint: claim.requestFingerprint,
+        reservationId: claim.reservationId,
+        reuseAfterEpoch: nowEpoch + input.retentionSeconds,
+        settledAtEpoch: nowEpoch,
+      });
+      if (settled !== "settled") {
+        throw new Error("Provider reconciliation settlement unavailable");
+      }
+      counts.settled += 1;
+    } catch {
+      counts.failed += 1;
+    }
+  }
+  return counts;
+}
+
+function assertReconciliationReservationMatches(
+  claim: ManagedAiOperationStaleClaim,
+  reservation: ManagedUsageReservation,
+): void {
+  if (
+    reservation.reservationId !== claim.reservationId ||
+    reservation.requestFingerprint !== claim.requestFingerprint ||
+    reservation.operation !== claim.operation ||
+    reservation.model !== claim.model ||
+    reservation.pricingVersion !== claim.pricingVersion
+  ) {
+    throw new Error("Stale claim reservation identity does not match");
+  }
 }
 
 interface JudgeManagedStructuredAiOperationInput<T> {

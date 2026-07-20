@@ -44,6 +44,7 @@
     "format:check": "prettier --check .",
     "integration": "vitest run --project integration",
     "judge:usage:measure": "node scripts/judge-realtime-usage-measurement.mjs",
+    "judge:reconcile": "npm run build --workspace @counterpoint/adapters-cloudflare && bash scripts/reconcile-judge-structured-ai.sh",
     "lint": "eslint .",
     "smoke:openai": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-private-disclosure-smoke.mjs",
     "smoke:openai:invalidation": "npm run build --workspace @counterpoint/adapters-openai && node --env-file-if-exists=.env scripts/openai-assumption-invalidation-smoke.mjs",

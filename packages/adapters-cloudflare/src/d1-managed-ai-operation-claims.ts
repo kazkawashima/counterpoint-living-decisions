@@ -1,5 +1,14 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import {
+  buildAbandonExpiredReservedStatement,
+  buildAbandonReservedStatement,
+  buildFinalizeFullReservationStatement,
+  buildListStaleStatement,
+  buildMarkSettledStatement,
+  buildReleaseReservedStatement,
+} from "./judge-structured-ai-reconciliation.js";
+
 export interface ManagedAiOperationClaim {
   readonly claimKeyHash: string;
   readonly createdAtEpoch: number;
@@ -19,13 +28,9 @@ export interface ManagedAiOperationClaimRelease {
 export type ManagedAiOperationClaimResult = "claimed" | "conflict" | "replayed";
 
 export type ManagedAiOperationLifecycleStatus =
-  | "legacy_blocked"
-  | "reserved"
-  | "provider_started"
-  | "settled";
+  "legacy_blocked" | "reserved" | "provider_started" | "settled";
 
-interface ManagedAiOperationLifecycleClaimBase
-  extends ManagedAiOperationClaim {
+interface ManagedAiOperationLifecycleClaimBase extends ManagedAiOperationClaim {
   readonly leaseExpiresAtEpoch: number | undefined;
   readonly providerStartedAtEpoch: number | undefined;
   readonly reservationId: string | undefined;
@@ -34,8 +39,7 @@ interface ManagedAiOperationLifecycleClaimBase
   readonly status: ManagedAiOperationLifecycleStatus;
 }
 
-export interface ManagedAiOperationLegacyClaim
-  extends ManagedAiOperationLifecycleClaimBase {
+export interface ManagedAiOperationLegacyClaim extends ManagedAiOperationLifecycleClaimBase {
   readonly leaseExpiresAtEpoch: undefined;
   readonly providerStartedAtEpoch: undefined;
   readonly reservationId: undefined;
@@ -44,8 +48,7 @@ export interface ManagedAiOperationLegacyClaim
   readonly status: "legacy_blocked";
 }
 
-export interface ManagedAiOperationReservedClaim
-  extends ManagedAiOperationLifecycleClaimBase {
+export interface ManagedAiOperationReservedClaim extends ManagedAiOperationLifecycleClaimBase {
   readonly leaseExpiresAtEpoch: number;
   readonly providerStartedAtEpoch: undefined;
   readonly reservationId: string;
@@ -54,8 +57,7 @@ export interface ManagedAiOperationReservedClaim
   readonly status: "reserved";
 }
 
-export interface ManagedAiOperationProviderStartedClaim
-  extends ManagedAiOperationLifecycleClaimBase {
+export interface ManagedAiOperationProviderStartedClaim extends ManagedAiOperationLifecycleClaimBase {
   readonly leaseExpiresAtEpoch: number;
   readonly providerStartedAtEpoch: number;
   readonly reservationId: string;
@@ -64,8 +66,7 @@ export interface ManagedAiOperationProviderStartedClaim
   readonly status: "provider_started";
 }
 
-export interface ManagedAiOperationSettledClaim
-  extends ManagedAiOperationLifecycleClaimBase {
+export interface ManagedAiOperationSettledClaim extends ManagedAiOperationLifecycleClaimBase {
   readonly reservationId: string;
   readonly reuseAfterEpoch: number;
   readonly settledAtEpoch: number;
@@ -77,6 +78,17 @@ export type ManagedAiOperationLifecycleClaim =
   | ManagedAiOperationProviderStartedClaim
   | ManagedAiOperationReservedClaim
   | ManagedAiOperationSettledClaim;
+
+export type ManagedAiOperationStaleClaim = (
+  ManagedAiOperationProviderStartedClaim | ManagedAiOperationReservedClaim
+) & {
+  readonly staleAtEpoch: number;
+};
+
+export interface ManagedAiOperationStaleSelection {
+  readonly limit: number;
+  readonly nowEpoch: number;
+}
 
 export interface ManagedAiOperationReserveClaim extends ManagedAiOperationClaim {
   readonly expectedStatus: "reserved";
@@ -91,28 +103,24 @@ interface ManagedAiOperationLifecycleMutation {
   readonly reservationId: string;
 }
 
-export interface ManagedAiOperationReservedTakeover
-  extends ManagedAiOperationLifecycleMutation {
+export interface ManagedAiOperationReservedTakeover extends ManagedAiOperationLifecycleMutation {
   readonly expectedStatus: "reserved";
   readonly leaseExpiresAtEpoch: number;
   readonly nowEpoch: number;
 }
 
-export interface ManagedAiOperationProviderStart
-  extends ManagedAiOperationLifecycleMutation {
+export interface ManagedAiOperationProviderStart extends ManagedAiOperationLifecycleMutation {
   readonly expectedStatus: "reserved";
   readonly providerStartedAtEpoch: number;
 }
 
-export interface ManagedAiOperationSettlement
-  extends ManagedAiOperationLifecycleMutation {
+export interface ManagedAiOperationSettlement extends ManagedAiOperationLifecycleMutation {
   readonly expectedStatus: "provider_started" | "reserved";
   readonly reuseAfterEpoch: number;
   readonly settledAtEpoch: number;
 }
 
-export interface ManagedAiOperationReservedAbandonment
-  extends ManagedAiOperationLifecycleMutation {
+export interface ManagedAiOperationReservedAbandonment extends ManagedAiOperationLifecycleMutation {
   readonly expectedStatus: "reserved";
 }
 
@@ -131,8 +139,7 @@ interface ManagedAiOperationClaimRow {
   readonly request_fingerprint: string;
 }
 
-interface ManagedAiOperationLifecycleClaimRow
-  extends ManagedAiOperationClaimRow {
+interface ManagedAiOperationLifecycleClaimRow extends ManagedAiOperationClaimRow {
   readonly claim_key_hash: string;
   readonly created_at_epoch: number;
   readonly lease_expires_at_epoch: number | null;
@@ -141,6 +148,10 @@ interface ManagedAiOperationLifecycleClaimRow
   readonly reuse_after_epoch: number | null;
   readonly settled_at_epoch: number | null;
   readonly status: ManagedAiOperationLifecycleStatus;
+}
+
+interface ManagedAiOperationStaleClaimRow extends ManagedAiOperationLifecycleClaimRow {
+  readonly stale_at_epoch: number;
 }
 
 const SHA256_FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/u;
@@ -270,10 +281,7 @@ function lifecycleClaimFromRow(
         status: row.status,
       };
     case "reserved":
-      if (
-        row.reservation_id === null ||
-        row.lease_expires_at_epoch === null
-      ) {
+      if (row.reservation_id === null || row.lease_expires_at_epoch === null) {
         throw new Error("Invalid reserved managed-AI lifecycle row");
       }
       return {
@@ -504,10 +512,7 @@ export class D1ManagedAiOperationClaimRepository {
             ),
         ]);
         if (results.every((result) => result.meta.changes === 1)) {
-          const claim = await this.#findLifecycle(
-            session,
-            input.claimKeyHash,
-          );
+          const claim = await this.#findLifecycle(session, input.claimKeyHash);
           if (claim === undefined) {
             throw new Error("Reserved managed-AI lifecycle disappeared");
           }
@@ -587,10 +592,7 @@ export class D1ManagedAiOperationClaimRepository {
       }
       return { claim, kind: "reserved" };
     } catch (error) {
-      const concurrent = await this.#findLifecycle(
-        session,
-        input.claimKeyHash,
-      );
+      const concurrent = await this.#findLifecycle(session, input.claimKeyHash);
       if (concurrent === undefined) {
         throw error;
       }
@@ -707,45 +709,10 @@ export class D1ManagedAiOperationClaimRepository {
         "reuseAfterEpoch must be exactly 25 hours after settledAtEpoch",
       );
     }
+    const statement = buildMarkSettledStatement(input);
     return this.#conditionalMutation(
-      `
-        UPDATE judge_managed_ai_operation_lifecycle
-        SET
-          status = 'settled',
-          settled_at_epoch = ?,
-          reuse_after_epoch = ?
-        WHERE claim_key_hash = ?
-          AND status = ?
-          AND reservation_id = ?
-          AND (
-            (
-              status = 'reserved'
-              AND provider_started_at_epoch IS NULL
-            )
-            OR (
-              status = 'provider_started'
-              AND provider_started_at_epoch <= ?
-            )
-          )
-          AND EXISTS (
-            SELECT 1
-            FROM judge_managed_ai_operation_claims
-            WHERE claim_key_hash = ?
-              AND request_fingerprint = ?
-              AND created_at_epoch = ?
-          )
-      `,
-      [
-        input.settledAtEpoch,
-        input.reuseAfterEpoch,
-        input.claimKeyHash,
-        input.expectedStatus,
-        input.reservationId,
-        input.settledAtEpoch,
-        input.claimKeyHash,
-        input.requestFingerprint,
-        input.createdAtEpoch,
-      ],
+      statement.sql,
+      statement.bindings,
       "settled",
       "Managed-AI settlement",
     );
@@ -756,31 +723,97 @@ export class D1ManagedAiOperationClaimRepository {
   ): Promise<"abandoned" | "unavailable"> {
     validateLifecycleIdentity(input);
     requireExpectedStatus(input.expectedStatus, "reserved");
+    const statement = buildAbandonReservedStatement(input);
     return this.#conditionalMutation(
-      `
-        DELETE FROM judge_managed_ai_operation_claims
-        WHERE claim_key_hash = ?
-          AND request_fingerprint = ?
-          AND created_at_epoch = ?
-          AND EXISTS (
-            SELECT 1
-            FROM judge_managed_ai_operation_lifecycle
-            WHERE claim_key_hash = ?
-              AND status = ?
-              AND reservation_id = ?
-          )
-      `,
-      [
-        input.claimKeyHash,
-        input.requestFingerprint,
-        input.createdAtEpoch,
-        input.claimKeyHash,
-        input.expectedStatus,
-        input.reservationId,
-      ],
+      statement.sql,
+      statement.bindings,
       "abandoned",
       "Managed-AI reserved abandonment",
       2,
+    );
+  }
+
+  async listStale(
+    input: ManagedAiOperationStaleSelection,
+  ): Promise<readonly ManagedAiOperationStaleClaim[]> {
+    const statement = buildListStaleStatement(input);
+    const result = await this.#database
+      .withSession("first-primary")
+      .prepare(statement.sql)
+      .bind(...statement.bindings)
+      .all<ManagedAiOperationStaleClaimRow>();
+    return result.results.map((row) => {
+      const claim = lifecycleClaimFromRow(row);
+      if (claim.status !== "reserved" && claim.status !== "provider_started") {
+        throw new Error("Stale query returned an ineligible lifecycle");
+      }
+      return {
+        ...claim,
+        staleAtEpoch: row.stale_at_epoch,
+      };
+    });
+  }
+
+  async releaseExpiredReserved(
+    input: ManagedAiOperationReservedAbandonment,
+    releasedAtEpoch: number,
+  ): Promise<"released" | "unavailable"> {
+    validateLifecycleIdentity(input);
+    requireExpectedStatus(input.expectedStatus, "reserved");
+    requireEpoch(releasedAtEpoch, "releasedAtEpoch");
+    const abandon = buildAbandonExpiredReservedStatement(
+      input,
+      releasedAtEpoch,
+    );
+    const release = buildReleaseReservedStatement(input, releasedAtEpoch);
+    const session = this.#database.withSession("first-primary");
+    const results = await session.batch([
+      session.prepare(release.sql).bind(...release.bindings),
+      session.prepare(abandon.sql).bind(...abandon.bindings),
+    ]);
+    if (results[0]?.meta.changes === 1 && results[1]?.meta.changes === 2) {
+      return "released";
+    }
+    if (results.every((result) => result.meta.changes === 0)) {
+      return "unavailable";
+    }
+    throw new Error(
+      `Managed-AI reserved reconciliation changed an unexpected row count (${String(results[0]?.meta.changes)}/${String(results[1]?.meta.changes)})`,
+    );
+  }
+
+  async abandonExpiredReserved(
+    input: ManagedAiOperationReservedAbandonment,
+    nowEpoch: number,
+  ): Promise<"abandoned" | "unavailable"> {
+    validateLifecycleIdentity(input);
+    requireExpectedStatus(input.expectedStatus, "reserved");
+    requireEpoch(nowEpoch, "nowEpoch");
+    const statement = buildAbandonExpiredReservedStatement(input, nowEpoch);
+    return this.#conditionalMutation(
+      statement.sql,
+      statement.bindings,
+      "abandoned",
+      "Managed-AI expired reserved abandonment",
+      2,
+    );
+  }
+
+  async finalizeFullReservation(
+    reservationId: string,
+    finalizedAtEpoch: number,
+  ): Promise<"finalized" | "unavailable"> {
+    requireOpaqueMetadata(reservationId, "reservationId");
+    requireEpoch(finalizedAtEpoch, "finalizedAtEpoch");
+    const statement = buildFinalizeFullReservationStatement(
+      reservationId,
+      finalizedAtEpoch,
+    );
+    return this.#conditionalMutation(
+      statement.sql,
+      statement.bindings,
+      "finalized",
+      "Managed-AI full reservation finalization",
     );
   }
 

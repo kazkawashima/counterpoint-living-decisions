@@ -38,10 +38,13 @@ import type {
   ConcretePrivateDisclosureProposer,
   JudgePrivateDisclosureRuntimeDependencies,
 } from "./judge-private-disclosure.js";
+import { reconcileJudgeManagedStructuredAiOperations } from "./judge-managed-structured-ai.js";
 import {
+  JUDGE_STRUCTURED_AI_DESCRIPTORS,
   PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
   PRIVATE_DISCLOSURE_MAX_OUTPUT_TOKENS,
   PRIVATE_DISCLOSURE_MODEL,
+  PRIVATE_DISCLOSURE_OPERATION,
   PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
   createJudgePrivateDisclosureUsageLimiter,
 } from "./judge-structured-ai.js";
@@ -188,17 +191,29 @@ async function createJudgePrivateDisclosureRuntime(
         timeoutMs: PRIVATE_DISCLOSURE_PROVIDER_TIMEOUT_MS,
       }),
     });
+  const claims = new D1ManagedAiOperationClaimRepository(env.DB);
+  const usage = createJudgePrivateDisclosureUsageLimiter(env.DB, {
+    clock,
+    hashIp: ipReservation.hashIp,
+    ids: (namespace) => `${namespace}-${crypto.randomUUID()}`,
+  });
   return {
-    claims: new D1ManagedAiOperationClaimRepository(env.DB),
+    claims,
     ipAddress: ipReservation.ipAddress,
     nextReservationId: () => `judge-ai:${crypto.randomUUID()}`,
     proposer,
-    reconcile: () => Promise.resolve(),
-    usage: createJudgePrivateDisclosureUsageLimiter(env.DB, {
-      clock,
-      hashIp: ipReservation.hashIp,
-      ids: (namespace) => `${namespace}-${crypto.randomUUID()}`,
-    }),
+    reconcile: async ({ limit, nowEpoch }) => {
+      await reconcileJudgeManagedStructuredAiOperations({
+        claims,
+        limit,
+        nowEpoch,
+        retentionSeconds:
+          JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION]
+            .retentionSeconds,
+        usage,
+      });
+    },
+    usage,
   };
 }
 

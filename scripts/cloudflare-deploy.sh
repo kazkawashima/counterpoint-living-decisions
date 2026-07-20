@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/cloudflare-remote-approval.sh"
+
 export CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false
 export WRANGLER_LOG_PATH=".wrangler/wrangler.log"
 export WRANGLER_SEND_METRICS=false
@@ -37,14 +40,7 @@ if [[ "$mode" != "--apply" ]]; then
   exit 2
 fi
 
-if [[ "${CLOUDFLARE_DEPLOYMENT_APPROVED:-}" != "$target" ]]; then
-  echo "Refusing deployment without target-specific approval." >&2
-  exit 3
-fi
-if [[ "$target" == "production" && "${CLOUDFLARE_PRODUCTION_CONFIRMATION:-}" != "counterpoint-production" ]]; then
-  echo "Refusing production deployment without the exact production confirmation." >&2
-  exit 3
-fi
+assert_cloudflare_remote_approval "$target"
 for name in \
   CLOUDFLARE_API_TOKEN \
   CLOUDFLARE_ACCOUNT_ID \
@@ -56,10 +52,6 @@ do
     exit 4
   fi
 done
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "Refusing deployment from a dirty worktree." >&2
-  exit 5
-fi
 
 worker_name="${CLOUDFLARE_WORKER_NAME:-$worker_name_default}"
 bucket_name="${CLOUDFLARE_R2_BUCKET_NAME:-$bucket_name_default}"
@@ -68,11 +60,6 @@ dry_run_path=".wrangler/deploy/$target-dry-run"
 status_path=".wrangler/deploy/$target-deployment-status.json"
 private_log=".wrangler/deploy/$target-private-command.log"
 commit_sha="$(git rev-parse HEAD)"
-
-if [[ -n "${GITHUB_SHA:-}" && "$GITHUB_SHA" != "$commit_sha" ]]; then
-  echo "Refusing deployment because GITHUB_SHA does not match HEAD." >&2
-  exit 5
-fi
 
 mkdir -p ".wrangler/deploy"
 : >"$private_log"

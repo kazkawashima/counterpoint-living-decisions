@@ -3,14 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   ManagedAiOperationLifecycleClaim,
   ManagedAiOperationReserveClaim,
+  ManagedAiOperationStaleClaim,
   ManagedUsageReservation,
 } from "@counterpoint/adapters-cloudflare";
 import type { UsageRequest } from "@counterpoint/ports";
 
 import {
   JudgeManagedStructuredAiError,
+  reconcileJudgeManagedStructuredAiOperations,
   runJudgeManagedStructuredAiOperation,
   type JudgeManagedStructuredAiClaimRepository,
+  type JudgeManagedStructuredAiReconciliationClaimRepository,
   type JudgeManagedStructuredAiUsageLimiter,
 } from "../../../apps/worker/src/judge-managed-structured-ai.js";
 import {
@@ -135,48 +138,56 @@ function harness(
     order.push("takeover");
     return Promise.resolve("taken_over" as const);
   });
-  const markProviderStarted = vi.fn((input: Parameters<
-    JudgeManagedStructuredAiClaimRepository["markProviderStarted"]
-  >[0]) => {
-    order.push("provider-start");
-    if (
-      firstClaim?.status !== input.expectedStatus ||
-      firstClaim.claimKeyHash !== input.claimKeyHash ||
-      firstClaim.createdAtEpoch !== input.createdAtEpoch ||
-      firstClaim.requestFingerprint !== input.requestFingerprint ||
-      firstClaim.reservationId !== input.reservationId
-    ) {
-      return Promise.resolve("unavailable" as const);
-    }
-    firstClaim = {
-      ...firstClaim,
-      providerStartedAtEpoch: input.providerStartedAtEpoch,
-      status: "provider_started",
-    };
-    return Promise.resolve("started" as const);
-  });
-  const markSettled = vi.fn((input: Parameters<
-    JudgeManagedStructuredAiClaimRepository["markSettled"]
-  >[0]) => {
-    order.push("settle-claim");
-    if (
-      firstClaim?.status !== input.expectedStatus ||
-      firstClaim.claimKeyHash !== input.claimKeyHash ||
-      firstClaim.createdAtEpoch !== input.createdAtEpoch ||
-      firstClaim.requestFingerprint !== input.requestFingerprint ||
-      firstClaim.reservationId !== input.reservationId
-    ) {
-      return Promise.resolve("unavailable" as const);
-    }
-    firstClaim = {
-      ...firstClaim,
-      leaseExpiresAtEpoch: undefined,
-      reuseAfterEpoch: input.reuseAfterEpoch,
-      settledAtEpoch: input.settledAtEpoch,
-      status: "settled",
-    };
-    return Promise.resolve("settled" as const);
-  });
+  const markProviderStarted = vi.fn(
+    (
+      input: Parameters<
+        JudgeManagedStructuredAiClaimRepository["markProviderStarted"]
+      >[0],
+    ) => {
+      order.push("provider-start");
+      if (
+        firstClaim?.status !== input.expectedStatus ||
+        firstClaim.claimKeyHash !== input.claimKeyHash ||
+        firstClaim.createdAtEpoch !== input.createdAtEpoch ||
+        firstClaim.requestFingerprint !== input.requestFingerprint ||
+        firstClaim.reservationId !== input.reservationId
+      ) {
+        return Promise.resolve("unavailable" as const);
+      }
+      firstClaim = {
+        ...firstClaim,
+        providerStartedAtEpoch: input.providerStartedAtEpoch,
+        status: "provider_started",
+      };
+      return Promise.resolve("started" as const);
+    },
+  );
+  const markSettled = vi.fn(
+    (
+      input: Parameters<
+        JudgeManagedStructuredAiClaimRepository["markSettled"]
+      >[0],
+    ) => {
+      order.push("settle-claim");
+      if (
+        firstClaim?.status !== input.expectedStatus ||
+        firstClaim.claimKeyHash !== input.claimKeyHash ||
+        firstClaim.createdAtEpoch !== input.createdAtEpoch ||
+        firstClaim.requestFingerprint !== input.requestFingerprint ||
+        firstClaim.reservationId !== input.reservationId
+      ) {
+        return Promise.resolve("unavailable" as const);
+      }
+      firstClaim = {
+        ...firstClaim,
+        leaseExpiresAtEpoch: undefined,
+        reuseAfterEpoch: input.reuseAfterEpoch,
+        settledAtEpoch: input.settledAtEpoch,
+        status: "settled",
+      };
+      return Promise.resolve("settled" as const);
+    },
+  );
   const abandonReserved = vi.fn(() => {
     order.push("abandon");
     firstClaim = undefined;
@@ -696,5 +707,249 @@ describe("judge managed structured-AI lifecycle", () => {
     expect(
       String(new JudgeManagedStructuredAiError("OPENAI_UNAVAILABLE")),
     ).not.toContain(raw);
+  });
+});
+
+describe("judge managed structured-AI reconciliation", () => {
+  function stale(
+    suffix: string,
+    status: "provider_started" | "reserved",
+    staleAtEpoch: number,
+  ): ManagedAiOperationStaleClaim {
+    const common = {
+      claimKeyHash: `sha256:${suffix.repeat(64)}`,
+      createdAtEpoch: staleAtEpoch - 120,
+      leaseExpiresAtEpoch: staleAtEpoch,
+      requestFingerprint:
+        `sha256:${suffix.toUpperCase().repeat(64)}`.toLowerCase(),
+      reservationId: `judge-ai:${suffix}`,
+      staleAtEpoch,
+    };
+    return status === "provider_started"
+      ? ({
+          ...reservedClaim(common),
+          providerStartedAtEpoch: staleAtEpoch - 60,
+          status,
+        } as ManagedAiOperationStaleClaim)
+      : ({
+          ...reservedClaim(common),
+          status,
+        } as ManagedAiOperationStaleClaim);
+  }
+
+  function reconciliationHarness(
+    rows: readonly ManagedAiOperationStaleClaim[],
+    reservations: Readonly<Record<string, ManagedUsageReservation | undefined>>,
+  ) {
+    const calls: string[] = [];
+    const claims = {
+      abandonExpiredReserved: vi.fn(
+        (
+          input: Parameters<
+            JudgeManagedStructuredAiReconciliationClaimRepository["abandonExpiredReserved"]
+          >[0],
+        ) => {
+          calls.push(`abandon:${input.reservationId}`);
+          return Promise.resolve("abandoned" as const);
+        },
+      ),
+      abandonReserved: vi.fn(
+        (
+          input: Parameters<
+            JudgeManagedStructuredAiClaimRepository["abandonReserved"]
+          >[0],
+        ) => {
+          calls.push(`abandon:${input.reservationId}`);
+          return Promise.resolve("abandoned" as const);
+        },
+      ),
+      finalizeFullReservation: vi.fn(
+        (reservationId: string): Promise<"finalized" | "unavailable"> => {
+          calls.push(`finalize:${reservationId}`);
+          return Promise.resolve("finalized" as const);
+        },
+      ),
+      listStale: vi.fn(() => Promise.resolve(rows)),
+      markProviderStarted: vi.fn(),
+      markSettled: vi.fn(
+        (
+          input: Parameters<
+            JudgeManagedStructuredAiClaimRepository["markSettled"]
+          >[0],
+        ) => {
+          calls.push(`settle:${input.reservationId}`);
+          return Promise.resolve("settled" as const);
+        },
+      ),
+      releaseExpiredReserved: vi.fn(
+        (
+          input: Parameters<
+            JudgeManagedStructuredAiReconciliationClaimRepository["releaseExpiredReserved"]
+          >[0],
+        ): Promise<"released" | "unavailable"> => {
+          calls.push(`abandon:${input.reservationId}`);
+          calls.push(`release:${input.reservationId}`);
+          return Promise.resolve("released" as const);
+        },
+      ),
+      reserveClaim: vi.fn(),
+      takeOverReserved: vi.fn(),
+    } satisfies JudgeManagedStructuredAiReconciliationClaimRepository;
+    const usage = {
+      finalize: vi.fn((reservationId: string) => {
+        calls.push(`finalize:${reservationId}`);
+        return Promise.resolve();
+      }),
+      findReservation: vi.fn((reservationId: string) => {
+        calls.push(`find:${reservationId}`);
+        return Promise.resolve(reservations[reservationId]);
+      }),
+      release: vi.fn((reservationId: string) => {
+        calls.push(`release:${reservationId}`);
+        return Promise.resolve();
+      }),
+      reserveWithId: vi.fn(),
+    } satisfies JudgeManagedStructuredAiUsageLimiter;
+    return { calls, claims, usage };
+  }
+
+  it("processes at most twenty stale rows in repository order", async () => {
+    const rows = Array.from({ length: 20 }, (_, index) =>
+      stale(
+        String.fromCharCode(97 + index),
+        "reserved",
+        NOW_EPOCH - 20 + index,
+      ),
+    );
+    const reservations = Object.fromEntries(
+      rows.map((row) => [
+        row.reservationId,
+        reservation({
+          activeUntilEpoch: NOW_EPOCH - 1,
+          reservationId: row.reservationId,
+          requestFingerprint: row.requestFingerprint,
+        }),
+      ]),
+    );
+    const fixture = reconciliationHarness(rows, reservations);
+
+    await expect(
+      reconcileJudgeManagedStructuredAiOperations({
+        claims: fixture.claims,
+        limit: 20,
+        nowEpoch: NOW_EPOCH,
+        retentionSeconds: DESCRIPTOR.retentionSeconds,
+        usage: fixture.usage,
+      }),
+    ).resolves.toEqual({
+      attempted: 20,
+      failed: 0,
+      released: 20,
+      settled: 0,
+    });
+    expect(fixture.claims.listStale).toHaveBeenCalledWith({
+      limit: 20,
+      nowEpoch: NOW_EPOCH,
+    });
+    expect(
+      fixture.calls.filter((entry) => entry.startsWith("abandon:")),
+    ).toEqual(rows.map((row) => `abandon:${row.reservationId}`));
+  });
+
+  it("full-finalizes provider-started work and never releases it", async () => {
+    const row = stale("p", "provider_started", NOW_EPOCH - 1);
+    const fixture = reconciliationHarness([row], {
+      [row.reservationId]: reservation({
+        activeUntilEpoch: NOW_EPOCH - 1,
+        reservationId: row.reservationId,
+        requestFingerprint: row.requestFingerprint,
+      }),
+    });
+
+    await expect(
+      reconcileJudgeManagedStructuredAiOperations({
+        claims: fixture.claims,
+        limit: 20,
+        nowEpoch: NOW_EPOCH,
+        retentionSeconds: DESCRIPTOR.retentionSeconds,
+        usage: fixture.usage,
+      }),
+    ).resolves.toEqual({
+      attempted: 1,
+      failed: 0,
+      released: 0,
+      settled: 1,
+    });
+    expect(fixture.claims.finalizeFullReservation).toHaveBeenCalledWith(
+      row.reservationId,
+      NOW_EPOCH,
+    );
+    expect(fixture.usage.release).not.toHaveBeenCalled();
+  });
+
+  it("settles already-finalized provider work without changing actuals", async () => {
+    const row = stale("q", "provider_started", NOW_EPOCH - 1);
+    const fixture = reconciliationHarness([row], {
+      [row.reservationId]: reservation({
+        actualCostMicroUsd: 1_000,
+        actualGenerationCount: 1,
+        actualInputTokens: 100,
+        actualOutputTokens: 20,
+        actualRealtimeSeconds: 0,
+        finalizedAtEpoch: NOW_EPOCH - 1,
+        reservationId: row.reservationId,
+        requestFingerprint: row.requestFingerprint,
+        reservedAtEpoch: NOW_EPOCH - 2,
+        status: "finalized",
+      }),
+    });
+
+    await reconcileJudgeManagedStructuredAiOperations({
+      claims: fixture.claims,
+      limit: 20,
+      nowEpoch: NOW_EPOCH,
+      retentionSeconds: DESCRIPTOR.retentionSeconds,
+      usage: fixture.usage,
+    });
+    expect(fixture.claims.finalizeFullReservation).not.toHaveBeenCalled();
+    expect(fixture.claims.markSettled).toHaveBeenCalledOnce();
+    expect(fixture.usage.release).not.toHaveBeenCalled();
+  });
+
+  it("keeps failed rows retryable while continuing later rows", async () => {
+    const first = stale("r", "reserved", NOW_EPOCH - 2);
+    const second = stale("s", "reserved", NOW_EPOCH - 1);
+    const fixture = reconciliationHarness([first, second], {
+      [first.reservationId]: reservation({
+        activeUntilEpoch: NOW_EPOCH - 1,
+        reservationId: first.reservationId,
+        requestFingerprint: first.requestFingerprint,
+      }),
+      [second.reservationId]: reservation({
+        activeUntilEpoch: NOW_EPOCH - 1,
+        reservationId: second.reservationId,
+        requestFingerprint: second.requestFingerprint,
+      }),
+    });
+    fixture.claims.releaseExpiredReserved.mockResolvedValueOnce("unavailable");
+
+    await expect(
+      reconcileJudgeManagedStructuredAiOperations({
+        claims: fixture.claims,
+        limit: 20,
+        nowEpoch: NOW_EPOCH,
+        retentionSeconds: DESCRIPTOR.retentionSeconds,
+        usage: fixture.usage,
+      }),
+    ).resolves.toEqual({
+      attempted: 2,
+      failed: 1,
+      released: 1,
+      settled: 0,
+    });
+    expect(fixture.claims.releaseExpiredReserved).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationId: second.reservationId }),
+      NOW_EPOCH,
+    );
   });
 });

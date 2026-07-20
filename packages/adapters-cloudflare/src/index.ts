@@ -27,7 +27,21 @@ export {
   type ManagedAiOperationReserveClaimResult,
   type ManagedAiOperationSettledClaim,
   type ManagedAiOperationSettlement,
+  type ManagedAiOperationStaleClaim,
+  type ManagedAiOperationStaleSelection,
 } from "./d1-managed-ai-operation-claims.js";
+export {
+  buildAbandonExpiredReservedStatement,
+  buildAbandonReservedStatement,
+  buildFinalizeFullReservationStatement,
+  buildListStaleStatement,
+  buildMarkSettledStatement,
+  buildReleaseReservedStatement,
+  type JudgeStructuredAiLifecycleIdentity,
+  type JudgeStructuredAiSettlementIdentity,
+  type JudgeStructuredAiSqlStatement,
+  type JudgeStructuredAiStaleSelection,
+} from "./judge-structured-ai-reconciliation.js";
 export {
   D1ManagedRealtimeCallOwnershipRepository,
   type ManagedRealtimeCallChannel,
