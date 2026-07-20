@@ -964,6 +964,22 @@ The canonical implementation-facing artifacts are:
   production-like judge/ordinary/display smoke, measured derived limits, and
   production Secret registration remain open.
 
+## 2026-07-21 Descant preview deployment
+
+- Commit `9e2184a9cd60e7240363f2e007f25bdb4034b84b` was deployed manually to
+  Worker `counterpoint-living-decisions-preview` at
+  `https://counterpoint-living-decisions-preview.gs2safari.workers.dev`.
+- The deploy gate passed security 300/300, Cloudflare 141/141 on the retry,
+  target dry-run, forward D1 migration check, strict Worker deploy, health /
+  readiness / unauthenticated auth smoke, and the full Cloudflare Flagship
+  smoke. One managed-Realtime pool attempt had a transient 503/201 mismatch;
+  its isolated six-test rerun passed before the successful deploy attempt.
+- Real browser verification on the target preview confirmed title `Descant —
+  Living Decisions`, the `Product → Work & Productivity → Open workspace`
+  start guidance, seeded Flagship opening, and workspace rendering. The older
+  `counterpoint-living-decisions.gs2safari.workers.dev` host is a separate stale
+  Worker and still serves the former title; it is not the target preview URL.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
