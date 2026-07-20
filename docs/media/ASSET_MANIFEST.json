@@ -496,6 +496,28 @@
       "sha256": "f7544282eac1d1bcdba00e267719566209f893b5afae0f8765fbe24b182ded02"
     },
     {
+      "bytes": 1188422,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-review/2026-07-21-staged-demo-rule-at-risk-desktop.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "LicenseRef-Descant-Pending",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "3d7ad98841317389d83e942b3180c3efab227cc76e0abff5ac4e091f50b626d5"
+    },
+    {
+      "bytes": 1127849,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-review/2026-07-21-staged-demo-rule-review-required-desktop.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "LicenseRef-Descant-Pending",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "1262c69d674285706f24efa76e71a96a274e70ceede0cf588fcb4095c1d34f79"
+    },
+    {
       "bytes": 348497,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/degraded-mode/2026-07-19-api-key-loss-state-preserved-desktop.png",

@@ -53,14 +53,17 @@ function resourceName(value, fallback, label) {
 
 function safeWorkerVars(vars, runtimeMode) {
   const {
+    DEMO_STORY_MODE: _demoStoryMode,
     JUDGE_IP_HMAC_SECRET: _judgeIpHmacSecret,
     OPENAI_API_KEY_JUDGE: _openAiApiKeyJudge,
     ...safeVars
   } = vars ?? {};
   void _judgeIpHmacSecret;
   void _openAiApiKeyJudge;
+  void _demoStoryMode;
   return {
     ...safeVars,
+    DEMO_STORY_MODE: runtimeMode === "preview" ? "enabled" : "disabled",
     JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
     JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
     OPENAI_MODE: "disabled",

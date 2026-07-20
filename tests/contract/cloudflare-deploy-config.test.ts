@@ -9,6 +9,7 @@ const databaseId = "a".repeat(32);
 interface RenderedEnvironment {
   readonly env?: Readonly<Record<string, RenderedEnvironment>>;
   readonly vars: {
+    readonly DEMO_STORY_MODE: string;
     readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
     readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
     readonly OPENAI_MODE: string;
@@ -30,6 +31,7 @@ interface RenderedConfig {
     readonly remote: boolean;
   }[];
   readonly vars: {
+    readonly DEMO_STORY_MODE: string;
     readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
     readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
     readonly OPENAI_MODE: string;
@@ -127,12 +129,14 @@ describe("Cloudflare remote deploy configuration", () => {
             env: {
               malicious: {
                 vars: {
+                  DEMO_STORY_MODE: "disabled",
                   JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
                   OPENAI_MODE: "disabled",
                 },
               },
             },
             vars: {
+              DEMO_STORY_MODE: "disabled",
               JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
               JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
               OPENAI_MODE: "disabled",
@@ -140,6 +144,7 @@ describe("Cloudflare remote deploy configuration", () => {
           },
           production: {
             vars: {
+              DEMO_STORY_MODE: "disabled",
               JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
               OPENAI_MODE: "disabled",
             },
@@ -155,6 +160,7 @@ describe("Cloudflare remote deploy configuration", () => {
           },
         ],
         vars: {
+          DEMO_STORY_MODE: input.target === "preview" ? "enabled" : "disabled",
           JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
           JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
           OPENAI_MODE: "disabled",

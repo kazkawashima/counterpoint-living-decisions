@@ -31,5 +31,11 @@ The rejection path is also implemented and covered by application tests: it
 records the facilitator reason, holds no Action, creates no task, and returns
 the Decision to `MONITORING`.
 
-Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice:
+The 2026-07-21 captures additionally show the preview-only staged demo rule
+entering `AT_RISK` while managed provider access is disabled, followed by the
+same human-confirmed `REVIEW_REQUIRED` path. The rule is synthetic, carries no
+provider credential or usage reservation, and is disabled by the production
+deploy configuration.
+
+Original capture date: 2026-07-19; refreshed 2026-07-21. Feature slice:
 D5 human invalidation review and Q2 accessible review-state completion.

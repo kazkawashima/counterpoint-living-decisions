@@ -81,3 +81,111 @@ test("Worker SPA serves the hosted flagship through one external-style origin", 
   expect(apiRequests.length).toBeGreaterThanOrEqual(3);
   expect(apiRequests.every(({ hostname }) => hostname === pageHost)).toBe(true);
 });
+
+test("Worker keeps ordinary, judge, and shared-display browser contexts separate", async ({
+  browser,
+  page,
+}) => {
+  await page.goto("/");
+  const origin = new URL(page.url()).origin;
+  const productContext = await browser.newContext({ baseURL: origin });
+  const ordinaryContext = await browser.newContext({ baseURL: origin });
+  const displayContext = await browser.newContext({ baseURL: origin });
+  try {
+    const product = await productContext.request.post("/api/v1/login", {
+      data: { password: "counterpoint-product", userId: "product" },
+    });
+    expect(product.status()).toBe(200);
+    const productBody = (await product.json()) as { bearerToken: string };
+    const productAuthorization = {
+      authorization: `Bearer ${productBody.bearerToken}`,
+    };
+
+    const reset = await productContext.request.post(
+      `/api/v1/meetings/${MEETING_ID}/demo/reset`,
+      {
+        data: {
+          expectedPosition: 0,
+          idempotencyKey: `cloudflare-browser-role-reset-${String(Date.now())}`,
+          meetingId: MEETING_ID,
+        },
+        headers: productAuthorization,
+      },
+    );
+    expect(reset.status()).toBe(200);
+
+    const projection = await productContext.request.get(
+      `/api/v1/meetings/${MEETING_ID}/projection`,
+      { headers: productAuthorization },
+    );
+    expect(projection.status()).toBe(200);
+    const projectionBody = (await projection.json()) as {
+      shared: { position: number };
+    };
+    const issue = await productContext.request.post(
+      `/api/v1/meetings/${MEETING_ID}/display-tokens`,
+      {
+        data: {
+          expectedPosition: projectionBody.shared.position,
+          meetingId: MEETING_ID,
+        },
+        headers: productAuthorization,
+      },
+    );
+    expect(issue.status()).toBe(201);
+    const issueBody = (await issue.json()) as {
+      displayToken: string;
+      displayTokenId: string;
+      position: number;
+    };
+
+    const ordinary = await ordinaryContext.request.post("/api/v1/login", {
+      data: { password: "counterpoint-legal", userId: "legal" },
+    });
+    expect(ordinary.status()).toBe(200);
+    const ordinaryBody = (await ordinary.json()) as { bearerToken: string };
+    const ordinaryJudgeUsage = await ordinaryContext.request.get(
+      `/api/v1/meetings/${MEETING_ID}/judge/usage`,
+      { headers: { authorization: `Bearer ${ordinaryBody.bearerToken}` } },
+    );
+    expect(ordinaryJudgeUsage.status()).toBe(503);
+    await expect(ordinaryJudgeUsage.json()).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
+
+    const displayPage = await displayContext.newPage();
+    await displayPage.goto(
+      `/?displayMeetingId=${encodeURIComponent(MEETING_ID)}&displayToken=${encodeURIComponent(issueBody.displayToken)}`,
+    );
+    await expect(
+      displayPage.getByText("Read-only shared display", { exact: true }),
+    ).toBeVisible();
+    await expect(displayPage.getByText("Private workspace")).toHaveCount(0);
+    await expect(displayPage.getByText("counterpoint-product")).toHaveCount(0);
+
+    const revoke = await productContext.request.post(
+      `/api/v1/meetings/${MEETING_ID}/display-tokens/revoke`,
+      {
+        data: {
+          displayTokenId: issueBody.displayTokenId,
+          expectedPosition: issueBody.position,
+          meetingId: MEETING_ID,
+        },
+        headers: productAuthorization,
+      },
+    );
+    expect(revoke.status()).toBe(200);
+    await displayPage.reload();
+    await expect(
+      displayPage
+        .getByRole("alert")
+        .filter({ hasText: "expired or was revoked" }),
+    ).toBeVisible();
+  } finally {
+    await Promise.all([
+      productContext.close(),
+      ordinaryContext.close(),
+      displayContext.close(),
+    ]);
+  }
+});

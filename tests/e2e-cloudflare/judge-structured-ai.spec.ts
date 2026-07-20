@@ -1,11 +1,21 @@
+import { mkdir } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 import {
   LoginResponseSchema,
   ReadinessResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
 const MEETING_ID = "meeting-global-ai-rollout";
 const MEETING_PURPOSE = "Work & Productivity — Global AI Product Rollout";
+const reviewScreenshotDirectory = evidenceDirectory(
+  "screenshots/decision-review",
+);
+
+test.beforeAll(async () => {
+  await mkdir(reviewScreenshotDirectory, { recursive: true });
+});
 
 async function signIn(page: Page) {
   await page.getByRole("button", { name: "Product" }).click();
@@ -68,7 +78,7 @@ async function expectManualContinuity(page: Page) {
   await expect(manualTextControls(page).input).toBeEnabled();
 }
 
-test("real Wrangler keeps the original receipt pending and manual text available with managed provider disabled", async ({
+test("real Wrangler replays the provider-free staged rule and manual review arc with managed provider disabled", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -119,10 +129,10 @@ test("real Wrangler keeps the original receipt pending and manual text available
   await signIn(page);
   await openFlagship(page);
 
-  const beforePending =
-    "Worker durable text recorded before provider-free invalidation.";
-  const afterPending =
-    "Worker manual text continues while provider-free evaluation is pending.";
+  const beforeRule =
+    "Worker durable text recorded before the staged demo rule.";
+  const afterRule =
+    "Worker manual text continues after the staged rule evaluation.";
   const privateMeetingText =
     "Private context: the regional team is ready to launch. Regional launch requires a documented approval gate. Keep the fallback owner private until the staffing review.";
   const sharedMeetingText =
@@ -130,7 +140,7 @@ test("real Wrangler keeps the original receipt pending and manual text available
   await expect(page.getByLabel("Staged private note")).toHaveValue(
     privateMeetingText,
   );
-  await sendPrivateText(page, beforePending);
+  await sendPrivateText(page, beforeRule);
 
   await page
     .getByRole("button", { name: "Prepare grounded sharing preview" })
@@ -174,7 +184,7 @@ test("real Wrangler keeps the original receipt pending and manual text available
 
   await page.reload();
   await openFlagship(page);
-  await expect(page.getByText(beforePending, { exact: true })).toBeVisible();
+  await expect(page.getByText(beforeRule, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Start Decision monitor" }).click();
   await expect(
     page
@@ -207,36 +217,64 @@ test("real Wrangler keeps the original receipt pending and manual text available
     "Staged demo event: a synthetic regional regulation changes the approval gate.",
   );
   await expect(receipt).toContainText(
-    "Evaluation pending · Decision remains MONITORING",
+    "Evaluation recorded · Human review still required",
   );
-  const originalReceipt = await receipt.textContent();
-  expect(originalReceipt).not.toBeNull();
-  await expect(page.locator(".invalidation-risk-pulse")).toHaveCount(0);
+  await expect(page.locator(".invalidation-risk-pulse")).toContainText(
+    "Staged demo rule · Human review required",
+  );
+  await expect(
+    page.getByRole("region", { name: "Facilitator risk review" }),
+  ).toBeVisible();
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${reviewScreenshotDirectory}/2026-07-21-staged-demo-rule-at-risk-desktop.png`,
+  });
   await expect(page.getByLabel("Staged private note")).toHaveValue(
     privateMeetingText,
   );
   await expect(page.locator(".shared-evidence blockquote")).toHaveText(
     sharedMeetingText,
   );
-  await expect(page.getByText(beforePending, { exact: true })).toBeVisible();
+  await expect(page.getByText(beforeRule, { exact: true })).toBeVisible();
   await expectManualContinuity(page);
-  await sendPrivateText(page, afterPending);
+  await page
+    .getByRole("textbox", { name: "Facilitator review reason" })
+    .fill("The synthetic regulation changes the monitored premise.");
+  await page
+    .getByRole("button", { name: "Confirm impact and open review" })
+    .click();
+  await expect(
+    page.getByText("REVIEW_REQUIRED · Human confirmed").first(),
+  ).toBeVisible();
+  await expect(page.getByText("1 affected Action held")).toBeVisible();
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${reviewScreenshotDirectory}/2026-07-21-staged-demo-rule-review-required-desktop.png`,
+  });
+  await sendPrivateText(page, afterRule);
 
   await page.reload();
   await openFlagship(page);
   const durableReceipt = page.locator(".regulatory-event-receipt");
-  await expect(durableReceipt).toHaveText(originalReceipt ?? "");
   await expect(durableReceipt).toContainText(
-    "Evaluation pending · Decision remains MONITORING",
+    "Evaluation recorded · Human review still required",
   );
+  await expect(page.locator(".invalidation-risk-pulse")).toContainText(
+    "Human reviewed · Impact confirmed",
+  );
+  await expect(
+    page.getByText("REVIEW_REQUIRED · Human confirmed").first(),
+  ).toBeVisible();
   await expect(page.getByLabel("Staged private note")).toHaveValue(
     privateMeetingText,
   );
   await expect(page.locator(".shared-evidence blockquote")).toHaveText(
     sharedMeetingText,
   );
-  await expect(page.getByText(beforePending, { exact: true })).toBeVisible();
-  await expect(page.getByText(afterPending, { exact: true })).toBeVisible();
+  await expect(page.getByText(beforeRule, { exact: true })).toBeVisible();
+  await expect(page.getByText(afterRule, { exact: true })).toBeVisible();
   await expectManualContinuity(page);
 
   expect(apiRequests.length).toBeGreaterThanOrEqual(8);

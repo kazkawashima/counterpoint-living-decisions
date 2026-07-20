@@ -50,6 +50,7 @@ import type {
   ConcreteSharedDecisionSynthesizer,
   JudgeSharedDecisionRuntimeDependencies,
 } from "./judge-shared-decision.js";
+import { createPreviewDemoInvalidationEvaluator } from "./preview-demo-invalidation.js";
 import {
   reconcileJudgeManagedStructuredAiOperations,
   type JudgeManagedStructuredAiReconcileRequest,
@@ -77,6 +78,9 @@ const JSON_HEADERS = {
   "cache-control": "no-store",
   "content-type": "application/json; charset=utf-8",
 } as const;
+const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
+const previewDemoInvalidationEvaluator =
+  createPreviewDemoInvalidationEvaluator();
 const EXPECTED_D1_MIGRATIONS = [
   "0001_identity_and_meetings.sql",
   "0002_event_ledger_and_projections.sql",
@@ -93,6 +97,7 @@ const EXPECTED_D1_MIGRATIONS = [
 ] as const;
 
 interface JudgeWorkerBindings {
+  readonly DEMO_STORY_MODE?: "disabled" | "enabled";
   readonly JUDGE_IP_HMAC_SECRET?: string;
   readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED?: string;
   readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED?: string;
@@ -105,6 +110,7 @@ interface JudgeWorkerBindings {
 export type Env = Readonly<
   Omit<
     WorkerBindings,
+    | "DEMO_STORY_MODE"
     | "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED"
     | "JUDGE_STRUCTURED_AI_ROUTE_ENABLED"
     | "OPENAI_MODE"
@@ -699,6 +705,13 @@ export function createWorkerHandler(
                 : env,
               {
                 clock: flagshipClock,
+                ...(String(env.DEMO_STORY_MODE) === "enabled" &&
+                meetingId === FLAGSHIP_MEETING_ID
+                  ? {
+                      providerFreeAssumptionInvalidationEvaluator:
+                        previewDemoInvalidationEvaluator,
+                    }
+                  : {}),
                 ...(options.providerFreeAssumptionInvalidationEvaluator ===
                 undefined
                   ? {}

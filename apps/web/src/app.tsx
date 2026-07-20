@@ -69,6 +69,27 @@ const SYNTHETIC_PRIVATE_NOTE =
 const SYNTHETIC_EXACT_SNIPPET =
   "Regional launch requires a documented approval gate.";
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
+const STAGED_DEMO_RULE_MODEL = "staged-demo-rule-v1";
+
+function isStagedDemoRule(
+  invalidation: InvalidationEvaluation | undefined,
+): boolean {
+  return invalidation?.model === STAGED_DEMO_RULE_MODEL;
+}
+
+function invalidationSourceLabel(
+  invalidation: InvalidationEvaluation | undefined,
+): string {
+  return isStagedDemoRule(invalidation)
+    ? "Staged demo rule"
+    : `AI inferred · ${invalidation?.model ?? "provider"}`;
+}
+
+function invalidationSuggestionLabel(
+  invalidation: InvalidationEvaluation | undefined,
+): string {
+  return isStagedDemoRule(invalidation) ? "staged demo rule" : "AI suggestion";
+}
 
 function messageFor(error: unknown): string {
   return error instanceof ApiError
@@ -569,7 +590,7 @@ function SharedDecisionCard({
       <div>
         <p className="zone-label shared">
           {activeRisk
-            ? "Shared · AI inferred risk"
+            ? `Shared · ${isStagedDemoRule(invalidation) ? "Staged demo rule risk" : "AI inferred risk"}`
             : decision.status === "REVIEW_REQUIRED"
               ? "Shared · Human confirmed review"
               : recommitted
@@ -624,7 +645,7 @@ function SharedDecisionCard({
         >
           <span>
             {activeRisk
-              ? "AT_RISK · AI suggestion"
+              ? `AT_RISK · ${invalidationSuggestionLabel(invalidation)}`
               : review?.disposition === "confirm_invalidation"
                 ? recommitted
                   ? `COMMITTED · Revision ${decision.activeRevision}`
@@ -633,7 +654,7 @@ function SharedDecisionCard({
                     : decision.status === "REJECTED"
                       ? "REJECTED · Human resolved"
                       : "REVIEW_REQUIRED · Human confirmed"
-                : "AI suggestion rejected by facilitator"}
+                : `${invalidationSuggestionLabel(invalidation)} rejected by facilitator`}
           </span>
           <strong>
             {Math.round(invalidation.confidence * 100)}% confidence
@@ -1846,7 +1867,7 @@ function FacilitatorDecisionPanel({
           <div>
             <p aria-atomic="true" className="zone-label shared" role="status">
               {phase === "at-risk" || phase === "reviewing"
-                ? "AT_RISK · AI suggestion"
+                ? `AT_RISK · ${invalidationSuggestionLabel(invalidation)}`
                 : phase === "review-required"
                   ? "REVIEW_REQUIRED · Human confirmed"
                   : phase === "recommitted"
@@ -1856,7 +1877,7 @@ function FacilitatorDecisionPanel({
                       : phase === "decision-rejected"
                         ? "REJECTED · Human resolved"
                         : phase === "review-rejected"
-                          ? "Monitoring · AI suggestion rejected"
+                          ? `Monitoring · ${invalidationSuggestionLabel(invalidation)} rejected`
                           : phase === "monitoring"
                             ? "Monitoring active"
                             : "Human committed"}
@@ -1980,7 +2001,7 @@ function FacilitatorDecisionPanel({
               <div>
                 <span>
                   {reviewReceipt === undefined
-                    ? "AI inferred · Human review required"
+                    ? `${invalidationSourceLabel(invalidation)} · Human review required`
                     : reviewReceipt.disposition === "confirm_invalidation"
                       ? "Human reviewed · Impact confirmed"
                       : "Human reviewed · Suggestion rejected"}
@@ -2078,7 +2099,7 @@ function FacilitatorDecisionPanel({
               </div>
               <div className="review-model-reason">
                 <span>
-                  AI inferred · {invalidation.model} ·{" "}
+                  {invalidationSourceLabel(invalidation)} ·{" "}
                   {Math.round(invalidation.confidence * 100)}%
                 </span>
                 <p>{invalidation.reason}</p>
@@ -2125,7 +2146,7 @@ function FacilitatorDecisionPanel({
                       }
                       type="button"
                     >
-                      Reject AI suggestion
+                      Reject {invalidationSuggestionLabel(invalidation)}
                     </button>
                   </div>
                   {phase === "reviewing" ? (
@@ -2139,7 +2160,7 @@ function FacilitatorDecisionPanel({
                   <span>
                     {reviewReceipt.disposition === "confirm_invalidation"
                       ? "REVIEW_REQUIRED · Human confirmed"
-                      : "AI suggestion rejected by facilitator"}
+                      : `${invalidationSuggestionLabel(invalidation)} rejected by facilitator`}
                   </span>
                   <strong>{reviewReceipt.reason}</strong>
                   {reviewReceipt.disposition === "confirm_invalidation" ? (
@@ -2405,7 +2426,11 @@ function FacilitatorDecisionPanel({
                       />
                       <small>
                         This closes the Decision itself; it does not reject only
-                        the AI suggestion.
+                        the{" "}
+                        {invalidation === undefined
+                          ? "suggestion"
+                          : invalidationSuggestionLabel(invalidation)}
+                        .
                       </small>
                     </label>
                   )}
