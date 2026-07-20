@@ -4,16 +4,18 @@ Updated: 2026-07-21
 
 ## Current phase
 
-**The complete local guided flagship is implemented from private evidence
-through permission, Commitment, external change, human review, revision,
-export, deterministic meeting reset, and participant-scoped realtime resume.
+**The complete local and hosted-preview guided flagship is implemented from
+private evidence through permission, Commitment, external change, human review,
+revision, export, deterministic meeting reset, and participant-scoped realtime
+resume.
 The revocable read-only shared display, A1 validated artifact ingestion, A2
 SSRF-safe URL ingestion, A6 transient BYOK/client-secret path, A7 shared-floor
 speech controls, and A8 durable degraded mode are also complete. OpenAI,
 Realtime, and BYOK loss leave state reads, manual text, human-authored
 Decisions, audit, and export usable through explicit bounded recovery UI. The
 remaining implementation phase is hosted Cloudflare parity, judge mode,
-security hardening, and submission packaging.**
+security hardening, final license/credential decisions, production operations,
+and submission packaging.**
 
 The canonical implementation-facing artifacts are:
 
