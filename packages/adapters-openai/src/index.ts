@@ -9,6 +9,7 @@ export {
   PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
   PRIVATE_DISCLOSURE_PROMPT_VERSION,
   PRIVATE_DISCLOSURE_SCHEMA_VERSION,
+  fullJitterBackoffMilliseconds,
   DeterministicPrivateDisclosureModel,
   OpenAiCandidateError,
   OpenAiPrivateDisclosureModel,

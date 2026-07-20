@@ -2,6 +2,7 @@ import {
   DeterministicPrivateDisclosureModel,
   OpenAiCandidateError,
   OpenAiPrivateDisclosureProposer,
+  fullJitterBackoffMilliseconds,
   type PrivateDisclosureModel,
   type PrivateDisclosureModelRequest,
   type PrivateDisclosureModelResult,
@@ -93,6 +94,32 @@ class QueueModel implements PrivateDisclosureModel {
 }
 
 describe("OpenAiPrivateDisclosureProposer", () => {
+  it("uses injected full jitter for retry delay", async () => {
+    const invalid = validResult();
+    const output = structuredClone(invalid.output) as {
+      candidates: { exactSnippet: string }[];
+    };
+    output.candidates[0]!.exactSnippet = "invented private claim";
+    const delay = vi.fn(() => Promise.resolve());
+    const proposer = new OpenAiPrivateDisclosureProposer({
+      delay,
+      modelAdapter: new QueueModel([{ ...invalid, output }, validResult()]),
+      random: () => 0.5,
+    });
+
+    await proposer.propose({
+      meetingId: "meeting-1",
+      ownerParticipantId: "participant-owner",
+      sourceArtifactId: "artifact-private-1",
+      text: privateText,
+    });
+
+    expect(delay).toHaveBeenCalledExactlyOnceWith(50);
+    expect(fullJitterBackoffMilliseconds(20, () => 0.999_999)).toBeLessThanOrEqual(
+      1_000,
+    );
+  });
+
   it("rejects a third provider attempt before any proposal work can start", () => {
     expect(
       () =>
@@ -450,8 +477,9 @@ describe("OpenAiPrivateDisclosureProposer", () => {
       status: 401,
     });
     const model = new QueueModel([providerError]);
+    const delay = vi.fn(() => Promise.resolve());
     const proposer = new OpenAiPrivateDisclosureProposer({
-      delay: () => Promise.resolve(),
+      delay,
       modelAdapter: model,
     });
 
@@ -470,6 +498,7 @@ describe("OpenAiPrivateDisclosureProposer", () => {
       ),
     );
     expect(model.requests).toHaveLength(1);
+    expect(delay).not.toHaveBeenCalled();
   });
 
   it("provides a deterministic no-network model for tests and degraded flows", async () => {

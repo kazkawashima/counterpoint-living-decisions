@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import {
   DEFAULT_OPENAI_MODEL,
+  fullJitterBackoffMilliseconds,
   OpenAiCandidateError,
   type TokenUsage,
 } from "./private-disclosure.js";
@@ -243,6 +244,7 @@ export interface OpenAiSharedDecisionSynthesizerOptions {
   readonly maxAttempts?: number;
   readonly model?: string;
   readonly modelAdapter: SharedDecisionModel;
+  readonly random?: () => number;
 }
 
 export class OpenAiSharedDecisionSynthesizer {
@@ -252,11 +254,12 @@ export class OpenAiSharedDecisionSynthesizer {
   readonly #maxAttempts: number;
   readonly #model: string;
   readonly #modelAdapter: SharedDecisionModel;
+  readonly #random: (() => number) | undefined;
 
   constructor(options: OpenAiSharedDecisionSynthesizerOptions) {
     const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
-      throw new RangeError("maxAttempts must be an integer from 1 to 3.");
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 2) {
+      throw new RangeError("maxAttempts must be an integer from 1 to 2.");
     }
     this.#clock = options.clock ?? (() => new Date());
     this.#delay = options.delay ?? defaultDelay;
@@ -264,6 +267,7 @@ export class OpenAiSharedDecisionSynthesizer {
     this.#maxAttempts = maxAttempts;
     this.#model = options.model ?? DEFAULT_OPENAI_MODEL;
     this.#modelAdapter = options.modelAdapter;
+    this.#random = options.random;
   }
 
   async synthesize(
@@ -337,7 +341,9 @@ export class OpenAiSharedDecisionSynthesizer {
         ) {
           break;
         }
-        await this.#delay(Math.min(1_000, 100 * 2 ** (attempt - 1)));
+        await this.#delay(
+          fullJitterBackoffMilliseconds(attempt, this.#random),
+        );
       }
     }
 

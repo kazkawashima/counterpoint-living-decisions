@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import {
   DEFAULT_OPENAI_MODEL,
+  fullJitterBackoffMilliseconds,
   OpenAiCandidateError,
   type TokenUsage,
 } from "./private-disclosure.js";
@@ -249,6 +250,7 @@ export interface OpenAiAssumptionInvalidationEvaluatorOptions {
   readonly maxAttempts?: number;
   readonly model?: string;
   readonly modelAdapter: AssumptionInvalidationModel;
+  readonly random?: () => number;
 }
 
 export class OpenAiAssumptionInvalidationEvaluator {
@@ -258,6 +260,7 @@ export class OpenAiAssumptionInvalidationEvaluator {
   readonly #maxAttempts: number;
   readonly #model: string;
   readonly #modelAdapter: AssumptionInvalidationModel;
+  readonly #random: (() => number) | undefined;
 
   constructor(options: OpenAiAssumptionInvalidationEvaluatorOptions) {
     const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -271,6 +274,7 @@ export class OpenAiAssumptionInvalidationEvaluator {
     this.#maxAttempts = maxAttempts;
     this.#model = options.model ?? DEFAULT_OPENAI_MODEL;
     this.#modelAdapter = options.modelAdapter;
+    this.#random = options.random;
   }
 
   async evaluate(
@@ -347,7 +351,9 @@ export class OpenAiAssumptionInvalidationEvaluator {
         ) {
           break;
         }
-        await this.#delay(backoffMilliseconds(attempt));
+        await this.#delay(
+          fullJitterBackoffMilliseconds(attempt, this.#random),
+        );
       }
     }
 
@@ -567,10 +573,6 @@ function normalizeGenerationError(error: unknown): OpenAiCandidateError {
     "Assumption invalidation evaluation is currently unavailable.",
     isRetryableGenerationError(error),
   );
-}
-
-function backoffMilliseconds(attempt: number): number {
-  return Math.min(1_000, 100 * 2 ** (attempt - 1));
 }
 
 async function defaultDelay(milliseconds: number): Promise<void> {

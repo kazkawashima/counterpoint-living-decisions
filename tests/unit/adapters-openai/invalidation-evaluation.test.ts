@@ -306,6 +306,7 @@ describe("OpenAiAssumptionInvalidationEvaluator", () => {
     const evaluator = new OpenAiAssumptionInvalidationEvaluator({
       delay,
       modelAdapter: model,
+      random: () => 0.5,
     });
 
     await expect(evaluator.evaluate(input)).rejects.toMatchObject({
@@ -314,7 +315,7 @@ describe("OpenAiAssumptionInvalidationEvaluator", () => {
     });
     expect(model.requests).toHaveLength(2);
     expect(delay).toHaveBeenCalledOnce();
-    expect(delay).toHaveBeenCalledWith(100);
+    expect(delay).toHaveBeenCalledWith(50);
     expect(
       () =>
         new OpenAiAssumptionInvalidationEvaluator({

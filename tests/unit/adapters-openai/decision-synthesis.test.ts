@@ -7,7 +7,8 @@ import {
   type SharedDecisionSynthesisInput,
 } from "@counterpoint/adapters-openai";
 import type { StructuredLogEntry } from "@counterpoint/ports";
-import { describe, expect, it } from "vitest";
+import { PermissionDeniedError } from "openai";
+import { describe, expect, it, vi } from "vitest";
 
 const input: SharedDecisionSynthesisInput = {
   actions: [],
@@ -79,6 +80,49 @@ class QueueModel implements SharedDecisionModel {
 }
 
 describe("OpenAiSharedDecisionSynthesizer", () => {
+  it("uses injected full jitter for retry delay", async () => {
+    const invalid = modelResult();
+    const output = structuredClone(invalid.output) as {
+      action: { ownerParticipantId: string };
+    };
+    output.action.ownerParticipantId = "participant-outsider";
+    const delay = vi.fn(() => Promise.resolve());
+    const synthesizer = new OpenAiSharedDecisionSynthesizer({
+      delay,
+      modelAdapter: new QueueModel([{ ...invalid, output }, modelResult()]),
+      random: () => 0.5,
+    });
+
+    await synthesizer.synthesize(input);
+
+    expect(delay).toHaveBeenCalledExactlyOnceWith(50);
+  });
+
+  it("does not delay or retry permission failures", async () => {
+    const delay = vi.fn(() => Promise.resolve());
+    const model = new QueueModel([
+      new PermissionDeniedError(
+        403,
+        undefined,
+        "permission denied",
+        new Headers(),
+      ),
+      modelResult(),
+    ]);
+    const synthesizer = new OpenAiSharedDecisionSynthesizer({
+      delay,
+      modelAdapter: model,
+      random: () => 0.5,
+    });
+
+    await expect(synthesizer.synthesize(input)).rejects.toMatchObject({
+      code: "OPENAI_UNAVAILABLE",
+      retryable: false,
+    });
+    expect(model.requests).toHaveLength(1);
+    expect(delay).not.toHaveBeenCalled();
+  });
+
   it("returns a versioned candidate grounded only in shared references", async () => {
     const logs: StructuredLogEntry[] = [];
     const model = new QueueModel([modelResult()]);

@@ -265,6 +265,7 @@ export interface OpenAiPrivateDisclosureProposerOptions {
   readonly maxAttempts?: number;
   readonly model?: string;
   readonly modelAdapter: PrivateDisclosureModel;
+  readonly random?: () => number;
 }
 
 export class OpenAiPrivateDisclosureProposer implements DisclosureCandidateProposer {
@@ -274,6 +275,7 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
   readonly #maxAttempts: number;
   readonly #model: string;
   readonly #modelAdapter: PrivateDisclosureModel;
+  readonly #random: (() => number) | undefined;
 
   constructor(options: OpenAiPrivateDisclosureProposerOptions) {
     const maxAttempts = options.maxAttempts ?? PRIVATE_DISCLOSURE_MAX_ATTEMPTS;
@@ -291,6 +293,7 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
     this.#maxAttempts = maxAttempts;
     this.#model = options.model ?? DEFAULT_OPENAI_MODEL;
     this.#modelAdapter = options.modelAdapter;
+    this.#random = options.random;
   }
 
   async propose(input: {
@@ -368,7 +371,9 @@ export class OpenAiPrivateDisclosureProposer implements DisclosureCandidatePropo
         if (!canRetry) {
           break;
         }
-        await this.#delay(backoffMilliseconds(attempt));
+        await this.#delay(
+          fullJitterBackoffMilliseconds(attempt, this.#random),
+        );
       }
     }
 
@@ -559,8 +564,29 @@ function normalizeGenerationError(error: unknown): OpenAiCandidateError {
   );
 }
 
-function backoffMilliseconds(attempt: number): number {
-  return Math.min(1_000, 100 * 2 ** (attempt - 1));
+export function fullJitterBackoffMilliseconds(
+  attempt: number,
+  random: (() => number) | undefined = undefined,
+): number {
+  if (!Number.isSafeInteger(attempt) || attempt < 1) {
+    throw new RangeError("Retry attempt must be a positive safe integer.");
+  }
+  const randomValue = (random ?? secureRandomFraction)();
+  if (
+    !Number.isFinite(randomValue) ||
+    randomValue < 0 ||
+    randomValue >= 1
+  ) {
+    throw new RangeError("Random source must return a value from 0 through 1.");
+  }
+  const inclusiveMaximum = Math.min(1_000, 100 * 2 ** (attempt - 1));
+  return Math.floor(randomValue * (inclusiveMaximum + 1));
+}
+
+function secureRandomFraction(): number {
+  const value = new Uint32Array(1);
+  crypto.getRandomValues(value);
+  return value[0]! / 0x1_0000_0000;
 }
 
 async function defaultDelay(milliseconds: number): Promise<void> {
