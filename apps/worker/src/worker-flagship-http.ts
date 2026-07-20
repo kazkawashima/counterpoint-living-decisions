@@ -101,6 +101,12 @@ import {
   CaptureUtteranceResponseSchema,
   CreateMeetingRequestSchema,
   CreateMeetingResponseSchema,
+  DecisionAuditQuerySchema,
+  DecisionAuditResponseSchema,
+  DecisionHistoryQuerySchema,
+  DecisionHistoryResponseSchema,
+  DecisionJsonExportQuerySchema,
+  DecisionJsonExportResponseSchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   GetRoleProjectionResponseSchema,
@@ -188,6 +194,9 @@ export type WorkerFlagshipOperation =
   | "capture-utterance"
   | "commit-decision"
   | "decisions"
+  | "decision-audit"
+  | "decision-export"
+  | "decision-history"
   | "disposition-decision-candidate"
   | "evidence"
   | "external-events"
@@ -679,6 +688,72 @@ function decisionRevisionView(revision: DomainDecisionRevision) {
     snapshot: revision.snapshot,
     version: revision.version,
   };
+}
+
+function decisionAuditEntries(
+  records: readonly {
+    readonly event: DomainEvent;
+    readonly position: number;
+  }[],
+  targetDecisionId?: string,
+) {
+  return records.flatMap(({ event, position }) => {
+    if (
+      ![
+        "ActionHeld",
+        "AssumptionInvalidationSuggested",
+        "DecisionCommitted",
+        "DecisionDrafted",
+        "DecisionMarkedAtRisk",
+        "DecisionMarkedReady",
+        "DecisionRejected",
+        "DecisionReviewRequired",
+        "DecisionRevisionCommitted",
+        "DecisionSuperseded",
+        "FacilitatorReviewed",
+        "MonitoringStarted",
+        "ReconsiderationTaskCreated",
+      ].includes(event.eventType)
+    ) {
+      return [];
+    }
+    if (
+      targetDecisionId !== undefined &&
+      !(
+        (event.eventType === "AssumptionInvalidationSuggested" &&
+          String(event.payload.decisionId) === String(targetDecisionId)) ||
+        (event.eventType === "ActionHeld" &&
+          String(event.payload.decisionId) === String(targetDecisionId)) ||
+        (event.eventType === "ReconsiderationTaskCreated" &&
+          String(event.payload.task.decisionId) === String(targetDecisionId)) ||
+        ("decision" in event.payload &&
+          String(event.payload.decision.id) === String(targetDecisionId))
+      )
+    ) {
+      return [];
+    }
+    return [
+      {
+        actor:
+          event.actor.kind === "participant"
+            ? event.actor
+            : {
+                actorId:
+                  event.actor.kind === "ai"
+                    ? `ai-${event.actor.model}`
+                    : "system",
+                kind: "system" as const,
+              },
+        auditId: `audit-${event.eventId}`,
+        correlationId: event.correlationId,
+        eventId: event.eventId,
+        eventType: event.eventType,
+        meetingId: event.meetingId,
+        occurredAt: event.occurredAt,
+        position,
+      },
+    ];
+  });
 }
 
 function decisionFailureResponse(
@@ -1436,6 +1511,92 @@ export async function handleWorkerFlagshipHttp(input: {
   );
   if (resolved.kind === "rejected") {
     return apiErrorResponse(resolved.code, correlationId);
+  }
+
+  const requestPath = new URL(request.url).pathname;
+  const decisionHistoryPath =
+    /^\/api\/v1\/meetings\/([^/]+)\/decisions\/([^/]+)\/history$/u.exec(
+      requestPath,
+    );
+  const decisionExportPath =
+    /^\/api\/v1\/meetings\/([^/]+)\/decisions\/([^/]+)\/export$/u.exec(
+      requestPath,
+    );
+
+  if (operation === "decision-history" || operation === "decision-export") {
+    const decisionId =
+      decisionHistoryPath?.[2] ?? decisionExportPath?.[2] ?? undefined;
+    const parsed =
+      operation === "decision-history"
+        ? DecisionHistoryQuerySchema.safeParse({ meetingId, decisionId })
+        : DecisionJsonExportQuerySchema.safeParse({ meetingId, decisionId });
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    const projection = replayMeeting(
+      domainMeetingId(meetingId),
+      records.map(({ event, position }) => ({
+        ...event,
+        position: meetingPosition(position),
+      })),
+    );
+    const decision = projection.shared.decisions.find(
+      ({ id }) => String(id) === String(parsed.data.decisionId),
+    );
+    if (decision === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const revisions = projection.shared.decisionRevisions.filter(
+      ({ decisionId: revisionDecisionId }) =>
+        revisionDecisionId === decision.id,
+    );
+    const updatedAt = revisions.at(-1)?.createdAt ?? decision.createdAt;
+    if (operation === "decision-history") {
+      return apiJsonResponse(
+        DecisionHistoryResponseSchema.parse({
+          correlationId,
+          decision: decisionView(decision, updatedAt),
+          meetingId,
+          revisions: revisions.map(decisionRevisionView),
+        }),
+        200,
+        correlationId,
+      );
+    }
+    return apiJsonResponse(
+      DecisionJsonExportResponseSchema.parse({
+        auditEntries: decisionAuditEntries(records, parsed.data.decisionId),
+        correlationId,
+        decision: decisionView(decision, updatedAt),
+        exportedAt: dependencies.clock.now(),
+        meetingId,
+        revisions: revisions.map(decisionRevisionView),
+      }),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "decision-audit") {
+    const decisionId = new URL(request.url).searchParams.get("decisionId");
+    const parsed = DecisionAuditQuerySchema.safeParse({
+      meetingId,
+      ...(decisionId === null ? {} : { decisionId }),
+    });
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const records = await dependencies.events.load(meetingId);
+    return apiJsonResponse(
+      DecisionAuditResponseSchema.parse({
+        correlationId,
+        entries: decisionAuditEntries(records, parsed.data.decisionId),
+        meetingId,
+      }),
+      200,
+      correlationId,
+    );
   }
 
   if (operation === "register-text-source") {

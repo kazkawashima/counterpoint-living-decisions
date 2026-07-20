@@ -23,6 +23,7 @@ import {
   meetingId as domainMeetingId,
   monitorRegistrationId,
   nonEmptyText,
+  replayMeeting,
   revisionNumber,
   suggestionId,
   timestamp,
@@ -1662,6 +1663,45 @@ describe("Worker assumption invalidation boundary", () => {
     expect(claim).not.toHaveBeenCalled();
     expect(reserve).not.toHaveBeenCalled();
     expect(managedEvaluate).not.toHaveBeenCalled();
+  });
+
+  it("serves decision history, audit, and export after a commit", async () => {
+    const fixtureValue = await invalidationFixture();
+    const records = await fixtureValue.dependencies.events.load(MEETING_ID);
+    const projection = replayMeeting(
+      domainMeetingId(MEETING_ID),
+      records.map(({ event }) => event),
+    );
+    const decision = projection.shared.decisions[0];
+    if (decision === undefined) {
+      throw new Error("Decision history fixture is missing its decision");
+    }
+
+    for (const [operation, path] of [
+      [
+        "decision-history" as const,
+        `/api/v1/meetings/${MEETING_ID}/decisions/${decision.id}/history`,
+      ],
+      [
+        "decision-audit" as const,
+        `/api/v1/meetings/${MEETING_ID}/decisions/audit?decisionId=${decision.id}`,
+      ],
+      [
+        "decision-export" as const,
+        `/api/v1/meetings/${MEETING_ID}/decisions/${decision.id}/export`,
+      ],
+    ] as const) {
+      const response = await handleWorkerFlagshipHttp({
+        correlationId: `correlation-worker-${operation}`,
+        dependencies: fixtureValue.dependencies,
+        meetingId: MEETING_ID,
+        operation,
+        request: new Request(`https://counterpoint.test${path}`, {
+          headers: { authorization: `Bearer ${BEARER}` },
+        }),
+      });
+      expect(response.status).toBe(200);
+    }
   });
 
   it("creates meetings and replays the same idempotency key", async () => {

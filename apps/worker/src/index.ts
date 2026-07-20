@@ -437,6 +437,16 @@ export function createWorkerHandler(
         /^\/api\/v1\/meetings\/([^/]+)\/(evidence|decisions|external-events|invalidation-evaluations)$/u.exec(
           url.pathname,
         );
+      const flagshipDecisionHistoryRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/decisions\/([^/]+)\/history$/u.exec(
+          url.pathname,
+        );
+      const flagshipDecisionExportRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/decisions\/([^/]+)\/export$/u.exec(
+          url.pathname,
+        );
+      const flagshipDecisionAuditRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/decisions\/audit$/u.exec(url.pathname);
       const flagshipDemoRegulatoryRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/demo\/regulatory-changes$/u.exec(
           url.pathname,
@@ -518,18 +528,32 @@ export function createWorkerHandler(
                                                 "/api/v1/meetings"
                                             ? "create-meeting"
                                             : request.method === "GET" &&
-                                                url.pathname ===
-                                                  "/api/v1/meetings"
-                                              ? "meetings"
+                                                flagshipDecisionHistoryRoute !==
+                                                  null
+                                              ? "decision-history"
                                               : request.method === "GET" &&
-                                                  flagshipProjectionRoute !==
+                                                  flagshipDecisionExportRoute !==
                                                     null
-                                                ? "projection"
+                                                ? "decision-export"
                                                 : request.method === "GET" &&
-                                                    flagshipCollectionOperation !==
-                                                      undefined
-                                                  ? flagshipCollectionOperation
-                                                  : undefined;
+                                                    flagshipDecisionAuditRoute !==
+                                                      null
+                                                  ? "decision-audit"
+                                                  : request.method === "GET" &&
+                                                      url.pathname ===
+                                                        "/api/v1/meetings"
+                                                    ? "meetings"
+                                                    : request.method ===
+                                                          "GET" &&
+                                                        flagshipProjectionRoute !==
+                                                          null
+                                                      ? "projection"
+                                                      : request.method ===
+                                                            "GET" &&
+                                                          flagshipCollectionOperation !==
+                                                            undefined
+                                                        ? flagshipCollectionOperation
+                                                        : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;
@@ -550,6 +574,31 @@ export function createWorkerHandler(
         if (flagshipCollectionRoute !== null) {
           try {
             meetingId = decodeURIComponent(flagshipCollectionRoute[1] ?? "");
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDecisionHistoryRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(
+              flagshipDecisionHistoryRoute[1] ?? "",
+            );
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDecisionExportRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(
+              flagshipDecisionExportRoute[1] ?? "",
+            );
+          } catch {
+            return apiErrorResponse("VALIDATION_FAILED", correlationId);
+          }
+        }
+        if (flagshipDecisionAuditRoute !== null) {
+          try {
+            meetingId = decodeURIComponent(flagshipDecisionAuditRoute[1] ?? "");
           } catch {
             return apiErrorResponse("VALIDATION_FAILED", correlationId);
           }
