@@ -1030,6 +1030,24 @@ The canonical implementation-facing artifacts are:
   `docs/media/screenshots/decision-review/`; the media manifest is current.
   Reel production remains outside this goal.
 
+## 2026-07-21 submission audit and durable record proof
+
+- The repository license audit is now explicit in
+  `docs/submission-license-audit.md`. `npm run licenses:check` passes against
+  286 pinned package entries; runtime dependencies are permissive MIT and
+  Apache-2.0 metadata, while LGPL/MPL identifiers are development-only in the
+  current inventory. The project's own MIT/Apache-2.0/rights-reservation choice
+  remains an owner decision and no `LICENSE` was added implicitly.
+- Judge credential handling is documented in
+  `docs/runbooks/judge-credential-operations.md`. The README's fixed passwords
+  are explicitly synthetic local/demo fixtures and are not production judge
+  credentials. No production Secret or credential was registered in this
+  slice.
+- The real preview browser scenario now also fetches the committed Decision's
+  history, audit, and JSON export after the staged review; all three returned
+  200 and the export retained `REVIEW_REQUIRED`. This closes the hosted
+  durable-record check without weakening the separate provider/cost gates.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and

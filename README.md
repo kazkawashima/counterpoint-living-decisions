@@ -180,8 +180,10 @@ preview resource plan and remote-mutation boundary.
 
 ## Known limitations and release boundary
 
-- The hosted preview, logged-out/incognito judge check, and hosted security
-  matrix are pending the explicitly approved Cloudflare deployment.
+- The hosted preview and logged-out/incognito product boundary are available
+  through the explicit Cloudflare deployment. The hosted full security matrix
+  and provider-funded judge verification remain pending as separate release
+  gates.
 - Judge-funded OpenAI routes are disabled by default. Their separate Worker
   Secrets and USD 25 rolling-24-hour cap must be verified on the hosted target
   before a judge credential is issued.
@@ -212,6 +214,8 @@ remain flagged for final release review. This metadata inventory is not a
 substitute for that review. Media hashes and explicitly reviewed provenance,
 creator, synthetic-fixture status, and pending rights status are recorded in
 [`docs/media/ASSET_MANIFEST.json`](docs/media/ASSET_MANIFEST.json).
+The engineering inventory and remaining owner decision are recorded in
+[`docs/submission-license-audit.md`](docs/submission-license-audit.md).
 
 ## Documentation
 

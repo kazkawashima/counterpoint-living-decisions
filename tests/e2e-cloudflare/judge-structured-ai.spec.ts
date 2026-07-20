@@ -277,6 +277,40 @@ test("real Wrangler replays the provider-free staged rule and manual review arc 
   await expect(page.getByText(afterRule, { exact: true })).toBeVisible();
   await expectManualContinuity(page);
 
+  const authorization = {
+    authorization: `Bearer ${facilitator.bearerToken}`,
+  };
+  const projectionResponse = await page.request.get(
+    `/api/v1/meetings/${MEETING_ID}/projection`,
+    { headers: authorization },
+  );
+  expect(projectionResponse.status()).toBe(200);
+  const projection = (await projectionResponse.json()) as {
+    shared?: { decisions?: Array<{ decisionId?: string }> };
+  };
+  const decisionId = projection.shared?.decisions?.at(-1)?.decisionId;
+  expect(decisionId).toEqual(expect.any(String));
+  const [historyResponse, auditResponse, exportResponse] = await Promise.all([
+    page.request.get(
+      `/api/v1/meetings/${MEETING_ID}/decisions/${decisionId}/history`,
+      { headers: authorization },
+    ),
+    page.request.get(
+      `/api/v1/meetings/${MEETING_ID}/decisions/audit?decisionId=${encodeURIComponent(decisionId ?? "")}`,
+      { headers: authorization },
+    ),
+    page.request.get(
+      `/api/v1/meetings/${MEETING_ID}/decisions/${decisionId}/export`,
+      { headers: authorization },
+    ),
+  ]);
+  expect(historyResponse.status()).toBe(200);
+  expect(auditResponse.status()).toBe(200);
+  expect(exportResponse.status()).toBe(200);
+  await expect(exportResponse.json()).resolves.toMatchObject({
+    decision: { snapshot: { status: "REVIEW_REQUIRED" } },
+  });
+
   expect(apiRequests.length).toBeGreaterThanOrEqual(8);
   expect(apiRequests.every(({ hostname }) => hostname === pageHost)).toBe(true);
 });

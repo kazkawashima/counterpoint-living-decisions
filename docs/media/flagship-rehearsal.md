@@ -8,7 +8,9 @@ no real customer or workplace data.
 
 Show the complete private-to-living-Decision value arc in no more than three
 minutes. Reset the target demo meeting immediately before each take so event
-positions, revision numbers, and visible cues are deterministic.
+positions, revision numbers, and visible cues are deterministic. The event is
+the synthetic Flagship staged story; in the preview it is evaluated by the
+provider-free `staged-demo-rule-v1`, not by a live production monitor.
 
 | Time | Beat | Screen proof |
 | --- | --- | --- |
@@ -16,7 +18,7 @@ positions, revision numbers, and visible cues are deterministic.
 | 0:18–0:38 | Exact disclosure requires permission | Preview, exact excerpt, approve/keep-private controls |
 | 0:38–1:03 | Evidence becomes a human commitment | Grounded candidate, premise confirmation, explicit commit |
 | 1:03–1:23 | Time changes the decision | Monitoring state, synthetic EU regulatory event, expected affected region |
-| 1:23–1:50 | AI advises; a human decides | `AT_RISK`, affected premise and Action, facilitator review |
+| 1:23–1:50 | A staged rule advises; a human decides | `AT_RISK`, affected premise and Action, facilitator review |
 | 1:50–2:17 | The living Decision is revised | `REVIEW_REQUIRED`, Action hold, task, revision 2/3 comparison and recommit |
 | 2:17–2:30 | The record remains inspectable | Revision history, audit lineage, JSON export |
 

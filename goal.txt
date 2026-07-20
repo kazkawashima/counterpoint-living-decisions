@@ -86,7 +86,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] `Private`、`Shared`、`AI inferred`、`Human confirmed`、`Staged demo story` を
       混同しない表示にする。staged eventは実世界の連続監視・実在規制通知ではないと
       明示する。
-- [ ] `Commit` 後に history、audit、exportを取得しても、未接続経路を artifact storage
+- [x] `Commit` 後に history、audit、exportを取得しても、未接続経路を artifact storage
       エラーとして誤表示しない。API失敗時は対象機能、原因、再試行または手動継続を示す。
 - [ ] OpenAI disabled、provider障害、judge cap到達のいずれでも、既存のroom状態、
       手動excerpt、Decision編集、history、JSON exportを保持する。
