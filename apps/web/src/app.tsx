@@ -192,6 +192,15 @@ function LoginScreen({
             session.
           </p>
 
+          <aside aria-label="Demo path" className="demo-brief">
+            <span>Start here</span>
+            <strong>Product → Work &amp; Productivity → Open workspace</strong>
+            <p>
+              This is a staged, synthetic story. AI is optional; if it is
+              unavailable, continue with the manual draft path.
+            </p>
+          </aside>
+
           <div
             className="identity-grid"
             role="group"
@@ -348,8 +357,9 @@ function MeetingListScreen({
           </p>
         </div>
         <div className="protocol-badge">
-          <span>Protocol</span>
-          <strong>Private → Shared → Committed</strong>
+          <span>Flagship route</span>
+          <strong>Open the seeded room first</strong>
+          <small>No room setup required · AI optional</small>
         </div>
       </section>
 

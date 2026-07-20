@@ -938,11 +938,25 @@ The canonical implementation-facing artifacts are:
   Updated synthetic screenshots/clips were captured and the media manifest was
   regenerated and checked.
 
+## 2026-07-21 Flagship start guidance
+
+- The logged-out login surface now identifies the route as a staged synthetic
+  demo and gives the first action explicitly: `Product → Work & Productivity →
+  Open workspace`. It also states that AI is optional and the manual draft path
+  remains available.
+- The assigned-meeting surface labels the seeded Flagship as the first route,
+  with no room setup required. The existing create/join controls remain as
+  secondary capability paths.
+- The external-host login/Flagship browser suite passes all six cases after the
+  guidance change, and the affected synthetic screenshots/clips plus manifest
+  were refreshed. Full value-arc rehearsal and hosted safety gates remain open.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
-the credential-free judge browser path is implemented. The next hosted gate is
-logged-out/incognito and authenticated judge smoke with the final public URL.
+the credential-free judge browser path is implemented. The next gate is the
+public-safety audit: logged-out/incognito and authenticated judge/ordinary/display
+smoke, hosted C5 security rerun, and final secret/cost boundary evidence.
 Before enabling provider work, measure the flagship to replace full-cap-
 per-attempt settlement with safe derived limits. The hosted C5 security-matrix
 rerun and judge-secret/provider proof remain behind the approved remote
@@ -959,7 +973,8 @@ demonstrably viewable.
   explicitly labeled demo-story treatment.
 - Partially closed: UD-02 public at submission; final project license awaits
   dependency/submission audit.
-- Provisional: UD-04 continues Counterpoint pending name clearance.
+- Closed: UD-04 public-facing name is Descant — Living Decisions; historical and
+  internal Counterpoint identifiers remain intentionally unchanged.
 - Open: UD-05 final message hierarchy and UD-07 credential path.
 - ER-07 preview inspection is scheduled for 2026-07-20.
 - External rechecks are performed at their named implementation/submission

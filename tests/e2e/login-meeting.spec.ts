@@ -52,6 +52,9 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   await expect(
     page.getByRole("heading", { name: /Independent minds/u }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Demo path" }),
+  ).toContainText("Product → Work & Productivity → Open workspace");
   await page.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -64,6 +67,7 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
       name: "Work & Productivity — Global AI Product Rollout",
     }),
   ).toBeVisible();
+  await expect(page.getByText("Open the seeded room first")).toBeVisible();
   await expect(page.getByText("participant", { exact: true })).toBeVisible();
   expect(apiRequests.length).toBeGreaterThanOrEqual(2);
   expect(
