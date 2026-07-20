@@ -886,18 +886,34 @@ The canonical implementation-facing artifacts are:
 
 ## Not started
 
-- Approved hosted deployment, hosted flagship smoke, and remaining submission
-  assets.
+- Production deployment and remaining submission assets.
+
+## 2026-07-21 hosted preview deployment
+
+- The automatic repository integration was disabled after it deployed an
+  uncontrolled template Worker. The preview deployment boundary is now the
+  explicit `bash scripts/cloudflare-deploy.sh --apply preview` command.
+- Commit `bce809c` was deployed manually to the existing Worker
+  `counterpoint-living-decisions` using the preview D1/R2 resources. The
+  deployment ran the 300-test security matrix, 141 Cloudflare tests, target
+  config dry-run, forward D1 migrations, strict Worker deploy, health/readiness
+  and SPA/auth smoke, and the full Cloudflare flagship smoke successfully.
+- Hosted browser verification succeeded at
+  `https://counterpoint-living-decisions.gs2safari.workers.dev`: login,
+  assigned meeting list, Work & Productivity flagship, five-stage guide, and
+  facilitator Private/Shared workspace rendered from the deployed Worker.
+- The hosted preview keeps provider-funded AI routes disabled. Judge-secret
+  registration and measured spend-limit enablement remain separate gates.
 
 ## Next executable slice
 
-The product is locally viewable through both Node and Wrangler, and the
-credential-free judge browser path is implemented. The next visibility gate is
-an explicitly approved preview deployment, followed by logged-out/incognito
-and authenticated judge smoke. Before enabling provider work, measure the
-flagship to replace full-cap-per-attempt settlement with safe derived limits.
-The hosted C5 security-matrix rerun and successful provider/deployment proof
-remain behind the approved remote boundary.
+The product is now viewable through the explicit Cloudflare preview command and
+the credential-free judge browser path is implemented. The next hosted gate is
+logged-out/incognito and authenticated judge smoke with the final public URL.
+Before enabling provider work, measure the flagship to replace full-cap-
+per-attempt settlement with safe derived limits. The hosted C5 security-matrix
+rerun and judge-secret/provider proof remain behind the approved remote
+boundary.
 Never accept reservation, provider call, participant, session, or key-source
 identity from the browser. Keep remote Secret registration and deployment
 mutation behind an explicit deployment boundary. Reel production is
