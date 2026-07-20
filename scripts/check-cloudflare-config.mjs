@@ -12,6 +12,21 @@ function expectCondition(condition, message, violations) {
   }
 }
 
+function collectVariableScopes(config) {
+  const scopes = [["top-level", config.vars]];
+
+  function collectEnvironments(environments, prefix) {
+    for (const [name, environment] of Object.entries(environments ?? {})) {
+      const scope = `${prefix}.${name}`;
+      scopes.push([scope, environment?.vars]);
+      collectEnvironments(environment?.env, `${scope}.env`);
+    }
+  }
+
+  collectEnvironments(config.env, "env");
+  return scopes;
+}
+
 export function validateCloudflareConfiguration(config, packageJson) {
   const violations = [];
   const d1 = config.d1_databases?.find(({ binding }) => binding === "DB");
@@ -91,14 +106,7 @@ export function validateCloudflareConfiguration(config, packageJson) {
     "The second Durable Object migration must introduce JudgeRealtimeCallController with SQLite storage.",
     violations,
   );
-  const variableScopes = [
-    ["top-level", config.vars],
-    ...Object.entries(config.env ?? {}).map(([name, environment]) => [
-      `env.${name}`,
-      environment.vars,
-    ]),
-  ];
-  for (const [scope, vars] of variableScopes) {
+  for (const [scope, vars] of collectVariableScopes(config)) {
     expectCondition(
       vars?.OPENAI_API_KEY_JUDGE === undefined,
       `OPENAI_API_KEY_JUDGE must never be an ordinary Worker var (${scope}).`,
@@ -112,6 +120,11 @@ export function validateCloudflareConfiguration(config, packageJson) {
     expectCondition(
       vars?.JUDGE_STRUCTURED_AI_ROUTE_ENABLED === "disabled",
       `JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled (${scope}).`,
+      violations,
+    );
+    expectCondition(
+      vars?.OPENAI_MODE === "disabled",
+      `OPENAI_MODE must be exactly disabled (${scope}).`,
       violations,
     );
   }

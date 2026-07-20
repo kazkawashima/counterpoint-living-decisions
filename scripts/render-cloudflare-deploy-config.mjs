@@ -67,6 +67,13 @@ function safeWorkerVars(vars, runtimeMode) {
   };
 }
 
+function secureEnvironments(environments) {
+  for (const environment of Object.values(environments ?? {})) {
+    environment.vars = safeWorkerVars(environment.vars);
+    secureEnvironments(environment.env);
+  }
+}
+
 export function renderCloudflareDeployConfiguration(input) {
   const target = deploymentTarget(input.target);
   const defaults = TARGETS[target];
@@ -98,9 +105,7 @@ export function renderCloudflareDeployConfiguration(input) {
   r2.preview_bucket_name = r2BucketName;
   r2.remote = true;
   base.vars = safeWorkerVars(base.vars, target);
-  for (const environment of Object.values(base.env ?? {})) {
-    environment.vars = safeWorkerVars(environment.vars);
-  }
+  secureEnvironments(base.env);
   return base;
 }
 

@@ -53,7 +53,7 @@
     "JUDGE_MANAGED_REALTIME_ROUTE_ENABLED": "disabled",
     "JUDGE_STRUCTURED_AI_ROUTE_ENABLED": "disabled",
     "RUNTIME_MODE": "preview",
-    "OPENAI_MODE": "deterministic",
+    "OPENAI_MODE": "disabled",
     "OPENAI_MODEL": "gpt-5.6",
   },
 }

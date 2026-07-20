@@ -10,6 +10,66 @@ describe("Cloudflare configuration contract", () => {
     await expect(checkCloudflareConfiguration()).resolves.toEqual([]);
   });
 
+  it.each([
+    ["missing", undefined],
+    ["deterministic", "deterministic"],
+    ["live", "live"],
+  ] as const)("rejects %s OPENAI_MODE at the base and in every environment", (_label, mode) => {
+    const vars =
+      mode === undefined
+        ? { JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled" }
+        : {
+            JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+            OPENAI_MODE: mode,
+          };
+    const violations = validateCloudflareConfiguration(
+      {
+        env: {
+          preview: {
+            env: {
+              nested: {
+                vars: {
+                  ...vars,
+                  JUDGE_IP_HMAC_SECRET: "nested-secret",
+                  JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+                  OPENAI_API_KEY_JUDGE: "nested-key",
+                },
+              },
+            },
+            vars: { ...vars },
+          },
+          production: {
+            vars: { ...vars },
+          },
+        },
+        vars,
+      },
+      {},
+    );
+
+    expect(violations).toContain(
+      "OPENAI_MODE must be exactly disabled (top-level).",
+    );
+    expect(violations).toContain(
+      "OPENAI_MODE must be exactly disabled (env.preview).",
+    );
+    expect(violations).toContain(
+      "OPENAI_MODE must be exactly disabled (env.production).",
+    );
+    expect(violations).toContain(
+      "OPENAI_MODE must be exactly disabled (env.preview.env.nested).",
+    );
+    expect(violations).toContain(
+      "OPENAI_API_KEY_JUDGE must never be an ordinary Worker var (env.preview.env.nested).",
+    );
+    expect(violations).toContain(
+      "JUDGE_IP_HMAC_SECRET must never be an ordinary Worker var (env.preview.env.nested).",
+    );
+    expect(violations).toContain(
+      "JUDGE_STRUCTURED_AI_ROUTE_ENABLED must default to disabled (env.preview.env.nested).",
+    );
+  });
+
   it("requires the structured-AI route gate to default disabled", () => {
     const violations = validateCloudflareConfiguration(
       {

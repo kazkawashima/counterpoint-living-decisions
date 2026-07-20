@@ -6,6 +6,14 @@ import {
 } from "../../scripts/render-cloudflare-deploy-config.mjs";
 
 const databaseId = "a".repeat(32);
+interface RenderedEnvironment {
+  readonly env?: Readonly<Record<string, RenderedEnvironment>>;
+  readonly vars: {
+    readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
+    readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
+    readonly OPENAI_MODE: string;
+  };
+}
 interface RenderedConfig {
   readonly d1_databases: readonly {
     readonly binding: string;
@@ -13,18 +21,7 @@ interface RenderedConfig {
     readonly database_name: string;
     readonly remote: boolean;
   }[];
-  readonly env: Readonly<
-    Record<
-      string,
-      {
-        readonly vars: {
-          readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
-          readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
-          readonly OPENAI_MODE: string;
-        };
-      }
-    >
-  >;
+  readonly env: Readonly<Record<string, RenderedEnvironment>>;
   readonly name: string;
   readonly r2_buckets: readonly {
     readonly binding: string;
@@ -51,12 +48,27 @@ const baseConfig = {
   ],
   env: {
     legacy: {
+      env: {
+        malicious: {
+          vars: {
+            JUDGE_IP_HMAC_SECRET: "deeply-nested-secret",
+            JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+            OPENAI_API_KEY_JUDGE: "deeply-nested-key",
+            OPENAI_MODE: "deterministic",
+          },
+        },
+      },
       vars: {
         JUDGE_IP_HMAC_SECRET: "nested-must-never-render-as-a-var",
         JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "enabled",
         JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
         OPENAI_API_KEY_JUDGE: "nested-must-never-render-as-a-var",
         OPENAI_MODE: "live",
+      },
+    },
+    production: {
+      vars: {
+        JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
       },
     },
   },
@@ -112,8 +124,22 @@ describe("Cloudflare remote deploy configuration", () => {
         ],
         env: {
           legacy: {
+            env: {
+              malicious: {
+                vars: {
+                  JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+                  OPENAI_MODE: "disabled",
+                },
+              },
+            },
             vars: {
               JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
+              JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+              OPENAI_MODE: "disabled",
+            },
+          },
+          production: {
+            vars: {
               JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
               OPENAI_MODE: "disabled",
             },
