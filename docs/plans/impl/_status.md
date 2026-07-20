@@ -1066,6 +1066,11 @@ The canonical implementation-facing artifacts are:
   Cloudflare pool 142/142. The same tree also passes format, license/NOTICE,
   environment-example, Cloudflare-config, and architecture checks. GitHub
   confirms the repository is still private; no visibility mutation was made.
+- A public-safe testing guide now lives at
+  `docs/submission-testing-instructions.md` and is linked from the README. It
+  contains the preview URL, one Flagship path, synthetic-story boundary, and
+  degraded/manual fallback, but no credential or Secret. The private Devpost
+  field visibility check and actual credential handoff remain owner-owned.
 
 ## Next executable slice
 

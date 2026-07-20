@@ -228,3 +228,8 @@ in [`docs/topics/14-implementation-requirements.md`](docs/topics/14-implementati
 
 Use [`docs/plans/impl/_status.md`](docs/plans/impl/_status.md) as the concise
 current-state surface.
+
+Public-safe judge testing steps are in
+[`docs/submission-testing-instructions.md`](docs/submission-testing-instructions.md).
+Credentials, if required, are intentionally omitted and must be supplied only
+through a verified private submission field.
