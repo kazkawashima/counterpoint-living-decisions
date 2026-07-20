@@ -1157,6 +1157,21 @@ describe("Cloudflare Worker hosted flagship API", () => {
     const expectedPosition = Number(
       (projectionBody.shared as { position: number }).position,
     );
+    const participantProjection = await handler.fetch!(
+      workerRequest(
+        new Request(
+          `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/projection`,
+          { headers: participantAuthorization, method: "GET" },
+        ),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(participantProjection.status).toBe(200);
+    const participantProjectionBody = await json(participantProjection);
+    const participantExpectedPosition = Number(
+      (participantProjectionBody.shared as { position: number }).position,
+    );
 
     const forbidden = await handler.fetch!(
       workerRequest(
@@ -1164,7 +1179,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
           `https://198.51.100.31/api/v1/meetings/${FLAGSHIP_MEETING_ID}/display-tokens`,
           {
             body: JSON.stringify({
-              expectedPosition,
+              expectedPosition: participantExpectedPosition,
               meetingId: FLAGSHIP_MEETING_ID,
             }),
             headers: {
