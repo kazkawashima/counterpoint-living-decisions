@@ -90,10 +90,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 
 ### リポジトリ・配布物
 
-- [ ] `.env`、`.dev.vars`、API key、Cloudflare token、D1/R2 dump、実ユーザー情報、
+- [x] `.env`、`.dev.vars`、API key、Cloudflare token、D1/R2 dump、実ユーザー情報、
       private source、ログ、未確認の動画・音声・画像をtracked file、README、screenshots、
       submission packageに含めない。
-- [ ] `.env.example` は空のplaceholderと安全な説明だけを持ち、judge keyは記載しない。
+- [x] `.env.example` は空のplaceholderと安全な説明だけを持ち、judge keyは記載しない。
       `OPENAI_API_KEY_JUDGE` と `JUDGE_IP_HMAC_SECRET` は別々のCloudflare Worker Secret
       とし、source、vars、D1、R2、DO、browser、ログへ複製しない。
 - [ ] 固定デモパスワードは実アカウントの認証情報ではなく合成demo-only credential
@@ -104,7 +104,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 
 ### 認証・権限・AI費用
 
-- [ ] previewでは `OPENAI_MODE=disabled`、judge structured/realtime route disabledを
+- [x] previewでは `OPENAI_MODE=disabled`、judge structured/realtime route disabledを
       維持し、未設定・障害時は fail-closed しながら手動経路を残す。
 - [ ] productionでjudge modeを有効にする場合、exact allowlistのjudge user、正規化済み
       `CF-Connecting-IP`、別HMAC secret、全feature flag、production bindingを同時に

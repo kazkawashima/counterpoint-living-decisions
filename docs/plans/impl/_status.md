@@ -951,6 +951,19 @@ The canonical implementation-facing artifacts are:
   guidance change, and the affected synthetic screenshots/clips plus manifest
   were refreshed. Full value-arc rehearsal and hosted safety gates remain open.
 
+## 2026-07-21 public-safety verification baseline
+
+- `npm run security:verify` passes with the required external-bind permission:
+  repository/generated-output secret scan, 300 security-matrix tests, and 141
+  Cloudflare pool tests all pass.
+- `npm run cloudflare:config:check` passes. Preview configuration keeps
+  `OPENAI_MODE`, managed Realtime, and structured judge routes disabled; the
+  Worker requires judge identity, provider Secret, and distinct IP-HMAC Secret
+  before managed routes can be enabled.
+- This is local/contract evidence only. Hosted C5 rerun, logged-out/incognito
+  production-like judge/ordinary/display smoke, measured derived limits, and
+  production Secret registration remain open.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
