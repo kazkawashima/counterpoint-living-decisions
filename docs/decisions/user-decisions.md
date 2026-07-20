@@ -64,13 +64,17 @@ crossed without a decision.
 
 ## UD-04 — Public-facing name clearance
 
-- **Status:** Provisional decision.
-- **Decision:** Continue using **Counterpoint** as the working name.
-- **Final gate:** Lock the public name only after trademark/domain review.
+- **Status:** Decided on 2026-07-21.
+- **Decision:** Use **Descant — Living Decisions** as the public-facing product
+  name. Keep `counterpoint-living-decisions` and other internal identifiers
+  unchanged; historical topic filenames and source-history references may retain
+  the former working title.
+- **Final gate:** Review the final logo/domain and submission copy before public
+  visibility, without changing the product name back.
 - **Blocks:** Final logo lockup, domain purchase, video title card, and Devpost
   title.
 - **Does not block:** Product implementation.
-- **Answer:** Continue provisionally.
+- **Answer:** Descant — Living Decisions.
 
 ## UD-05 — Final submission message hierarchy
 

@@ -47,7 +47,7 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
     }
   });
   await page.goto("/");
-  await expect(page).toHaveTitle(/Counterpoint/u);
+  await expect(page).toHaveTitle(/Descant/u);
   expect(new URL(page.url()).hostname).not.toBe("localhost");
   await expect(
     page.getByRole("heading", { name: /Independent minds/u }),
@@ -120,7 +120,7 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   });
   await page.getByRole("button", { name: "Approve exact excerpt" }).click();
   await expect(page.getByRole("alert")).toContainText(
-    "could not reach the local decision service",
+    "Descant could not reach the decision service",
   );
   const approvalResponsePromise = page.waitForResponse(
     (response) =>
@@ -297,7 +297,7 @@ test("mobile and reduced-motion views preserve the permission boundary", async (
   await page.setViewportSize({ height: 844, width: 390 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
-  await expect(page.getByLabel("Counterpoint permission flow")).toBeVisible();
+  await expect(page.getByLabel("Descant permission flow")).toBeVisible();
   await page.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -371,7 +371,7 @@ test("records the explanatory boundary motion for the reel", async ({
   });
   const page = await context.newPage();
   await page.goto(baseURL ?? "/");
-  await expect(page.getByLabel("Counterpoint permission flow")).toBeVisible();
+  await expect(page.getByLabel("Descant permission flow")).toBeVisible();
   await page.waitForTimeout(1_200);
   const video = page.video();
   await context.close();

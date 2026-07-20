@@ -10,5 +10,7 @@ docs/specs/
 docs/plans/
 docs/decisions/
 docs/media/
+goal.txt
+docs/思うところつらうら/
 apps/worker/src/worker-configuration.d.ts
 THIRD_PARTY_NOTICES.md

@@ -1,7 +1,7 @@
 # 15 — 提出レディネスとプロダクト安定化
 
 作成日: 2026-07-19  
-対象: Counterpoint — Living Decisions  
+対象: Descant — Living Decisions（旧称 Counterpoint）
 前提仕様: [14-implementation-requirements.md](./14-implementation-requirements.md)
 
 ## 1. 目的

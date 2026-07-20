@@ -6,7 +6,7 @@ import "./styles.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
 if (root === null) {
-  throw new Error("Counterpoint root element was not found");
+  throw new Error("Descant root element was not found");
 }
 
 createRoot(root).render(

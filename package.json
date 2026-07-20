@@ -2,7 +2,7 @@
   "name": "counterpoint-living-decisions",
   "version": "0.0.0",
   "private": true,
-  "description": "Counterpoint — Living Decisions hackathon monorepo",
+  "description": "Descant — Living Decisions hackathon monorepo",
   "license": "UNLICENSED",
   "type": "module",
   "packageManager": "npm@11.12.1",

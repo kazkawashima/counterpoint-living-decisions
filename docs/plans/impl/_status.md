@@ -924,6 +924,20 @@ The canonical implementation-facing artifacts are:
 - The hosted preview keeps provider-funded AI routes disabled. Judge-secret
   registration and measured spend-limit enablement remain separate gates.
 
+## 2026-07-21 public name alignment
+
+- The public product name is now **Descant — Living Decisions**. README, package
+  description, HTML title/meta, Web Brand/ARIA labels, user-facing transport
+  error, JSON export filenames, current submission-facing topic summaries, and
+  media provenance labels use Descant.
+- Repository/package namespaces, `@counterpoint/*` imports, fixed synthetic demo
+  credential fixtures, session keys, Cloudflare resource names, and historical
+  topic filenames remain unchanged as internal or historical identifiers.
+- The focused external-host browser suite passed all six login/Flagship cases
+  after the rename, including mobile/reduced-motion and degraded manual fallback.
+  Updated synthetic screenshots/clips were captured and the media manifest was
+  regenerated and checked.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and

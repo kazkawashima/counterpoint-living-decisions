@@ -113,7 +113,7 @@ test("real Wrangler keeps the original receipt pending and manual text available
   expect(resetResponse.status()).toBe(200);
 
   await page.goto("/");
-  await expect(page).toHaveTitle(/Counterpoint/u);
+  await expect(page).toHaveTitle(/Descant/u);
   const pageHost = new URL(page.url()).hostname;
   expect(["localhost", "127.0.0.1", "0.0.0.0"]).not.toContain(pageHost);
   await signIn(page);

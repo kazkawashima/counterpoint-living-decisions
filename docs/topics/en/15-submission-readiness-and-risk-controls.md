@@ -1,7 +1,7 @@
 # 15 — Submission Readiness and Product Stabilization
 
 Created: 2026-07-19
-Target: Counterpoint — Living Decisions
+Target: Descant — Living Decisions (historical working title: Counterpoint)
 Prerequisite specification: [14 — Implementation Requirements](./14-implementation-requirements.md)
 
 ## 1. Purpose

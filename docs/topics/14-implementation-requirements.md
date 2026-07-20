@@ -1,4 +1,4 @@
-# 14 — Counterpoint — Living Decisions 実装要件
+# 14 — Descant — Living Decisions 実装要件
 
 作成日: 2026-07-19  
 対象リポジトリ: `https://github.com/kazkawashima/counterpoint-living-decisions`  
@@ -6,7 +6,7 @@
 
 ## 1. 文書の位置づけ
 
-本書は、既存の Meeting Runtime Kernel を新リポジトリへ移し、OpenAI Build Week に提出可能な **Counterpoint — Living Decisions** へ進化させるための合意済み実装要件である。
+本書は、既存の Meeting Runtime Kernel を新リポジトリへ移し、OpenAI Build Week に提出可能な **Descant — Living Decisions** へ進化させるための合意済み実装要件である。旧称 Counterpoint は会話史料と内部識別子にのみ残す。
 
 関連する構想・状態モデル・MVP境界は次を参照する。
 
@@ -18,7 +18,7 @@
 
 ## 2. 確定したプロダクト
 
-提出本体は **Counterpoint + Living Decisions** とする。
+提出本体は **Descant + Living Decisions** とする。
 
 一文定義:
 
@@ -585,7 +585,7 @@ docker compose up
 
 ## 20. 質疑で確定した判断
 
-- プロダクト: Counterpoint + Living Decisions
+- プロダクト: Descant + Living Decisions（旧称 Counterpoint）
 - 配置: ローカルはDocker Compose、デモはCloudflare
 - 実行方式: 共通Domain Core + Node/Cloudflare runtime adapters
 - Cloudflare: Worker + Durable Objects + D1 + R2

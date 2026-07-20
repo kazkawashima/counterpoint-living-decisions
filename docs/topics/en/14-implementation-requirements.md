@@ -1,4 +1,4 @@
-# 14 — Counterpoint — Living Decisions Implementation Requirements
+# 14 — Descant — Living Decisions Implementation Requirements
 
 Created: 2026-07-19
 Target repository: `https://github.com/kazkawashima/counterpoint-living-decisions`
@@ -7,8 +7,9 @@ Migrated from: `meeting-runtime-kernel` and `docs/newEra/basedtalks/topics`
 ## 1. Position of this document
 
 These are the agreed implementation requirements for evolving the existing
-Meeting Runtime Kernel into **Counterpoint — Living Decisions** for OpenAI Build
-Week.
+Meeting Runtime Kernel into **Descant — Living Decisions** for OpenAI Build
+Week. The historical Counterpoint working title remains only in source-history
+references and internal identifiers.
 
 Related concept, state-model, and MVP boundaries:
 
@@ -21,7 +22,7 @@ Explicitly confirmed requirements in this document take priority over
 
 ## 2. Confirmed product
 
-The submitted product is **Counterpoint + Living Decisions**.
+The submitted product is **Descant + Living Decisions**.
 
 > A Decision Runtime that connects each participant’s private context to shared
 > state only with explicit approval, maintains claims, assumptions, evidence,
@@ -485,7 +486,8 @@ wide SSoT, Cloudflare Containers, and a high-availability SLA.
 
 ## 20. Decisions confirmed in Q&A
 
-Product: Counterpoint + Living Decisions. Local deployment: Docker Compose.
+Product: Descant + Living Decisions (historical working title: Counterpoint).
+Local deployment: Docker Compose.
 Demo deployment: Cloudflare. Runtime: shared domain core plus Node/Cloudflare
 adapters. Cloudflare: Worker + Durable Objects + D1 + R2. Auth: fixed demo users
 and tab-scoped Bearer sessions. Participation: assignment list plus meeting code.

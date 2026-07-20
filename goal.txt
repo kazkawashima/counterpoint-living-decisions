@@ -1,0 +1,164 @@
+# Active goal — Descant demo and public-safety boundary
+
+更新日: 2026-07-21
+状態: ACTIVE
+優先度: submission-critical
+
+## 目的
+
+ハッカソン提出に向け、今回の作業対象を次の3点に限定する。
+
+1. 公開表示名を `Counterpoint` から `Descant` へ変更する。
+2. 審査員が迷わず Flagship を再生できる、一本の合成デモ導線を完成させる。
+3. リポジトリを公開し、審査用 server-funded AI を本番で有効化する前に、
+   秘密情報・個人情報・予算超過・権限越境を防ぐ公開安全境界を証明する。
+
+提出用の表示名は当面 **Descant — Living Decisions** とする。リポジトリ名、
+パッケージ名、`@counterpoint/*` の内部 import、D1/R2/Worker の既存リソース名、
+DB上の識別子は移行リスクを避けるため変更しない。歴史資料に残る旧称は、現在の
+公開プロダクト名と誤認されないよう扱いを分ける。
+
+## 調査で確認した現在地
+
+- Flagship は合成データ、固定デモユーザー、`Context → Permission →
+  Commitment → Risk → Review` の5段階、staged event、facilitator resetを持つ。
+- OpenAI と judge のCloudflare経路は preview では disabled。したがって現在の
+  preview は手動テキスト経路を含む安全な degraded mode として扱う。
+- Worker側には judge allowlist、別HMACによるIP擬似化、D1予約台帳、opaque call
+  handle、rolling 24時間 USD 25 hard cap、`USAGE_LIMIT_REACHED` の基盤がある。
+- providerのUSD 50 alertは二次警告であり、アプリ側のUSD 25制限の代替ではない。
+- C5の hosted Worker security matrix 再実行、C6の実デプロイ記録・最終D1/DO確認、
+  judge secret登録は未完了。production judge を先に有効化しない。
+- 直近の hosted parity 修正により、meeting作成、decision history、audit、export
+  のWorker経路は実装済み。最新 preview は commit `80f318b` で、再入場後のブラウザ
+  実演確認が残っている。
+- `docs/思うところつらうら/動作確認後に修正したいこと.md` は検討材料として読むが、
+  ユーザー保護のためこのgoal以外の作業で編集・公開しない。
+
+## 完了条件 A — 名称変更
+
+- [x] ユーザーに見える正式表示を `Descant — Living Decisions` に統一する。
+- [x] 少なくとも README の見出し・説明・デモ説明、HTML title/meta、Web UIの
+      Brand、footer、ARIA label、エラー文、JSON download名を棚卸しして更新する。
+- [ ] Devpost、README、画面内の製品主張が同じ名称と同じ主張境界になる。
+- [x] `Counterpoint` が残る箇所を「公開表示」「提出文書」「歴史資料」「内部識別子」
+      に分類し、公開表示・提出文書には意図しない旧称を残さない。
+- [x] リポジトリ名・内部namespaceを変更しないことをREADMEまたは開発メモで明示し、
+      不要なDB migrationやimport全面変更を発生させない。
+- [x] 命名変更後に typecheck、lint、build、および既存の該当E2Eを通す。
+
+## 完了条件 B — 一本の審査デモ導線
+
+### 審査員の開始点
+
+- [ ] ログアウト状態の公開URLから、最初に表示される画面だけで「これは合成データの
+      staged hackathon demo」であること、次に押す場所、AIが使えない場合の手動経路が
+      分かる。
+- [ ] 固定の合成ユーザーでログイン後、room作成・参加者割り当てを要求せず、seed済み
+      Work & Productivity Flagship を一覧から開ける。
+- [ ] judge credentialは公開README、動画、リポジトリ、Devpostの公開欄へ置かず、
+      非公開と確認できた審査用Testing Instructions等の経路だけで渡す。
+
+### 導線の価値弧
+
+- [ ] facilitator一人（必要なら別タブの合成participant）で、次の順序を画面上で追える。
+      `Private context → exact disclosure preview → owner approval → shared Evidence
+      → human Decision commit → staged external event → AT_RISK → human review →
+      REVIEW_REQUIRED / Action hold / reconsideration task`。
+- [ ] 各段階に一つの主操作と短い説明があり、初見でも次の操作を推測できる。
+- [ ] `Private`、`Shared`、`AI inferred`、`Human confirmed`、`Staged demo story` を
+      混同しない表示にする。staged eventは実世界の連続監視・実在規制通知ではないと
+      明示する。
+- [ ] `Commit` 後に history、audit、exportを取得しても、未接続経路を artifact storage
+      エラーとして誤表示しない。API失敗時は対象機能、原因、再試行または手動継続を示す。
+- [ ] OpenAI disabled、provider障害、judge cap到達のいずれでも、既存のroom状態、
+      手動excerpt、Decision編集、history、JSON exportを保持する。
+- [ ] Flagship resetは対象meetingだけを初期状態へ戻し、再実行して同じ価値弧を再生できる。
+- [ ] 初見の通し実演を約3分以内に収める。機能追加で長くなった場合は任意機能を導線から
+      外し、Flagshipを優先する。
+
+### UI検証と記録
+
+- [x] UIを変更した各sliceで、対応するPlaywright browser E2Eを追加・更新し、実行結果を
+      commitする。
+- [x] `localhost`だけでなく、Cloudflare previewまたはTailscale相当の外部hostで、SPA、
+      same-origin API、artifact、必要な realtime URLにCORS/localhost固定の失敗がない。
+- [x] desktop、mobile、reduced-motionの主要状態を合成データだけでスクリーンショット
+      に残す。reel制作自体はこのgoalの完了条件に含めない。
+
+## 完了条件 C — 公開安全境界
+
+### リポジトリ・配布物
+
+- [ ] `.env`、`.dev.vars`、API key、Cloudflare token、D1/R2 dump、実ユーザー情報、
+      private source、ログ、未確認の動画・音声・画像をtracked file、README、screenshots、
+      submission packageに含めない。
+- [ ] `.env.example` は空のplaceholderと安全な説明だけを持ち、judge keyは記載しない。
+      `OPENAI_API_KEY_JUDGE` と `JUDGE_IP_HMAC_SECRET` は別々のCloudflare Worker Secret
+      とし、source、vars、D1、R2、DO、browser、ログへ複製しない。
+- [ ] 固定デモパスワードは実アカウントの認証情報ではなく合成demo-only credential
+      と明示し、seed dataもすべて架空にする。公開後の漏洩を前提に、judge credentialは
+      失効・rotateできる運用を確認する。
+- [ ] 直接依存・推移依存・同梱mediaのlicense/NOTICEを棚卸しし、公開切替前に
+      `MIT` または `Apache-2.0` 等の最終方針を決める。未確定のまま公開しない。
+
+### 認証・権限・AI費用
+
+- [ ] previewでは `OPENAI_MODE=disabled`、judge structured/realtime route disabledを
+      維持し、未設定・障害時は fail-closed しながら手動経路を残す。
+- [ ] productionでjudge modeを有効にする場合、exact allowlistのjudge user、正規化済み
+      `CF-Connecting-IP`、別HMAC secret、全feature flag、production bindingを同時に
+      満たさない限り利用できない。
+- [ ] judgeはserver-fundedでBYOK不要、普通のユーザーはjudge keyを選択・継承・利用
+      できず、browser response/network/logにprovider credentialやprovider call IDが出ない。
+- [ ] meeting、account、IP pseudonym、concurrency、Realtime seconds、generation、
+      tokens、rolling 24時間costの全制限をbillable workの前に確認する。
+- [ ] rolling 24時間 USD 25をアプリ側hard capとして強制し、USD 50 provider alertは
+      二次警告として扱う。どの制限到達時も新規provider requestを出さず、明示的な
+      `USAGE_LIMIT_REACHED` と手動継続を返す。
+- [ ] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、
+      meeting越境、session/owner差替え、終了競合をテストし、二重課金しない。
+
+### 公開前の証明
+
+- [ ] security matrixをhosted Worker経路でも再実行し、IDOR、meeting isolation、
+      private disclosure、SSRF、upload spoofing、expiry/revocation、webhook replay、
+      secret/log leakageを確認する。
+- [ ] logged-out browserでroot/health/ready/auth boundaryを確認し、private dataや
+      judge-only情報が認証前に見えない。
+- [ ] ordinary user、judge user、display tokenを別browser contextで試し、権限境界と
+      public displayのprojectionが仕様どおりである。
+- [ ] preview/productionの対象commit、config hash、migration状態、Worker/R2/D1/DO
+      resourceをcredential-freeなdeployment recordへ残す。自動deployではなく、明示承認
+      したコマンドから実行する。
+- [ ] 本番secretを登録する前に、rollback、judge shutdown、credential rotation/deleteを
+      実行可能な手順として確認する。
+
+## 実施順（時間制限下の最小計画）
+
+1. **名称の棚卸し** — 公開面と内部識別子を分類し、Descantへ変更する対象を確定する。
+2. **デモ導線の収束** — seed済みFlagshipを主導線に固定し、画面文言、主操作、manual
+   fallback、失敗表示を整える。
+3. **公開安全境界の検証** — secret scan、hosted security、judge/ordinary/displayの
+   境界、$25 cap、degraded modeを通す。
+4. **提出面の同期** — README、英語topics、Devpost用説明、license/NOTICE、testing
+   instructionsを同じ名称・同じdemo storyへ揃える。
+5. **最終ゲート** — previewでリハーサル後、production deployとpublic visibility switchを
+   分離して承認する。production judge secret登録と公開化は、A〜Cの未完了項目がゼロに
+   なってから行う。
+
+## 今回の非目標
+
+- reelの撮影・編集・投稿そのもの
+- Google OAuth、一般公開の自己登録、通常ユーザー向けの課金
+- voice UXの全面改修、テーマ切替、汎用オンボーディング、Quickstart/Meta demo
+- リポジトリ名や内部namespaceの移行
+- productionへ先回りしてデプロイすること
+
+## 完了の定義
+
+このgoalは、名称変更後のFlagshipを外部hostのclean browserで再生でき、AIが
+disabledでも手動経路で価値弧が完走し、hosted security/secret/cost/authorizationの
+証拠が揃い、README・提出説明・testing instructions・license方針が一致した時点で
+ACHIEVEDとする。スクリーンショットやreel素材の記録は開発規律として継続するが、
+reel完成はこのgoalの達成条件から外す。

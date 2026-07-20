@@ -35,7 +35,7 @@ test("Worker SPA serves the hosted flagship through one external-style origin", 
   expect(resetResponse.ok()).toBe(true);
 
   await page.goto("/");
-  await expect(page).toHaveTitle(/Counterpoint/u);
+  await expect(page).toHaveTitle(/Descant/u);
   const pageHost = new URL(page.url()).hostname;
   expect(["localhost", "127.0.0.1", "0.0.0.0"]).not.toContain(pageHost);
   await expect(

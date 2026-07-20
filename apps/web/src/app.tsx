@@ -73,7 +73,7 @@ const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 function messageFor(error: unknown): string {
   return error instanceof ApiError
     ? error.message
-    : "Counterpoint could not reach the local decision service.";
+    : "Descant could not reach the decision service.";
 }
 
 function labelForToken(value: string): string {
@@ -99,19 +99,19 @@ function SourceReference({
 
 function Brand() {
   return (
-    <a className="brand" href="/" aria-label="Counterpoint home">
+    <a className="brand" href="/" aria-label="Descant home">
       <span className="brand-mark" aria-hidden="true">
         <span />
         <span />
       </span>
-      <span>Counterpoint</span>
+      <span>Descant</span>
     </a>
   );
 }
 
 function ScopePath() {
   return (
-    <div className="scope-path" aria-label="Counterpoint permission flow">
+    <div className="scope-path" aria-label="Descant permission flow">
       <div className="signal-card private-card">
         <span className="signal-label">Private</span>
         <strong>Independent context</strong>
@@ -1883,7 +1883,7 @@ function FacilitatorDecisionPanel({
             </button>
             {decisionExport === undefined ? null : (
               <a
-                download={`counterpoint-${decision.decisionId}.json`}
+                download={`descant-${decision.decisionId}.json`}
                 href={`data:application/json;charset=utf-8,${encodeURIComponent(
                   JSON.stringify(decisionExport, null, 2),
                 )}`}
@@ -2448,7 +2448,7 @@ function FacilitatorDecisionPanel({
                     </button>
                     {decisionExport === undefined ? null : (
                       <a
-                        download={`counterpoint-${decision.decisionId}.json`}
+                        download={`descant-${decision.decisionId}.json`}
                         href={`data:application/json;charset=utf-8,${encodeURIComponent(
                           JSON.stringify(decisionExport, null, 2),
                         )}`}
@@ -2687,7 +2687,7 @@ function SharedDisplayScreen({
         </article>
       </section>
       <footer className="shared-display-footer">
-        <span>Counterpoint · Living Decisions</span>
+        <span>Descant · Living Decisions</span>
         <span>Synthetic hackathon demonstration</span>
       </footer>
     </main>

@@ -61,7 +61,7 @@ test("facilitator creates a 3-person decision room from the browser", async ({
   });
   await createButton.click();
   await expect(page.getByRole("alert")).toContainText(
-    "could not reach the local decision service",
+    "Descant could not reach the decision service",
   );
   await createButton.click();
 

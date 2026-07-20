@@ -41,7 +41,7 @@ always verify the current Devpost official rules and FAQ.
 
 ## Selected MVP submission
 
-> **Counterpoint — Living Decisions for Agent-Native Teams**
+> **Descant — Living Decisions for Agent-Native Teams**
 
 Surface product: a constrained version of Concept C, converting a meeting into
 an auditable Decision / Commitment. The time axis is Living Decisions: monitor

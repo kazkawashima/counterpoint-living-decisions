@@ -1,8 +1,8 @@
-# Counterpoint — Living Decisions
+# Descant — Living Decisions
 
 OpenAI Build Week project in the **Work & Productivity** category.
 
-Counterpoint turns a meeting outcome into a living Decision with explicit
+Descant turns a meeting outcome into a living Decision with explicit
 evidence, assumptions, dissent, Actions, and monitoring. Each participant can
 work with private context; nothing crosses into shared state until its owner
 approves the exact excerpt. A facilitator can then commit the Decision, receive
@@ -10,12 +10,17 @@ a staged external event, review a grounded invalidation suggestion, and decide
 whether human review is required.
 
 The local Node/Compose flagship and the Cloudflare Worker application path are
-implemented. The public Cloudflare preview is not deployed yet; provider-funded
-judge routes remain disabled by default until a separate approved secret and
-deployment boundary. Product and submission source material is in
+implemented. The public Cloudflare preview is available for verification;
+provider-funded judge routes remain disabled by default until a separate
+approved secret and deployment boundary. Product and submission source material is in
 [`docs/topics/`](docs/topics/README.md), the normalized build contract is in
 [`docs/specs/`](docs/specs/README.md), and current implementation status is in
 [`docs/plans/impl/_status.md`](docs/plans/impl/_status.md).
+
+The public product name is Descant — Living Decisions. The repository name,
+package namespaces, and Cloudflare resource identifiers retain the historical
+`counterpoint` prefix so existing deployments and persisted data are not
+renamed during the submission hardening work.
 
 ## Architecture
 
@@ -184,14 +189,14 @@ preview resource plan and remote-mutation boundary.
   hackathon flow; this is not a production identity-management system.
 - Realtime supports voice input into explicit private/shared channels, not
   human-to-human audio conferencing.
-- The product name and final message hierarchy remain provisional until the
-  submission review.
+- The product is presented publicly as Descant — Living Decisions. The final
+  message hierarchy remains provisional until the submission review.
 - Reel production is intentionally deferred until the hosted product is
   viewable.
 
 ## Licensing
 
-No license for the Counterpoint project source has been granted yet. Repository
+No license for the Descant project source has been granted yet. Repository
 visibility and the final project license are separate decisions; public
 visibility for submission must not be described as an open-source grant unless
 a project license is deliberately added. Current Build Week guidance says a

@@ -90,7 +90,7 @@ build_utterance_tree.py  … ツリー再生成スクリプト
 
 ## 選択済みMVP（talk11枝を由来とする）
 
-> **Counterpoint — Living Decisions for Agent-Native Teams**
+> **Descant — Living Decisions for Agent-Native Teams**
 
 - 表面: 構想C限定版（会議 → 監査可能 Decision / Commitment）
 - 時間軸: Living Decision（前提監視 → reopen）
@@ -103,7 +103,7 @@ build_utterance_tree.py  … ツリー再生成スクリプト
 記録されているが、2026-07-19の実装判断では 1 をMVP本体として選択し、
 Work & Productivity 部門へ提出する。
 
-1. Counterpoint + Living Decisions
+1. Descant + Living Decisions (renamed from the historical Counterpoint working title)
 2. 誤概念診断 + AI生徒
 3. Executable Falsifier
 

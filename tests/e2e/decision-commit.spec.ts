@@ -1289,7 +1289,7 @@ test("superseded Decision response renders the terminal accessible state", async
     resolution.getByRole("button", { name: "Replace this Decision" }),
   );
   await expect(page.getByRole("alert")).toContainText(
-    "Counterpoint could not reach the local decision service.",
+    "Descant could not reach the decision service.",
   );
   await expect(replacementField).not.toHaveAttribute("aria-invalid", "true");
   await expect(replaceChoice).toBeFocused();
