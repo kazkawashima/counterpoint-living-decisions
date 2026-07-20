@@ -866,6 +866,91 @@ describe("Worker shared Decision boundary", () => {
     });
   });
 
+  it("replays a completed Decision candidate when AI runtime is disabled", async () => {
+    const fixtureValue = await decisionFixture();
+    const synthesize = vi.fn(() => Promise.resolve(decisionSynthesis()));
+    const first = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-replay-first",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        authorizationPolicy: {
+          judgeManagedAiUserIds: new Set([USER_ID]),
+        },
+        judgeSharedDecision: managedDecisionRuntime({
+          claim: vi.fn(() => Promise.resolve("claimed" as const)),
+          reserve: vi.fn(() =>
+            Promise.resolve({
+              kind: "allowed" as const,
+              reservationId: "reservation-worker-decision-replay",
+            }),
+          ),
+          synthesize,
+        }),
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+    expect(first.status).toBe(201);
+
+    const replay = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-replay-disabled",
+      dependencies: fixtureValue.dependencies,
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(replay.status).toBe(201);
+    expect(synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies an allowlisted non-facilitator before Decision lifecycle work", async () => {
+    const fixtureValue = await decisionFixture();
+    const claim = vi.fn(() =>
+      Promise.reject(new Error("participant request touched claim")),
+    );
+    const reserve = vi.fn(() =>
+      Promise.reject(new Error("participant request touched ledger")),
+    );
+    const synthesize = vi.fn(() =>
+      Promise.reject(new Error("participant request touched provider")),
+    );
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-decision-participant",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        authorizationPolicy: {
+          judgeManagedAiUserIds: new Set([USER_ID]),
+        },
+        judgeSharedDecision: managedDecisionRuntime({
+          claim,
+          reserve,
+          synthesize,
+        }),
+        meetings: {
+          ...fixtureValue.dependencies.meetings,
+          findAssignment: () =>
+            Promise.resolve({
+              active: true,
+              meetingId: MEETING_ID,
+              participantId: PARTICIPANT_ID,
+              role: "participant" as const,
+              userId: USER_ID,
+            }),
+        },
+      },
+      operation: "prepare-decision-candidate",
+      request: decisionRequest("ai_preferred"),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(responseBody(response)).resolves.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(claim).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+
   it("rejects oversize Decision input before reconciliation or mutation", async () => {
     const participantIds = Array.from(
       { length: 6_000 },

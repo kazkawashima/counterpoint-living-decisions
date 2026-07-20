@@ -1697,20 +1697,21 @@ export async function handleWorkerFlagshipHttp(input: {
           meetingId: prepareDecisionCandidateRequest.meetingId,
         };
         const managed = dependencies.judgeSharedDecision;
-        if (
-          managed === undefined &&
-          (dependencies.deterministicSharedDecisionEnabled !== true ||
-            dependencies.decisionCandidates.synthesizer === undefined)
-        ) {
-          return apiErrorResponse("OPENAI_UNAVAILABLE", correlationId);
-        }
         if (managed === undefined) {
+          const decisionDependencies =
+            dependencies.deterministicSharedDecisionEnabled === true &&
+            dependencies.decisionCandidates.synthesizer !== undefined
+              ? dependencies.decisionCandidates
+              : decisionDependenciesWithoutSynthesizer();
           result = await prepareSharedDecisionCandidate(
-            dependencies.decisionCandidates,
+            decisionDependencies,
             resolved.authorization,
             aiRequest,
           );
         } else {
+          if (resolved.authorization.role !== "facilitator") {
+            return apiErrorResponse("FORBIDDEN", correlationId);
+          }
           if (!resolved.authorization.capabilities.has("judge:managed-ai")) {
             return apiErrorResponse("JUDGE_MODE_FORBIDDEN", correlationId);
           }
