@@ -1102,6 +1102,20 @@ The canonical implementation-facing artifacts are:
   for an explicitly approved production window; no production Secret was
   registered.
 
+## 2026-07-21 deployment-plan safety recheck
+
+- Both `npm run cloudflare:deploy:plan:preview` and
+  `npm run cloudflare:deploy:plan:production` completed with their explicit
+  `no remote changes` plans. Neither command performs a migration, deploy, or
+  Secret registration.
+- The deploy-config, base-config, workflow, and deployment-record contract
+  tests passed `22/22`. The renderer still forces production
+  `DEMO_STORY_MODE=disabled`, `OPENAI_MODE=disabled`, and both judge routes
+  disabled, while removing judge secrets from ordinary Worker vars.
+- This closes no owner or hosted-production gate: production deployment,
+  production Secret registration, hosted C5, license selection, and the
+  private judge Testing Instructions handoff remain open.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and

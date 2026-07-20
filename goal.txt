@@ -71,7 +71,8 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   security evidenceであり、production judge/providerやfull hosted C5の代替ではない。
 - production Secretを登録しないまま、rollback、judge shutdown、credential rotation/deleteの
   runbookとguarded deployment workflowを確認した。対象shellの`bash -n`とCloudflare
-  deployment/config契約13/13が成功し、remote mutationは実行していない。
+  deployment/config契約22/22が成功し、preview/productionのplan commandもremote
+  changesなしで完了した。remote mutationは実行していない。
 
 ## 完了条件 A — 名称変更
 
