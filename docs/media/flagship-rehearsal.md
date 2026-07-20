@@ -24,6 +24,17 @@ provider-free `staged-demo-rule-v1`, not by a live production monitor.
 
 Total target: **2 minutes 30 seconds**, leaving 30 seconds of edit tolerance.
 
+## Verification log
+
+- 2026-07-21: The external-host Preview Playwright path ran all three current
+  browser cases in **41.8 seconds** against
+  `counterpoint-living-decisions-preview.gs2safari.workers.dev`: provider-free
+  staged review, same-origin SPA/manual fallback, and separate
+  ordinary/judge/display contexts. This is an automated path-health result,
+  not a substitute for timing a first-time human walkthrough.
+- The human rehearsal remains targeted at 2:30 and must still be performed
+  from the checklist above before claiming the three-minute acceptance gate.
+
 ## Capture map
 
 - `login-meeting/`: establish the five fixed synthetic identities and room.

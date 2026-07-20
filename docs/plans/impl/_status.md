@@ -1076,6 +1076,11 @@ The canonical implementation-facing artifacts are:
   commit, rendered config hash, migration boundary, named bindings, safety
   flags, and credential-free verification summary. Production remains
   intentionally undeployed and provider-disabled.
+- The current external-host Preview Playwright run passed all three browser
+  cases in 41.8 seconds: provider-free staged review/manual fallback, SPA and
+  same-origin API access, and separate ordinary/judge/display contexts. This
+  confirms path health but does not replace the pending first-time human
+  rehearsal for the three-minute acceptance gate.
 
 ## Next executable slice
 
