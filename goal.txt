@@ -69,6 +69,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - 現行実装commit `16701db` で `npm run security:verify` を再実行し、build、secret scan、
   security matrix `300/300`、Cloudflare pool `142/142` が成功した。これはlocal/contract
   security evidenceであり、production judge/providerやfull hosted C5の代替ではない。
+- 2026-07-21の現行treeでも `npm run security:verify` が再成功し、build、secret scan、
+  security matrix `300/300`、Cloudflare pool `142/142` を確認した。これは同じく
+  local/contract evidenceであり、hosted C5の完了とは扱わない。
 - production Secretを登録しないまま、rollback、judge shutdown、credential rotation/deleteの
   runbookとguarded deployment workflowを確認した。対象shellの`bash -n`とCloudflare
   deployment/config契約22/22が成功し、preview/productionのplan commandもremote

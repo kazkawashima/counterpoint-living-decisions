@@ -1126,6 +1126,15 @@ The canonical implementation-facing artifacts are:
   matrix, production judge/provider behavior, or the required first-time human
   three-minute rehearsal.
 
+## 2026-07-21 current-tree security recheck
+
+- `npm run security:verify` passed on the current tree: production web build,
+  repository/generated-output secret scan, security matrix `300/300`, and
+  Cloudflare Worker pool `142/142`.
+- This refreshes local and Worker-contract evidence only. It does not close
+  the separate hosted C5 requirement, production judge/provider proof, or any
+  owner-controlled submission gate.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
