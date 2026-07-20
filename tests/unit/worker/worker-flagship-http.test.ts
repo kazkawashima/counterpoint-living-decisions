@@ -31,6 +31,8 @@ import {
   type MeetingProjection,
 } from "@counterpoint/domain";
 import type {
+  MeetingRecord,
+  ParticipantAssignment,
   SessionRecord,
   UsageRequest,
   UsageSubject,
@@ -1660,5 +1662,74 @@ describe("Worker assumption invalidation boundary", () => {
     expect(claim).not.toHaveBeenCalled();
     expect(reserve).not.toHaveBeenCalled();
     expect(managedEvaluate).not.toHaveBeenCalled();
+  });
+
+  it("creates meetings and replays the same idempotency key", async () => {
+    const fixtureValue = await fixture();
+    const stored = new Map<
+      string,
+      {
+        readonly assignments: readonly ParticipantAssignment[];
+        readonly meeting: MeetingRecord;
+      }
+    >();
+    const createWithAssignments = vi.fn(
+      (
+        meeting: MeetingRecord,
+        assignments: readonly ParticipantAssignment[],
+      ) => {
+        stored.set(meeting.meetingId, { assignments, meeting });
+        return Promise.resolve();
+      },
+    );
+    const dependencies: WorkerFlagshipHttpDependencies = {
+      ...fixtureValue.dependencies,
+      facilitatorUserIds: new Set([USER_ID]),
+      meetings: {
+        ...fixtureValue.dependencies.meetings,
+        createWithAssignments,
+        findById: (meetingId: string) =>
+          Promise.resolve(stored.get(meetingId)?.meeting),
+        listAssignments: (meetingId: string) =>
+          Promise.resolve(stored.get(meetingId)?.assignments ?? []),
+      },
+    };
+    const request = () =>
+      new Request("https://counterpoint.test/api/v1/meetings", {
+        body: JSON.stringify({
+          idempotencyKey: "create-worker-meeting-once",
+          purpose: "A hosted product decision",
+          users: [
+            { role: "facilitator", userId: USER_ID },
+            { role: "participant", userId: "safety" },
+            { role: "participant", userId: "legal" },
+          ],
+        }),
+        headers: {
+          authorization: `Bearer ${BEARER}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      });
+
+    const first = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-create-first",
+      dependencies,
+      operation: "create-meeting",
+      request: request(),
+    });
+    const second = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-create-replay",
+      dependencies,
+      operation: "create-meeting",
+      request: request(),
+    });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const firstBody = await responseBody(first);
+    const secondBody = await responseBody(second);
+    expect(secondBody.meetingId).toBe(firstBody.meetingId);
+    expect(createWithAssignments).toHaveBeenCalledTimes(1);
   });
 });

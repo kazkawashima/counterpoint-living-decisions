@@ -513,18 +513,23 @@ export function createWorkerHandler(
                                         : request.method === "POST" &&
                                             flagshipDemoResetRoute !== null
                                           ? "reset-demo"
-                                          : request.method === "GET" &&
+                                          : request.method === "POST" &&
                                               url.pathname ===
                                                 "/api/v1/meetings"
-                                            ? "meetings"
+                                            ? "create-meeting"
                                             : request.method === "GET" &&
-                                                flagshipProjectionRoute !== null
-                                              ? "projection"
+                                                url.pathname ===
+                                                  "/api/v1/meetings"
+                                              ? "meetings"
                                               : request.method === "GET" &&
-                                                  flagshipCollectionOperation !==
-                                                    undefined
-                                                ? flagshipCollectionOperation
-                                                : undefined;
+                                                  flagshipProjectionRoute !==
+                                                    null
+                                                ? "projection"
+                                                : request.method === "GET" &&
+                                                    flagshipCollectionOperation !==
+                                                      undefined
+                                                  ? flagshipCollectionOperation
+                                                  : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;

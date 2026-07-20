@@ -3,6 +3,7 @@ import {
   authenticateSession,
   captureUtterance,
   commitDecision,
+  createMeeting,
   dispositionDecisionCandidate,
   evaluateAssumptionInvalidation,
   listAssumptionInvalidationEvaluations,
@@ -21,6 +22,7 @@ import {
   saveDecisionDraft,
   startDecisionMonitoring,
   resolveMeetingAuthorization,
+  userAuthorizationContext,
   type DisclosureDependencies,
   type DecisionDependencies,
   type DecisionCandidateDependencies,
@@ -68,6 +70,8 @@ import type {
   IdGenerator,
   IdentityRepository,
   MeetingRepository,
+  MeetingRecord,
+  ParticipantAssignment,
   PasswordVerifier,
   SessionRepository,
   SessionTokenIssuer,
@@ -95,6 +99,8 @@ import {
   CommitDecisionResponseSchema,
   CaptureUtteranceRequestSchema,
   CaptureUtteranceResponseSchema,
+  CreateMeetingRequestSchema,
+  CreateMeetingResponseSchema,
   DispositionSharedDecisionCandidateRequestSchema,
   DispositionSharedDecisionCandidateResponseSchema,
   GetRoleProjectionResponseSchema,
@@ -158,6 +164,7 @@ export interface WorkerFlagshipHttpDependencies {
   readonly identities: IdentityRepository;
   readonly ids: IdGenerator;
   readonly meetings: MeetingRepository;
+  readonly facilitatorUserIds?: ReadonlySet<string>;
   readonly passwords: PasswordVerifier;
   readonly sessions: SessionRepository;
   readonly tokens: SessionTokenIssuer;
@@ -188,6 +195,7 @@ export type WorkerFlagshipOperation =
   | "login"
   | "logout"
   | "mark-decision-ready"
+  | "create-meeting"
   | "meetings"
   | "preview-disclosure"
   | "propose-disclosure"
@@ -243,6 +251,32 @@ function nowClock(): Clock {
 
 function randomIds(): IdGenerator {
   return { next: (namespace) => `${namespace}-${crypto.randomUUID()}` };
+}
+
+interface RequestScopedIdGenerator extends IdGenerator {
+  readonly value: (namespace: string, index: number) => string;
+}
+
+async function requestScopedIds(
+  userId: string,
+  idempotencyKey: string,
+): Promise<RequestScopedIdGenerator> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${userId}\u0000${idempotencyKey}`),
+  );
+  const seed = toBase64Url(new Uint8Array(digest)).slice(0, 32);
+  const counts = new Map<string, number>();
+  const value = (namespace: string, index: number) =>
+    `${namespace}_${seed}_${index}`;
+  return {
+    value,
+    next(namespace) {
+      const index = counts.get(namespace) ?? 0;
+      counts.set(namespace, index + 1);
+      return value(namespace, index);
+    },
+  };
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -347,6 +381,7 @@ export function createWorkerFlagshipDependencies(
     events,
     identities: new D1IdentityRepository(bindings.DB),
     ids,
+    facilitatorUserIds: new Set(["product"]),
     meetings,
     passwords: new ScryptPasswordVerifier(),
     sessions: new D1SessionRepository(bindings.DB),
@@ -787,6 +822,86 @@ async function assignedMeeting(
   };
 }
 
+function normalizedAssignments(
+  assignments: readonly Pick<
+    ParticipantAssignment,
+    "active" | "role" | "userId"
+  >[],
+): string {
+  return JSON.stringify(
+    assignments
+      .filter(({ active }) => active)
+      .map(({ role, userId }) => ({ role, userId }))
+      .sort((left, right) => left.userId.localeCompare(right.userId)),
+  );
+}
+
+function normalizedMeetingUsers(
+  users: readonly {
+    readonly role: "facilitator" | "participant";
+    readonly userId: string;
+  }[],
+): string {
+  return JSON.stringify(
+    users
+      .map(({ role, userId }) => ({ role, userId }))
+      .sort((left, right) => left.userId.localeCompare(right.userId)),
+  );
+}
+
+async function replayedMeeting(
+  dependencies: WorkerFlagshipHttpDependencies,
+  meetingId: string,
+  creatorUserId: string,
+  input: {
+    readonly purpose: string;
+    readonly users: readonly {
+      readonly role: "facilitator" | "participant";
+      readonly userId: string;
+    }[];
+  },
+): Promise<
+  | {
+      readonly assignments: readonly ParticipantAssignment[];
+      readonly kind: "replayed";
+      readonly meeting: MeetingRecord;
+    }
+  | { readonly kind: "conflict" }
+  | undefined
+> {
+  const meeting = await dependencies.meetings.findById(meetingId);
+  if (meeting === undefined) return undefined;
+  const assignments = await dependencies.meetings.listAssignments(meetingId);
+  if (
+    meeting.createdByUserId !== creatorUserId ||
+    meeting.purpose !== input.purpose.trim() ||
+    normalizedAssignments(assignments) !== normalizedMeetingUsers(input.users)
+  ) {
+    return { kind: "conflict" };
+  }
+  return { assignments, kind: "replayed", meeting };
+}
+
+function meetingCreationBody(
+  correlationId: string,
+  meeting: MeetingRecord,
+  assignments: readonly ParticipantAssignment[],
+) {
+  return CreateMeetingResponseSchema.parse({
+    assignments: assignments.map(({ participantId, role, userId }) => ({
+      participantId,
+      role,
+      userId,
+    })),
+    code: meeting.code,
+    correlationId,
+    meetingId: meeting.meetingId,
+    phase: "preparing",
+    position: 0,
+    purpose: meeting.purpose,
+  });
+}
+
 async function roleProjection(
   dependencies: WorkerFlagshipHttpDependencies,
   authorization: UserAuthorizationContext,
@@ -1033,6 +1148,94 @@ export async function handleWorkerFlagshipHttp(input: {
         loggedOutAt: dependencies.clock.now(),
       }),
       200,
+      correlationId,
+    );
+  }
+
+  if (operation === "create-meeting") {
+    const parsed = CreateMeetingRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    if (
+      dependencies.facilitatorUserIds !== undefined &&
+      !dependencies.facilitatorUserIds.has(authenticated.session.userId)
+    ) {
+      return apiErrorResponse("FORBIDDEN", correlationId);
+    }
+    const requestIds = await requestScopedIds(
+      authenticated.session.userId,
+      parsed.data.idempotencyKey,
+    );
+    const deterministicMeetingId = requestIds.value("meeting", 0);
+    const previous = await replayedMeeting(
+      dependencies,
+      deterministicMeetingId,
+      authenticated.session.userId,
+      parsed.data,
+    );
+    if (previous?.kind === "conflict") {
+      return apiErrorResponse("IDEMPOTENCY_CONFLICT", correlationId);
+    }
+    if (previous?.kind === "replayed") {
+      return apiJsonResponse(
+        meetingCreationBody(
+          correlationId,
+          previous.meeting,
+          previous.assignments,
+        ),
+        201,
+        correlationId,
+      );
+    }
+    const contextForCreation = userAuthorizationContext(
+      {
+        meetingId: "meeting-bootstrap",
+        participantId: `participant-${authenticated.session.userId}`,
+        role: "facilitator",
+        sessionId: authenticated.session.sessionId,
+        userId: authenticated.session.userId,
+      },
+      dependencies.authorizationPolicy,
+    );
+    let result: Awaited<ReturnType<typeof createMeeting>>;
+    try {
+      result = await createMeeting(
+        { ids: requestIds, meetings: dependencies.meetings },
+        contextForCreation,
+        parsed.data,
+      );
+    } catch {
+      const raced = await replayedMeeting(
+        dependencies,
+        deterministicMeetingId,
+        authenticated.session.userId,
+        parsed.data,
+      );
+      if (raced?.kind === "replayed") {
+        return apiJsonResponse(
+          meetingCreationBody(correlationId, raced.meeting, raced.assignments),
+          201,
+          correlationId,
+        );
+      }
+      return apiErrorResponse(
+        raced?.kind === "conflict" ? "IDEMPOTENCY_CONFLICT" : "CONFLICT",
+        correlationId,
+      );
+    }
+    if (result.kind === "rejected") {
+      return apiErrorResponse(result.code, correlationId, {
+        ...(result.code === "VALIDATION_FAILED"
+          ? { reason: result.reason }
+          : {}),
+      });
+    }
+    return apiJsonResponse(
+      meetingCreationBody(correlationId, result.meeting, result.assignments),
+      201,
       correlationId,
     );
   }
