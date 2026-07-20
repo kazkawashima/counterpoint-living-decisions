@@ -59,7 +59,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   health/readiness/auth smoke、Flagship smokeを通過し、実previewのPlaywrightでも
   `AT_RISK → facilitator review → REVIEW_REQUIRED → Action hold/reconsideration task`
   とリロード後の継続、ordinary/judge/displayの別browser context境界を確認した。
-- 2026-07-21の外部host Preview Playwright再実行は3/3ケース成功、41.8秒だった。
+- 2026-07-21の外部host Preview Playwright再実行は3/3ケース成功、43.8秒だった。
   これはprovider-free staged review/manual fallback、SPA/API同一origin、
   ordinary/judge/display境界のpath-health証拠であり、初見の人間による3分リハーサルとは
   分けて扱う。

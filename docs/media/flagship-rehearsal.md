@@ -27,7 +27,7 @@ Total target: **2 minutes 30 seconds**, leaving 30 seconds of edit tolerance.
 ## Verification log
 
 - 2026-07-21: The external-host Preview Playwright path ran all three current
-  browser cases in **41.8 seconds** against
+  browser cases in **43.8 seconds** against
   `counterpoint-living-decisions-preview.gs2safari.workers.dev`: provider-free
   staged review, same-origin SPA/manual fallback, and separate
   ordinary/judge/display contexts. This is an automated path-health result,

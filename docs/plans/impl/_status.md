@@ -1077,7 +1077,7 @@ The canonical implementation-facing artifacts are:
   flags, and credential-free verification summary. Production remains
   intentionally undeployed and provider-disabled.
 - The current external-host Preview Playwright run passed all three browser
-  cases in 41.8 seconds: provider-free staged review/manual fallback, SPA and
+  cases in 43.8 seconds: provider-free staged review/manual fallback, SPA and
   same-origin API access, and separate ordinary/judge/display contexts. This
   confirms path health but does not replace the pending first-time human
   rehearsal for the three-minute acceptance gate.
@@ -1115,6 +1115,16 @@ The canonical implementation-facing artifacts are:
 - This closes no owner or hosted-production gate: production deployment,
   production Secret registration, hosted C5, license selection, and the
   private judge Testing Instructions handoff remain open.
+
+## 2026-07-21 external Preview browser recheck
+
+- The deployed Preview URL was exercised with `E2E_BASE_URL` from a clean
+  Chromium run. All three current cases passed in `43.8s`: provider-free
+  staged review/manual fallback, SPA plus same-origin API access, and separate
+  ordinary/judge/display browser contexts with display-token revocation.
+- This is direct hosted Preview path evidence. It does not claim the full C5
+  matrix, production judge/provider behavior, or the required first-time human
+  three-minute rehearsal.
 
 ## Next executable slice
 
