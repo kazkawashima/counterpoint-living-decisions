@@ -1095,6 +1095,12 @@ The canonical implementation-facing artifacts are:
   the WebSocket test server to `0.0.0.0`; the same command passed in the
   approved external execution boundary. No remote Secret, provider route, or
   repository visibility was changed.
+- The production operations boundary was rechecked without remote mutation:
+  `bash -n` passes for the deployment/approval/resource scripts, and the
+  Cloudflare deployment/config contract set passes 13/13. The rollback,
+  judge shutdown, and credential rotation/delete procedures remain documented
+  for an explicitly approved production window; no production Secret was
+  registered.
 
 ## Next executable slice
 

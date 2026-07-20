@@ -69,6 +69,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - 現行実装commit `16701db` で `npm run security:verify` を再実行し、build、secret scan、
   security matrix `300/300`、Cloudflare pool `142/142` が成功した。これはlocal/contract
   security evidenceであり、production judge/providerやfull hosted C5の代替ではない。
+- production Secretを登録しないまま、rollback、judge shutdown、credential rotation/deleteの
+  runbookとguarded deployment workflowを確認した。対象shellの`bash -n`とCloudflare
+  deployment/config契約13/13が成功し、remote mutationは実行していない。
 
 ## 完了条件 A — 名称変更
 
@@ -166,7 +169,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [ ] preview/productionの対象commit、config hash、migration状態、Worker/R2/D1/DO
       resourceをcredential-freeなdeployment recordへ残す。自動deployではなく、明示承認
       したコマンドから実行する。
-- [ ] 本番secretを登録する前に、rollback、judge shutdown、credential rotation/deleteを
+- [x] 本番secretを登録する前に、rollback、judge shutdown、credential rotation/deleteを
       実行可能な手順として確認する。
 
 ## 実施順（時間制限下の最小計画）
