@@ -18,7 +18,8 @@ const TARGETS = {
     workerName: "counterpoint-living-decisions-production",
   },
 };
-const D1_ID_PATTERN = /^[a-f0-9]{32}$/iu;
+const D1_ID_PATTERN =
+  /^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/iu;
 const RESOURCE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{2,62}$/u;
 
 function requiredNonEmpty(value, label) {
@@ -79,7 +80,9 @@ export function renderCloudflareDeployConfiguration(input) {
   const defaults = TARGETS[target];
   const databaseId = requiredNonEmpty(input.databaseId, "D1 database ID");
   if (!D1_ID_PATTERN.test(databaseId)) {
-    throw new TypeError("D1 database ID must be 32 hexadecimal characters");
+    throw new TypeError(
+      "D1 database ID must be 32 hexadecimal characters or a UUID",
+    );
   }
   const workerName = resourceName(
     input.workerName,

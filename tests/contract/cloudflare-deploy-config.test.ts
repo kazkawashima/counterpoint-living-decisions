@@ -166,6 +166,17 @@ describe("Cloudflare remote deploy configuration", () => {
     },
   );
 
+  it("accepts the UUID format returned by Cloudflare D1", () => {
+    const cloudflareDatabaseId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const rendered = renderCloudflareDeployConfiguration({
+      baseConfig,
+      databaseId: cloudflareDatabaseId,
+      target: "preview",
+    }) as unknown as RenderedConfig;
+
+    expect(rendered.d1_databases[0]?.database_id).toBe(cloudflareDatabaseId);
+  });
+
   it.each([
     ["unknown target", { target: "staging" }],
     ["empty database ID", { databaseId: "" }],
