@@ -858,7 +858,7 @@ describe("Worker private-disclosure boundary", () => {
       correlationId: "correlation-worker-deterministic",
       dependencies: {
         ...fixtureValue.dependencies,
-        deterministicPrivateDisclosureEnabled: true,
+        providerFreePrivateDisclosureEnabled: true,
         disclosures: {
           ...fixtureValue.dependencies.disclosures,
           candidateProposer: { propose },
@@ -1120,7 +1120,7 @@ describe("Worker shared Decision boundary", () => {
           ...fixtureValue.dependencies.decisionCandidates,
           synthesizer: { synthesize },
         },
-        deterministicSharedDecisionEnabled: true,
+        providerFreeSharedDecisionEnabled: true,
       },
       operation: "prepare-decision-candidate",
       request: decisionRequest("ai_preferred"),

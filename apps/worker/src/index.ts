@@ -116,6 +116,9 @@ export interface CreateWorkerHandlerOptions {
   readonly judgeAssumptionInvalidationEvaluator?: ConcreteAssumptionInvalidationEvaluator;
   readonly judgePrivateDisclosureProposer?: ConcretePrivateDisclosureProposer;
   readonly judgeSharedDecisionSynthesizer?: ConcreteSharedDecisionSynthesizer;
+  readonly providerFreeAssumptionInvalidationEvaluator?: ConcreteAssumptionInvalidationEvaluator;
+  readonly providerFreePrivateDisclosureProposer?: ConcretePrivateDisclosureProposer;
+  readonly providerFreeSharedDecisionSynthesizer?: ConcreteSharedDecisionSynthesizer;
 }
 
 interface DependencyProbe {
@@ -578,6 +581,25 @@ export function createWorkerHandler(
                 : env,
               {
                 clock: flagshipClock,
+                ...(options.providerFreeAssumptionInvalidationEvaluator ===
+                undefined
+                  ? {}
+                  : {
+                      providerFreeAssumptionInvalidationEvaluator:
+                        options.providerFreeAssumptionInvalidationEvaluator,
+                    }),
+                ...(options.providerFreePrivateDisclosureProposer === undefined
+                  ? {}
+                  : {
+                      providerFreePrivateDisclosureProposer:
+                        options.providerFreePrivateDisclosureProposer,
+                    }),
+                ...(options.providerFreeSharedDecisionSynthesizer === undefined
+                  ? {}
+                  : {
+                      providerFreeSharedDecisionSynthesizer:
+                        options.providerFreeSharedDecisionSynthesizer,
+                    }),
               },
             ),
             ...(allowlistedJudgeUserId === undefined

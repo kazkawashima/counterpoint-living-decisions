@@ -54,15 +54,7 @@ import {
   WebCryptoSessionTokenIssuer,
   createJsonCodec,
 } from "@counterpoint/adapters-cloudflare";
-import {
-  DeterministicPrivateDisclosureModel,
-  DeterministicAssumptionInvalidationModel,
-  DeterministicSharedDecisionModel,
-  OpenAiAssumptionInvalidationEvaluator,
-  OpenAiCandidateError,
-  OpenAiPrivateDisclosureProposer,
-  OpenAiSharedDecisionSynthesizer,
-} from "@counterpoint/adapters-openai";
+import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
 import {
   apiErrorResponse,
   apiJsonResponse,
@@ -165,8 +157,8 @@ export interface WorkerFlagshipHttpDependencies {
   readonly sessions: SessionRepository;
   readonly tokens: SessionTokenIssuer;
   readonly authorizationPolicy?: UserAuthorizationPolicy;
-  readonly deterministicPrivateDisclosureEnabled?: boolean;
-  readonly deterministicSharedDecisionEnabled?: boolean;
+  readonly providerFreePrivateDisclosureEnabled?: boolean;
+  readonly providerFreeSharedDecisionEnabled?: boolean;
   readonly judgeAssumptionInvalidation?: JudgeAssumptionInvalidationRuntimeDependencies;
   readonly judgePrivateDisclosure?: JudgePrivateDisclosureRuntimeDependencies;
   readonly judgeSharedDecision?: JudgeSharedDecisionRuntimeDependencies;
@@ -260,7 +252,18 @@ function toBase64Url(bytes: Uint8Array): string {
 
 export function createWorkerFlagshipDependencies(
   bindings: WorkerFlagshipD1Bindings,
-  options: { readonly clock?: Clock } = {},
+  options: {
+    readonly clock?: Clock;
+    readonly providerFreeAssumptionInvalidationEvaluator?: NonNullable<
+      InvalidationEvaluationDependencies["evaluator"]
+    >;
+    readonly providerFreePrivateDisclosureProposer?: NonNullable<
+      DisclosureDependencies["candidateProposer"]
+    >;
+    readonly providerFreeSharedDecisionSynthesizer?: NonNullable<
+      DecisionCandidateDependencies["synthesizer"]
+    >;
+  } = {},
 ): WorkerFlagshipHttpDependencies {
   const clock = options.clock ?? nowClock();
   const events = new D1EventStore(
@@ -295,14 +298,9 @@ export function createWorkerFlagshipDependencies(
       (await meetings.listAssignments(meetingId))
         .filter(({ active }) => active)
         .map(({ participantId }) => participantId),
-    ...(bindings.OPENAI_MODE === "deterministic"
-      ? {
-          synthesizer: new OpenAiSharedDecisionSynthesizer({
-            model: bindings.OPENAI_MODEL ?? "gpt-5.6",
-            modelAdapter: new DeterministicSharedDecisionModel(),
-          }),
-        }
-      : {}),
+    ...(options.providerFreeSharedDecisionSynthesizer === undefined
+      ? {}
+      : { synthesizer: options.providerFreeSharedDecisionSynthesizer }),
   };
   const disclosures: DisclosureDependencies = {
     artifacts: new R2ArtifactStore(bindings.ARTIFACTS),
@@ -311,14 +309,9 @@ export function createWorkerFlagshipDependencies(
     hash,
     ids,
     projections,
-    ...(bindings.OPENAI_MODE === "deterministic"
-      ? {
-          candidateProposer: new OpenAiPrivateDisclosureProposer({
-            model: bindings.OPENAI_MODEL ?? "gpt-5.6",
-            modelAdapter: new DeterministicPrivateDisclosureModel(),
-          }),
-        }
-      : {}),
+    ...(options.providerFreePrivateDisclosureProposer === undefined
+      ? {}
+      : { candidateProposer: options.providerFreePrivateDisclosureProposer }),
   };
   const externalEvents: ExternalEventDependencies = {
     clock,
@@ -326,22 +319,17 @@ export function createWorkerFlagshipDependencies(
     ids,
     projections,
   };
-  const invalidationEvaluator =
-    bindings.OPENAI_MODE === "deterministic"
-      ? new OpenAiAssumptionInvalidationEvaluator({
-          model: bindings.OPENAI_MODEL ?? "gpt-5.6",
-          modelAdapter: new DeterministicAssumptionInvalidationModel(),
-        })
-      : undefined;
   const invalidationEvaluations: InvalidationEvaluationDependencies = {
     clock,
     events,
     hash,
     ids,
     projections,
-    ...(invalidationEvaluator === undefined
+    ...(options.providerFreeAssumptionInvalidationEvaluator === undefined
       ? {}
-      : { evaluator: invalidationEvaluator }),
+      : {
+          evaluator: options.providerFreeAssumptionInvalidationEvaluator,
+        }),
   };
   return {
     clock,
@@ -357,12 +345,12 @@ export function createWorkerFlagshipDependencies(
     passwords: new ScryptPasswordVerifier(),
     sessions: new D1SessionRepository(bindings.DB),
     tokens: new WebCryptoSessionTokenIssuer(),
-    ...(bindings.OPENAI_MODE === "deterministic"
-      ? {
-          deterministicPrivateDisclosureEnabled: true,
-          deterministicSharedDecisionEnabled: true,
-        }
-      : {}),
+    ...(options.providerFreePrivateDisclosureProposer === undefined
+      ? {}
+      : { providerFreePrivateDisclosureEnabled: true }),
+    ...(options.providerFreeSharedDecisionSynthesizer === undefined
+      ? {}
+      : { providerFreeSharedDecisionEnabled: true }),
   };
 }
 
@@ -1267,7 +1255,7 @@ export async function handleWorkerFlagshipHttp(input: {
         const managed = dependencies.judgePrivateDisclosure;
         if (
           managed === undefined &&
-          (dependencies.deterministicPrivateDisclosureEnabled !== true ||
+          (dependencies.providerFreePrivateDisclosureEnabled !== true ||
             dependencies.disclosures.candidateProposer === undefined)
         ) {
           return apiErrorResponse("OPENAI_UNAVAILABLE", correlationId);
@@ -1761,7 +1749,7 @@ export async function handleWorkerFlagshipHttp(input: {
         const managed = dependencies.judgeSharedDecision;
         if (managed === undefined) {
           const decisionDependencies =
-            dependencies.deterministicSharedDecisionEnabled === true &&
+            dependencies.providerFreeSharedDecisionEnabled === true &&
             dependencies.decisionCandidates.synthesizer !== undefined
               ? dependencies.decisionCandidates
               : decisionDependenciesWithoutSynthesizer();

@@ -48,7 +48,7 @@ function workerEnv(): Env {
     DB: env.DB,
     JUDGE_REALTIME_CALLS: env.JUDGE_REALTIME_CALLS,
     MEETINGS: env.MEETINGS,
-    OPENAI_MODE: "deterministic",
+    OPENAI_MODE: "disabled",
     OPENAI_MODEL: env.OPENAI_MODEL,
     RUNTIME_MODE: env.RUNTIME_MODE,
     JUDGE_MANAGED_REALTIME_ROUTE_ENABLED:
@@ -288,6 +288,52 @@ function meteredInvalidation(
   };
 }
 
+function providerFreeWorkerHandler(): ReturnType<typeof createWorkerHandler> {
+  return createWorkerHandler({
+    providerFreeAssumptionInvalidationEvaluator: {
+      evaluate(input) {
+        const { billing: _billing, ...evaluation } = meteredInvalidation(input);
+        void _billing;
+        return Promise.resolve(evaluation);
+      },
+    },
+    providerFreePrivateDisclosureProposer: {
+      propose(input) {
+        const { billing: _billing, ...metered } = meteredProposal(
+          input.sourceArtifactId,
+          input.text,
+        );
+        void _billing;
+        const [candidate] = metered.ai.candidates;
+        const sourceRange = { end: input.text.length, start: 0 };
+        const proposal: PrivateDisclosureProposal = {
+          ...metered,
+          ai: {
+            ...metered.ai,
+            candidates: [
+              {
+                ...candidate,
+                exactSnippet: input.text,
+                sourceRange,
+              },
+            ],
+          },
+          exactSnippet: input.text,
+          sourceRange,
+        };
+        return Promise.resolve(proposal);
+      },
+    },
+    providerFreeSharedDecisionSynthesizer: {
+      synthesize(input) {
+        const { billing: _billing, ...decision } = meteredDecision(input);
+        void _billing;
+        return Promise.resolve(decision);
+      },
+    },
+  });
+}
+
 async function resetFlagship(input: {
   readonly authorization: string;
   readonly environment: Env;
@@ -324,7 +370,7 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 
 describe("Cloudflare Worker hosted flagship API", () => {
   it("shows the seeded Work & Productivity meeting through an external-host-style URL", async () => {
-    const handler = createWorkerHandler();
+    const handler = providerFreeWorkerHandler();
     const loginResponse = await handler.fetch!(
       workerRequest(
         new Request("https://192.0.2.10/api/v1/login", {
@@ -1035,7 +1081,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
   }, 15_000);
 
   it("connects deterministic AI-preferred disclosure and Decision paths", async () => {
-    const handler = createWorkerHandler();
+    const handler = providerFreeWorkerHandler();
     const loginResponse = await handler.fetch!(
       workerRequest(
         new Request("https://192.0.2.20/api/v1/login", {
@@ -1617,9 +1663,9 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
              expires_at_epoch
            ) VALUES (?, ?, 'shared_decision_synthesis', 'gpt-5.6', ?, ?, ?)`,
       ).bind(
-          decisionConflictClaimKey,
-          `sha256:${"d".repeat(64)}`,
-          "conflicting-pricing-v1",
+        decisionConflictClaimKey,
+        `sha256:${"d".repeat(64)}`,
+        "conflicting-pricing-v1",
         nowEpoch,
         nowEpoch + 120,
       ),
@@ -1792,9 +1838,9 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
              expires_at_epoch
            ) VALUES (?, ?, 'assumption_invalidation', 'gpt-5.6', ?, ?, ?)`,
       ).bind(
-          invalidationConflictClaimKey,
-          `sha256:${"e".repeat(64)}`,
-          "conflicting-pricing-v1",
+        invalidationConflictClaimKey,
+        `sha256:${"e".repeat(64)}`,
+        "conflicting-pricing-v1",
         nowEpoch,
         nowEpoch + 120,
       ),
@@ -2302,6 +2348,12 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
         environment: judgeWorkerEnv({
           JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
           OPENAI_MODE: "disabled",
+        }),
+      },
+      {
+        environment: judgeWorkerEnv({
+          JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+          OPENAI_MODE: "deterministic",
         }),
       },
       {
