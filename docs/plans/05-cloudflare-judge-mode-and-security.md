@@ -395,8 +395,10 @@ C6 preparation notes:
   smoke now covers login, reset, private text, disclosure preview/approval,
   manual candidate/disposition, DRAFT, READY, COMMITTED, MONITORING, and reset
   replay; it is wired into local Wrangler smoke and the approved deploy driver.
-  The deterministic invalidation/review branch remains opt-in because remote
-  deployment configs keep provider access disabled until that gate is approved.
+  Preview additionally enables the Flagship-only, provider-free
+  `staged-demo-rule-v1` through `DEMO_STORY_MODE`; it creates no provider call,
+  Secret use, or usage reservation. Production rendering forces that flag off,
+  so this is a synthetic preview story rather than production judge enablement.
 - Credential-free deployment records contain the commit, target, Worker name,
   origin host, and hashes of the generated config and private deployment
   status. No real deployment record exists until an approved deployment runs.

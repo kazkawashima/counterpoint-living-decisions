@@ -1005,6 +1005,31 @@ The canonical implementation-facing artifacts are:
   routes remain disabled; the hosted `AT_RISK → REVIEW_REQUIRED` proof and
   production judge/provider proof remain intentionally open.
 
+## 2026-07-21 preview demo review path and public boundary
+
+- Commit `221b6d5b39230fdc80a020eb3f72cc90d5ce3f03` was explicitly deployed to
+  `counterpoint-living-decisions-preview` at
+  `https://counterpoint-living-decisions-preview.gs2safari.workers.dev` with
+  config hash
+  `ea81c4112dec378a375cd046dc806e8057bcc73d553e06775530d579a2af1d32`.
+  The deploy gate passed security 300/300, Cloudflare pool 142/142, target
+  dry-run, forward D1 migration check, strict Worker deploy, health/readiness/
+  unauthenticated auth smoke, and the Flagship smoke.
+- Preview now has an explicit, Flagship-only `DEMO_STORY_MODE=enabled` rule
+  evaluator named `staged-demo-rule-v1`. It is provider-free, uses no Secret,
+  makes no billable request, and creates no usage reservation. The deploy
+  config renderer forces `DEMO_STORY_MODE=disabled` for production.
+- Real preview Playwright verification passed three cases: logged-out SPA and
+  same-origin auth/manual fallback, the provider-free staged event through
+  `AT_RISK`, facilitator reason entry, human-confirmed `REVIEW_REQUIRED`,
+  Action hold/reconsideration task, and reload persistence; plus separate
+  ordinary/judge/display browser contexts with revoked display token behavior.
+  The UI labels the preview rule as `Staged demo rule`, not `AI inferred`.
+- Two new synthetic screenshots record the preview `AT_RISK` and
+  human-confirmed `REVIEW_REQUIRED` states under
+  `docs/media/screenshots/decision-review/`; the media manifest is current.
+  Reel production remains outside this goal.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
