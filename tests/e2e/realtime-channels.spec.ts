@@ -1,20 +1,20 @@
 import { copyFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
-const screenshotDirectory = resolve("docs/media/screenshots/realtime-channels");
-const clipDirectory = resolve("docs/media/clips/realtime-channels");
-const voiceScreenshotDirectory = resolve(
-  "docs/media/screenshots/voice-channels",
+const screenshotDirectory = evidenceDirectory("screenshots/realtime-channels");
+const clipDirectory = evidenceDirectory("clips/realtime-channels");
+const voiceScreenshotDirectory = evidenceDirectory(
+  "screenshots/voice-channels",
 );
-const voiceClipDirectory = resolve("docs/media/clips/voice-channels");
-const degradedScreenshotDirectory = resolve(
-  "docs/media/screenshots/degraded-mode",
+const voiceClipDirectory = evidenceDirectory("clips/voice-channels");
+const degradedScreenshotDirectory = evidenceDirectory(
+  "screenshots/degraded-mode",
 );
-const degradedClipDirectory = resolve("docs/media/clips/degraded-mode");
-const judgeUsageScreenshotDirectory = resolve(
-  "docs/media/screenshots/judge-usage",
+const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
+const judgeUsageScreenshotDirectory = evidenceDirectory(
+  "screenshots/judge-usage",
 );
 const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
@@ -129,7 +129,7 @@ async function signIn(page: Page, identity: string, password: string) {
   ).toBeVisible();
   const flagship = page.getByRole("article").filter({
     has: page.getByRole("heading", {
-      name: "Global AI Product Rollout",
+      name: "Work & Productivity — Global AI Product Rollout",
     }),
   });
   await flagship.getByRole("button", { name: "Open workspace" }).click();
@@ -766,6 +766,23 @@ test("private/shared text and push-to-talk use one immutable, floor-gated comman
   await expect(
     legalSpeech.getByText("Synthetic voice floor statement."),
   ).toBeVisible({ timeout: 4_000 });
+
+  await productPushToTalk.focus();
+  await expect(productPushToTalk).toBeFocused();
+  await productPage.keyboard.down("Enter");
+  await expect(
+    productSpeech.getByText("You hold the room floor", { exact: true }),
+  ).toBeVisible();
+  await expect(legalSpeech.getByText("Room floor busy")).toBeVisible({
+    timeout: 4_000,
+  });
+  await productPage.keyboard.up("Enter");
+  await expect(
+    productSpeech.getByRole("button", { name: /Private · owner only/u }),
+  ).toBeEnabled({ timeout: 5_000 });
+  await expect(
+    legalSpeech.getByRole("button", { name: /Hold to speak to room/u }),
+  ).toBeEnabled({ timeout: 5_000 });
 
   const video = productPage.video();
   const saveVideo = video?.saveAs(

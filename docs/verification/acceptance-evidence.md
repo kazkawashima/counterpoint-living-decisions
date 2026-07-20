@@ -1,0 +1,53 @@
+# Acceptance evidence
+
+This is the direct-proof map for AC-01 through AC-19 in
+[`08-testing-acceptance-and-submission.md`](../specs/08-testing-acceptance-and-submission.md).
+It distinguishes local proof from hosted, reel, and user-decision gates. A
+green unit suite alone is not used to claim a hosted or browser requirement.
+
+Status meanings:
+
+- **Local proven** — committed automated proof exercises the required local
+  behavior.
+- **Partial** — relevant proof exists, but the primary proof named by the
+  acceptance contract is incomplete.
+- **Hosted gate** — local fail-closed proof exists; the required remote target
+  has not been deployed or exercised.
+- **Reel gate** — product behavior exists, but the timed narrative proof is
+  intentionally deferred.
+
+| AC    | Status       | Direct evidence                                                                                                                                                                      | Residual gate                                                                                                                 |
+| ----- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| AC-01 | Local proven | `scripts/compose-persistence-smoke.mjs`; `npm run compose:smoke` builds a fresh isolated Compose project and reaches its external-style origin                                       | Re-run from the final tagged commit                                                                                           |
+| AC-02 | Local proven | `tests/e2e/login-meeting.spec.ts` opens the flagship in three isolated browser contexts as Safety, Engineering, and Product                                                          | Hosted judge rehearsal still required                                                                                         |
+| AC-03 | Local proven | `tests/e2e/meeting-creation.spec.ts` creates a 3-person room from the facilitator-only browser panel; integration and application tests enforce 3–8 unique users and one facilitator | Hosted rerun                                                                                                                  |
+| AC-04 | Local proven | Assigned-list flow in `tests/e2e/login-meeting.spec.ts`; keyboard-operated code join in `tests/e2e/accessibility.spec.ts`                                                            | Hosted rerun                                                                                                                  |
+| AC-05 | Local proven | `tests/integration/server-http.test.ts`, realtime E2E, payload/log secret assertions, and `npm run security:secrets`                                                                 | Final hosted log/response scan                                                                                                |
+| AC-06 | Local proven | `tests/e2e/realtime-channels.spec.ts` and `tests/unit/web/realtime-openai.test.ts` cover immutable private/shared text and voice channels                                            | Hosted Realtime provider proof remains separate                                                                               |
+| AC-07 | Local proven | `tests/e2e/login-meeting.spec.ts`, `tests/e2e/shared-display.spec.ts`, disclosure application/security tests                                                                         | Hosted C5 rerun                                                                                                               |
+| AC-08 | Local proven | Decision/disclosure browser journeys, domain projection tests, and captures under `docs/media/screenshots/decision-commit/`                                                          | Final visual review                                                                                                           |
+| AC-09 | Local proven | `tests/e2e/decision-commit.spec.ts` plus Decision state-machine tests                                                                                                                | Hosted rerun                                                                                                                  |
+| AC-10 | Local proven | Decision invalidation/review/resolution E2E, integration, and domain tests prove `AT_RISK` → human-confirmed `REVIEW_REQUIRED`, held Action, task, and history                       | Hosted flagship smoke with provider enabled                                                                                   |
+| AC-11 | Local proven | `tests/e2e/acceptance-isolation.spec.ts` creates Meeting B in isolated contexts and proves an unassigned Meeting A user receives 403 without private-source leakage                  | Hosted rerun                                                                                                                  |
+| AC-12 | Partial      | SQLite persistence integration plus `npm run compose:smoke`, which recreates the container and reuses the same authenticated private source                                          | Extend Compose restart proof to Decision revisions/history and source/download artifacts; D1/DO remote migration/deploy proof |
+| AC-13 | Local proven | `tests/e2e/acceptance-isolation.spec.ts` resets the flagship and then proves Meeting B purpose and owner-private source remain unchanged                                             | Hosted rerun                                                                                                                  |
+| AC-14 | Local proven | `tests/unit/adapters-node/api-key-leases.test.ts` uses a controlled clock at the five-minute boundary; application lease tests cover scope and clear                                 | Hosted eviction behavior remains operational monitoring                                                                       |
+| AC-15 | Local proven | `tests/e2e/decision-commit.spec.ts` and `tests/e2e/login-meeting.spec.ts` preserve manual Decision/disclosure, export, and audit paths during provider failure                       | Hosted provider-failure rerun                                                                                                 |
+| AC-16 | Reel gate    | Full local flagship and `docs/media/flagship-rehearsal.md` exist                                                                                                                     | Time the exact hosted story and final reel under the official limit                                                           |
+| AC-17 | Hosted gate  | Worker judge capability, disabled-provider continuity, and hosted smoke script are implemented                                                                                       | Deploy preview, provision a private judge identity, enable approved Secrets/routes, and run the full hosted smoke             |
+| AC-18 | Local proven | Worker/unit/Cloudflare tests reject ordinary users before managed work and browser controls remain absent                                                                            | Hosted ordinary-user denial rerun                                                                                             |
+| AC-19 | Local proven | D1 limiter, managed-call lifecycle, structured-AI reservation tests, and browser 429/limit UI enforce the USD 25 rolling-24-hour cap                                                 | Hosted limit exhaustion proof without additional provider spend                                                               |
+
+## Current non-acceptance release gates
+
+- Cloudflare preview resource creation, remote D1/DO migrations, deployment,
+  hosted C5 matrix, and logged-out/incognito access.
+- Private judge identity provisioning and separate Worker Secret registration.
+- Final project license, repository public visibility, final name/message
+  hierarchy, Devpost preview, reel, submission tag, and judging-period
+  operations.
+- Final visual/OCR/frame scan of the exact public screenshots and video.
+
+The full local command baseline is recorded in
+[`docs/plans/impl/_status.md`](../plans/impl/_status.md) after each verified
+slice. CI must keep the generated dependency and media manifests current.

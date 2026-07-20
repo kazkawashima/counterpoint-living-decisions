@@ -9,6 +9,7 @@ import {
   ClearMeetingByokResponseSchema,
   CommitDecisionResponseSchema,
   ConfigureMeetingByokResponseSchema,
+  CreateMeetingResponseSchema,
   CreateManagedRealtimeCallResponseSchema,
   DecisionAuditResponseSchema,
   DecisionHistoryResponseSchema,
@@ -530,6 +531,52 @@ export async function listMeetings(
     session,
   );
   return ListAssignedMeetingsResponseSchema.parse(body).meetings;
+}
+
+export async function createMeeting(
+  session: StoredSession,
+  input: {
+    readonly idempotencyKey: string;
+    readonly participantUserIds: readonly string[];
+    readonly purpose: string;
+  },
+): Promise<AssignedMeeting> {
+  const body = await request(
+    "/api/v1/meetings",
+    {
+      body: JSON.stringify({
+        idempotencyKey: input.idempotencyKey,
+        purpose: input.purpose,
+        users: [
+          { role: "facilitator", userId: session.userId },
+          ...input.participantUserIds.map((userId) => ({
+            role: "participant" as const,
+            userId,
+          })),
+        ],
+      }),
+      method: "POST",
+    },
+    session,
+  );
+  const created = CreateMeetingResponseSchema.parse(body);
+  const assignment = created.assignments.find(
+    ({ userId }) => userId === session.userId,
+  );
+  if (assignment === undefined) {
+    throw new ApiError(
+      "INVALID_RESPONSE",
+      "The created room did not include the facilitator.",
+    );
+  }
+  return {
+    meetingId: created.meetingId,
+    participantId: assignment.participantId,
+    phase: created.phase,
+    position: created.position,
+    purpose: created.purpose,
+    role: assignment.role,
+  };
 }
 
 export async function listSharedEvidence(

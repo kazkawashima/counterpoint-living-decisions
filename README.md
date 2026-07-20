@@ -1,21 +1,23 @@
 # Counterpoint — Living Decisions
 
-Greenfield repository for the OpenAI Build Week project **Counterpoint — Living
-Decisions**.
+OpenAI Build Week project in the **Work & Productivity** category.
 
-## Repository status
+Counterpoint turns a meeting outcome into a living Decision with explicit
+evidence, assumptions, dissent, Actions, and monitoring. Each participant can
+work with private context; nothing crosses into shared state until its owner
+approves the exact excerpt. A facilitator can then commit the Decision, receive
+a staged external event, review a grounded invalidation suggestion, and decide
+whether human review is required.
 
-The repository is in active implementation. Product and submission source
-material is in [`docs/topics/`](docs/topics/README.md). The normalized build
-contract is in [`docs/specs/`](docs/specs/README.md), and the ordered
-implementation plan is in [`docs/plans/`](docs/plans/README.md). The M1
-foundation is complete: workspace tooling, protocol contracts, deterministic
-domain/replay, Decision lifecycle, ports, and contract harnesses are
-implemented. The local Node persistence/authentication API, seeded flagship,
-login/meeting UI, participant-private workspace, and exact
-preview/approve/reject disclosure path are now implemented.
+The local Node/Compose flagship and the Cloudflare Worker application path are
+implemented. The public Cloudflare preview is not deployed yet; provider-funded
+judge routes remain disabled by default until a separate approved secret and
+deployment boundary. Product and submission source material is in
+[`docs/topics/`](docs/topics/README.md), the normalized build contract is in
+[`docs/specs/`](docs/specs/README.md), and current implementation status is in
+[`docs/plans/impl/_status.md`](docs/plans/impl/_status.md).
 
-The intended architecture is:
+## Architecture
 
 - React + Vite web app
 - Node runtime for local Docker Compose development
@@ -25,11 +27,44 @@ The intended architecture is:
 The flagship flow is private context → permissioned evidence → shared decision
 → commitment → external event → human-confirmed review.
 
+## GPT-5.6 and human control
+
+GPT-5.6 is used through server-side Structured Outputs. The browser never
+selects provider identity, billing reservations, or judge capability.
+
+| Product operation         | Grounded input                               | Structured output                                                 | Version                      |
+| ------------------------- | -------------------------------------------- | ----------------------------------------------------------------- | ---------------------------- |
+| Private disclosure        | One owner-private source                     | Exact-range disclosure candidate and reason                       | `private-evidence-v1`        |
+| Shared Decision synthesis | Approved shared evidence and meeting state   | Bounded premise, dissent, Action, outcome, and monitor candidates | `shared-decision-v1`         |
+| Assumption invalidation   | Committed assumptions and one external event | Referenced invalidation suggestion                                | `assumption-invalidation-v1` |
+
+Outputs are schema-validated and reference-checked. AI may propose, but only the
+source owner can disclose private material, and only the facilitator can confirm
+candidate premises, commit a Decision, or move an `AT_RISK` Decision to
+`REVIEW_REQUIRED`. Provider failure preserves manual text, manual Decision
+editing, persisted state, audit history, and JSON export.
+
+OpenAI Realtime is a separate optional voice-input transport using explicit
+private/shared channels and short-lived client credentials. It is not
+human-to-human conferencing, and text remains the durable fallback.
+
+## Build Week and Codex
+
+Codex was used as the build-time engineering agent for specification
+normalization, architecture, implementation, tests, security review, debugging,
+and deployment controls. It is not required at product runtime. The exact
+baseline, milestone commits, pre-existing topic-material boundary, and final
+Session ID placeholder are documented in
+[`BUILD_WEEK_LOG.md`](BUILD_WEEK_LOG.md).
+
 ## Local environment
 
-Copy the example environment file before local development:
+Requires Node `24.15.0` and npm `11.12.1` (also pinned by `.nvmrc`,
+`package.json`, and the Docker image). Install exactly from the lockfile, then
+copy the example environment:
 
 ```bash
+npm ci
 cp .env.example .env
 ```
 
@@ -39,10 +74,9 @@ repository, or logs. The judge-funded key belongs in the Cloudflare Worker
 Secret `OPENAI_API_KEY_JUDGE` only. Judge IP pseudonymization uses a distinct
 Worker Secret, `JUDGE_IP_HMAC_SECRET`; the two secrets must never be reused.
 
-Install and start the API and web app in separate terminals:
+Start the API and web app in separate terminals:
 
 ```bash
-npm install
 npm run dev:server
 ```
 
@@ -61,8 +95,33 @@ following public demo-only passwords:
 | `engineering` | Participant | `counterpoint-engineering` |
 | `sales`       | Participant | `counterpoint-sales`       |
 
-Run `npm test` for unit/contract/integration coverage and `npm run e2e` for the
-committed browser journey and reel-evidence capture.
+The listed identities are synthetic local fixtures, not hosted judge
+credentials.
+
+## Verification
+
+Run the local code and policy gates:
+
+```bash
+npm run env:check
+npm run licenses:check
+npm run media:manifest:check
+npm run format:check
+npm run test:architecture
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run security:verify
+npm run e2e
+npm run cloudflare:e2e
+```
+
+Browser tests use a non-`localhost` loopback alias and committed synthetic
+fixtures. Normal E2E writes temporary captures under `test-results/evidence/`;
+use `npm run e2e:capture` only for an intentional evidence refresh under
+`docs/media/`, then review every new asset's provenance and regenerate
+[`docs/media/ASSET_MANIFEST.json`](docs/media/ASSET_MANIFEST.json).
 
 ## Production-like local runtime
 
@@ -113,6 +172,41 @@ alias. All committed Wrangler commands disable `.env` fallback, so the local
 Node OpenAI key cannot be copied into the Worker environment. See
 [`deploy/cloudflare/README.md`](deploy/cloudflare/README.md) for the guarded
 preview resource plan and remote-mutation boundary.
+
+## Known limitations and release boundary
+
+- The hosted preview, logged-out/incognito judge check, and hosted security
+  matrix are pending the explicitly approved Cloudflare deployment.
+- Judge-funded OpenAI routes are disabled by default. Their separate Worker
+  Secrets and USD 25 rolling-24-hour cap must be verified on the hosted target
+  before a judge credential is issued.
+- Demo identities and meeting content are synthetic and fixed for the
+  hackathon flow; this is not a production identity-management system.
+- Realtime supports voice input into explicit private/shared channels, not
+  human-to-human audio conferencing.
+- The product name and final message hierarchy remain provisional until the
+  submission review.
+- Reel production is intentionally deferred until the hosted product is
+  viewable.
+
+## Licensing
+
+No license for the Counterpoint project source has been granted yet. Repository
+visibility and the final project license are separate decisions; public
+visibility for submission must not be described as an open-source grant unless
+a project license is deliberately added. Current Build Week guidance says a
+public repository should carry a relevant open-source license, so the remaining
+owner decision is public MIT, public Apache-2.0, or the officially supported
+private-repository judging path. The package metadata remains `UNLICENSED`
+until that decision is made.
+
+Pinned direct/transitive package metadata is generated in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Development-only
+LGPL/MPL-identified tooling and authoritative package license/NOTICE files
+remain flagged for final release review. This metadata inventory is not a
+substitute for that review. Media hashes and explicitly reviewed provenance,
+creator, synthetic-fixture status, and pending rights status are recorded in
+[`docs/media/ASSET_MANIFEST.json`](docs/media/ASSET_MANIFEST.json).
 
 ## Documentation
 

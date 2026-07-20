@@ -1,13 +1,13 @@
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
   CreateMeetingResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
-const screenshotDirectory = resolve("docs/media/screenshots/guided-flagship");
+const screenshotDirectory = evidenceDirectory("screenshots/guided-flagship");
 const exactSnippet = "Regional launch requires a documented approval gate.";
 
 async function signIn(page: Page, identity: string, password: string) {

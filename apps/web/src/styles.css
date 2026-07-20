@@ -47,7 +47,8 @@ button {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-a:focus-visible {
+a:focus-visible,
+.progress-rail:focus-visible {
   outline: 2px solid var(--acid);
   outline-offset: 3px;
 }
@@ -516,6 +517,7 @@ button:disabled {
 }
 
 .section-heading h2,
+.create-meeting-panel h2,
 .join-panel h2 {
   margin: 0;
   font-size: 1.1rem;
@@ -627,11 +629,81 @@ button:disabled {
   white-space: nowrap;
 }
 
+.meeting-side-stack {
+  display: grid;
+  align-self: start;
+  gap: 1rem;
+}
+
+.create-meeting-panel,
 .join-panel {
   align-self: start;
   padding: 1.6rem;
   border: 1px solid var(--line);
   background: var(--panel);
+}
+
+.create-meeting-panel {
+  border-color: rgba(217, 255, 112, 0.28);
+  background:
+    linear-gradient(145deg, rgba(217, 255, 112, 0.06), transparent 55%),
+    var(--panel);
+}
+
+.create-meeting-panel fieldset {
+  display: grid;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  gap: 0.55rem;
+  border: 0;
+}
+
+.create-meeting-panel legend {
+  width: 100%;
+  padding: 0;
+  color: #bdc9c3;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.create-meeting-panel legend span {
+  float: right;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 400;
+}
+
+.participant-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.participant-picker label {
+  display: flex;
+  min-height: 2.7rem;
+  margin: 0;
+  padding: 0.65rem 0.7rem;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgba(8, 15, 13, 0.5);
+  cursor: pointer;
+}
+
+.participant-picker input {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  accent-color: var(--acid);
+}
+
+.participant-picker label:has(input:checked) {
+  border-color: rgba(217, 255, 112, 0.45);
+  color: var(--ink);
+  background: rgba(217, 255, 112, 0.07);
 }
 
 .secondary-button {

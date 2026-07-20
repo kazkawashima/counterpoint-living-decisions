@@ -24,13 +24,13 @@ lightweight verification evidence in the meantime.
 
 ### Q1 — Full verification
 
-- [ ] Run format, lint, typecheck, unit, contract, integration, security, and
+- [x] Run format, lint, typecheck, unit, contract, integration, security, and
       complete E2E suites.
-- [ ] Run fresh Compose start and persistent restart.
+- [x] Run fresh Compose start and persistent restart.
 - [ ] Run Cloudflare preview and production smoke.
-- [ ] Run desktop, mobile, reduced-motion, and external-host browser matrix.
-- [ ] Map direct proof to AC-01 through AC-19.
-- [ ] Record known limitations; do not disguise failing gates.
+- [x] Run desktop, mobile, reduced-motion, and external-host browser matrix.
+- [x] Map direct proof to AC-01 through AC-19.
+- [x] Record known limitations; do not disguise failing gates.
 
 ### Q2 — Accessibility and product polish
 
@@ -38,7 +38,7 @@ lightweight verification evidence in the meantime.
 - [ ] Contrast, labels, target size, live-region, and reduced-motion audit.
 - [ ] Empty/loading/error/degraded/limit states.
 - [ ] Remove placeholder copy and any unsupported product claims.
-- [ ] Confirm English primary UI and synthetic data consistency.
+- [x] Confirm English primary UI and synthetic data consistency.
 
 ### Q3 — Reel asset completion
 
@@ -46,24 +46,24 @@ lightweight verification evidence in the meantime.
 - [ ] Capture missing initial/interaction/success/error/mobile/reduced-motion
       states.
 - [ ] Record concise clips for disclosure, commit, risk, review, and history.
-- [ ] Create asset manifest with creator/license for any non-code media.
+- [x] Create asset manifest with creator/license for any non-code media.
 - [ ] Scan frames for credentials, secrets, private data, third-party marks, and
       unrelated personal UI.
 
 ### Q4 — README and Build Week evidence
 
-- [ ] Explain problem, user, product, flagship, and architecture.
-- [ ] Document GPT-5.6 call sites, inputs, outputs, post-processing, prompt/model
+- [x] Explain problem, user, product, flagship, and architecture.
+- [x] Document GPT-5.6 call sites, inputs, outputs, post-processing, prompt/model
       versions, and human confirmation.
-- [ ] Explain Codex contribution and important human design decisions.
-- [ ] Provide clean setup, tests, sample users without public judge credential,
+- [x] Explain Codex contribution and important human design decisions.
+- [x] Provide clean setup, tests, sample users without public judge credential,
       known limitations, and degraded mode.
-- [ ] Generate direct/transitive dependency license inventory and
+- [x] Generate direct/transitive dependency license inventory and
       third-party notices, including bundled media and generated assets.
 - [ ] Resolve copyleft, source-disclosure, attribution, and redistribution
       obligations before recommending the project license.
 - [ ] Distinguish pre-existing topic references from greenfield Build Week code.
-- [ ] Add “Work completed during Build Week.”
+- [x] Add “Work completed during Build Week.”
 - [ ] Identify the primary `/feedback` Session ID at final submission time.
 
 ### Q5 — Reel production

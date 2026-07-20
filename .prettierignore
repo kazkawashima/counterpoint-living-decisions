@@ -11,3 +11,4 @@ docs/plans/
 docs/decisions/
 docs/media/
 apps/worker/src/worker-configuration.d.ts
+THIRD_PARTY_NOTICES.md

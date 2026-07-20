@@ -20,7 +20,8 @@ crossed without a decision.
 
 ## UD-02 — Repository visibility and final license
 
-- **Status:** Visibility decided; project license pending.
+- **Status:** Visibility decided; dependency/media inventory complete; final
+  rights/notice review and project license pending.
 - **Decision:** Make the repository public for submission to reduce judging
   access failures.
 - **Commercial intent:** Preserve the option to commercialize a substantially
@@ -30,10 +31,19 @@ crossed without a decision.
   notices, identify redistribution/source-disclosure obligations, and then
   choose the project license or an All Rights Reserved distribution posture
   compatible with the official submission rules.
+- **2026-07-20 preliminary inventory result:** Runtime package metadata uses
+  only MIT or Apache-2.0 identifiers; reciprocal identifiers are confined to
+  development tooling. This inventory does not replace review of authoritative
+  package license/NOTICE files or the final distributable bundle.
+  Current official submission guidance says a public repository should carry a
+  relevant open-source license. The compatible public choices are therefore
+  MIT or Apache-2.0; the rights-preserving alternative is to keep the
+  repository private and share it with both official judging addresses.
 - **Blocks:** Public visibility switch and final project-license declaration.
 - **Does not block:** Development.
-- **Answer:** Public at submission. Final license follows the dependency and
-  submission-requirement audit.
+- **Answer:** Public at submission. Product owner must complete the final
+  rights/notice review and choose MIT or Apache-2.0 before the visibility
+  switch; until then the manifest remains `license: "UNLICENSED"`.
 
 ## UD-03 — Judge-mode spend envelope
 

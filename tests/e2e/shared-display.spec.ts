@@ -1,14 +1,14 @@
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
   CreateMeetingResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
-const screenshotDirectory = resolve("docs/media/screenshots/shared-display");
-const clipDirectory = resolve("docs/media/clips/shared-display");
+const screenshotDirectory = evidenceDirectory("screenshots/shared-display");
+const clipDirectory = evidenceDirectory("clips/shared-display");
 const exactSnippet = "Regional launch requires a documented approval gate.";
 
 async function signIn(page: Page, identity: string, password: string) {

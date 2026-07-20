@@ -1,16 +1,14 @@
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
   CreateMeetingResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
-const screenshotDirectory = resolve(
-  "docs/media/screenshots/artifact-ingestion",
-);
-const clipDirectory = resolve("docs/media/clips/artifact-ingestion");
+const screenshotDirectory = evidenceDirectory("screenshots/artifact-ingestion");
+const clipDirectory = evidenceDirectory("clips/artifact-ingestion");
 const filename = "synthetic-regional-readiness.md";
 const exactSnippet = "Regional launch requires a documented approval gate.";
 const syntheticDocument = [

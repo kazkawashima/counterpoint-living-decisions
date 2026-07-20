@@ -5,7 +5,7 @@ import {
 } from "@counterpoint/protocol";
 
 const MEETING_ID = "meeting-global-ai-rollout";
-const MEETING_PURPOSE = "Global AI Product Rollout";
+const MEETING_PURPOSE = "Work & Productivity — Global AI Product Rollout";
 
 async function signIn(page: Page) {
   await page.getByRole("button", { name: "Product" }).click();

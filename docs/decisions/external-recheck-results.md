@@ -76,3 +76,75 @@ Sources:
 Before implementing A6, recheck account-specific client-secret lifetime,
 session-duration limits, and rate limits in the target project. They are not
 hard-coded from this recheck.
+
+## ER-01, ER-02, and ER-08 — Submission, evidence, and repository access
+
+Rechecked against the Official Rules, FAQ, and current submission update on
+2026-07-20:
+
+- The submission deadline is July 21, 2026 at 5:00 PM Pacific Time.
+- The judging period runs through August 5, 2026 at 5:00 PM Pacific Time, so
+  the working demo and testing access must remain available until then.
+- The selected category remains **Work and Productivity**.
+- The repository may be public with relevant licensing, or private and shared
+  with both `testing@devpost.com` and `build-week-event@openai.com`.
+- Current submission guidance is stronger than “publicly readable”: it says a
+  public repository should have a relevant open-source license attached.
+- The README must explain setup/sample data, Codex collaboration and
+  acceleration, important human product/engineering/design decisions, and how
+  Codex and GPT-5.6 contributed.
+- The submission requires the `/feedback` Codex Session ID for the primary
+  build thread.
+- A pre-existing project must distinguish prior work from work added during the
+  submission period using dated commit/session evidence.
+- The public YouTube demo must be under three minutes, include audible
+  explanation of Codex and GPT-5.6, and avoid unlicensed third-party marks,
+  music, or other material.
+
+Sources:
+
+- <https://openai.devpost.com/rules>
+- <https://openai.devpost.com/details/faqs>
+- <https://openai.devpost.com/updates/45282-openai-build-week-submissions-are-open-plugin-launch>
+
+ER-01, ER-02, and ER-08 are closed for the current implementation/submission
+slice. ER-01 must still be rechecked immediately before final submission
+because the Official Rules reserve the right to change.
+
+## ER-11 — Dependency/media licensing and project-license boundary
+
+Rechecked on 2026-07-20:
+
+- The generated lockfile inventory currently contains 284 unique third-party
+  package records.
+- Application runtime dependencies use only MIT or Apache-2.0 identifiers.
+- LGPL-3.0-or-later and MPL-2.0 identifiers occur only in development tooling
+  (Sharp/libvips platform packages and Lightning CSS platform packages), not
+  application runtime dependencies.
+- `docs/media/ASSET_MANIFEST.json` inventories 60 PNG and 12 WebM first-party
+  synthetic browser captures by path, byte count, SHA-256, creator, origin, and
+  pending project rights status.
+- The Official Rules require authorization for third-party SDK/API/data use and
+  compliance with applicable open-source licenses. Current submission guidance
+  says a public repository should have a relevant open-source license.
+- Therefore MIT or Apache-2.0 is dependency-compatible for this repository, but
+  either public grant is irrevocable for the released version. If preserving
+  proprietary rights is more important, the compliant alternative is to keep
+  the repository private and share it with the two official judging addresses.
+
+Artifacts:
+
+- [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md)
+- [`docs/media/ASSET_MANIFEST.json`](../media/ASSET_MANIFEST.json)
+- [`BUILD_WEEK_LOG.md`](../../BUILD_WEEK_LOG.md)
+
+Source:
+
+- <https://openai.devpost.com/rules>
+- <https://openai.devpost.com/details/faqs>
+- <https://openai.devpost.com/updates/45282-openai-build-week-submissions-are-open-plugin-launch>
+
+The machine-readable inventory and compatibility check are complete. ER-11
+remains open only for the product owner's public-MIT/public-Apache/private
+choice and the final copyright/NOTICE review. Do not make the repository public
+while `license: "UNLICENSED"` remains.

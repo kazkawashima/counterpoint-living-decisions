@@ -50,19 +50,27 @@ is an allowlist and therefore cannot inherit local API keys or webhook secrets.
 ## Resource planning
 
 Run `npm run cloudflare:resources:plan` to inspect the preview resource plan
-without changing anything. `scripts/cloudflare-preview-resources.sh --apply`
-is deliberately guarded by `CLOUDFLARE_PREVIEW_MUTATION_APPROVED=yes`; do not
-set that flag until a remote-mutation boundary is explicitly approved.
+without changing anything. `npm run cloudflare:resources:create:preview` is
+the separate apply command and is deliberately guarded by an account-bound
+`CLOUDFLARE_PREVIEW_MUTATION_APPROVED` confirmation; do not set that value
+until a remote-mutation boundary is explicitly approved. Appending `--apply`
+to the plan command does not create resources and must not be used as an apply
+procedure.
 
 When that boundary is approved:
 
 1. authenticate Wrangler to the intended non-production Cloudflare account;
-2. run the guarded resource script once;
+2. copy the exact account ID into `CLOUDFLARE_ACCOUNT_ID`, then run
+   `CLOUDFLARE_PREVIEW_MUTATION_APPROVED="counterpoint-preview:${CLOUDFLARE_ACCOUNT_ID}" npm run cloudflare:resources:create:preview`;
 3. copy the exact D1 ID returned by Cloudflare into the preview environment
    configuration—never fabricate or derive it;
 4. apply D1 migrations remotely only after reviewing the generated SQL;
 5. keep judge-secret registration and deployment behind their own Plan 05
    approvals.
+
+The apply command lists resources before creation and skips exact-name D1/R2
+resources that already exist, so it can resume safely after a partial failure.
+It does not mutate an existing resource or infer its opaque D1 ID.
 
 Local `.wrangler/` state is ignored. No remote IDs or credentials belong in
 screenshots, reel clips, repository history, or logs.

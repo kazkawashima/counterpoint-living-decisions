@@ -1,5 +1,4 @@
 import { copyFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
@@ -10,27 +9,28 @@ import {
   GetRoleProjectionResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
-const screenshotDirectory = resolve("docs/media/screenshots/decision-commit");
-const clipDirectory = resolve("docs/media/clips/decision-commit");
-const regulatoryScreenshotDirectory = resolve(
-  "docs/media/screenshots/regulatory-event",
+const screenshotDirectory = evidenceDirectory("screenshots/decision-commit");
+const clipDirectory = evidenceDirectory("clips/decision-commit");
+const regulatoryScreenshotDirectory = evidenceDirectory(
+  "screenshots/regulatory-event",
 );
-const invalidationScreenshotDirectory = resolve(
-  "docs/media/screenshots/assumption-invalidation",
+const invalidationScreenshotDirectory = evidenceDirectory(
+  "screenshots/assumption-invalidation",
 );
-const reviewScreenshotDirectory = resolve(
-  "docs/media/screenshots/decision-review",
+const reviewScreenshotDirectory = evidenceDirectory(
+  "screenshots/decision-review",
 );
-const reviewClipDirectory = resolve("docs/media/clips/decision-review");
-const resolutionScreenshotDirectory = resolve(
-  "docs/media/screenshots/decision-resolution",
+const reviewClipDirectory = evidenceDirectory("clips/decision-review");
+const resolutionScreenshotDirectory = evidenceDirectory(
+  "screenshots/decision-resolution",
 );
-const resolutionClipDirectory = resolve("docs/media/clips/decision-resolution");
-const degradedScreenshotDirectory = resolve(
-  "docs/media/screenshots/degraded-mode",
+const resolutionClipDirectory = evidenceDirectory("clips/decision-resolution");
+const degradedScreenshotDirectory = evidenceDirectory(
+  "screenshots/degraded-mode",
 );
-const degradedClipDirectory = resolve("docs/media/clips/degraded-mode");
+const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();

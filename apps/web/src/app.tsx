@@ -21,6 +21,7 @@ import {
   clearAllStoredMeetingByok,
   clearStoredSession,
   commitDecision,
+  createMeeting,
   dispositionSharedDecisionCandidate,
   exportDecisionJson,
   getDecisionAudit,
@@ -237,6 +238,7 @@ function MeetingListScreen({
   session,
   loading,
   error,
+  onCreate,
   onJoin,
   onLogout,
   onOpen,
@@ -245,13 +247,46 @@ function MeetingListScreen({
   readonly session: StoredSession;
   readonly loading: boolean;
   readonly error: string | undefined;
+  readonly onCreate: (input: {
+    readonly idempotencyKey: string;
+    readonly participantUserIds: readonly string[];
+    readonly purpose: string;
+  }) => Promise<void>;
   readonly onJoin: (code: string) => Promise<void>;
   readonly onLogout: () => Promise<void>;
   readonly onOpen: (meeting: AssignedMeeting) => void;
 }) {
   const [code, setCode] = useState("");
+  const [createOperationId] = useState(() => crypto.randomUUID());
+  const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [participants, setParticipants] = useState<readonly string[]>([]);
+  const [purpose, setPurpose] = useState("");
   const codeId = useId();
+  const createTitleId = useId();
+  const purposeId = useId();
+
+  async function submitCreation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreating(true);
+    try {
+      await onCreate({
+        idempotencyKey: createOperationId,
+        participantUserIds: participants,
+        purpose,
+      });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function toggleParticipant(userId: string, selected: boolean) {
+    setParticipants((current) =>
+      selected
+        ? [...current, userId]
+        : current.filter((candidate) => candidate !== userId),
+    );
+  }
 
   async function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -353,40 +388,99 @@ function MeetingListScreen({
           ))}
         </div>
 
-        <aside className="join-panel">
-          <p className="section-kicker">Fallback path</p>
-          <h2>Join with a code</h2>
-          <p>
-            Membership is resolved by the server. A code never grants a role by
-            itself.
-          </p>
-          <form onSubmit={(event) => void submitCode(event)}>
-            <label htmlFor={codeId}>Meeting code</label>
-            <input
-              id={codeId}
-              onChange={(event) => setCode(event.target.value)}
-              placeholder="GLOBAL-AI-2026"
-              required
-              value={code}
-            />
-            <button
-              className="secondary-button"
-              disabled={joining}
-              type="submit"
+        <div className="meeting-side-stack">
+          {session.userId === "product" ? (
+            <section
+              aria-labelledby={createTitleId}
+              className="create-meeting-panel"
             >
-              {joining ? "Checking…" : "Verify membership"}
-            </button>
-          </form>
-          <div className="boundary-note">
-            <span className="boundary-icon" aria-hidden="true">
-              ◇
-            </span>
-            <div>
-              <strong>Server-resolved boundary</strong>
-              <p>Identity, role, and capabilities never come from the URL.</p>
+              <p className="section-kicker">Facilitator control</p>
+              <h2 id={createTitleId}>Create a decision room</h2>
+              <p>
+                Start with one facilitator and 2–4 invited participants from the
+                fixed synthetic demo identities.
+              </p>
+              <form onSubmit={(event) => void submitCreation(event)}>
+                <label htmlFor={purposeId}>Decision purpose</label>
+                <input
+                  id={purposeId}
+                  maxLength={240}
+                  onChange={(event) => setPurpose(event.target.value)}
+                  placeholder="What decision needs a durable commitment?"
+                  required
+                  value={purpose}
+                />
+                <fieldset>
+                  <legend>
+                    Participants{" "}
+                    <span>{participants.length + 1} of 5 demo seats</span>
+                  </legend>
+                  <div className="participant-picker">
+                    {DEMO_IDENTITIES.filter(
+                      ({ userId }) => userId !== session.userId,
+                    ).map(({ label, userId }) => (
+                      <label key={userId}>
+                        <input
+                          checked={participants.includes(userId)}
+                          onChange={(event) =>
+                            toggleParticipant(userId, event.target.checked)
+                          }
+                          type="checkbox"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <button
+                  className="primary-button"
+                  disabled={creating || participants.length < 2}
+                  type="submit"
+                >
+                  <span>
+                    {creating ? "Creating room…" : "Create decision room"}
+                  </span>
+                  <span aria-hidden="true">＋</span>
+                </button>
+              </form>
+            </section>
+          ) : null}
+
+          <aside className="join-panel">
+            <p className="section-kicker">Fallback path</p>
+            <h2>Join with a code</h2>
+            <p>
+              Membership is resolved by the server. A code never grants a role
+              by itself.
+            </p>
+            <form onSubmit={(event) => void submitCode(event)}>
+              <label htmlFor={codeId}>Meeting code</label>
+              <input
+                id={codeId}
+                onChange={(event) => setCode(event.target.value)}
+                placeholder="GLOBAL-AI-2026"
+                required
+                value={code}
+              />
+              <button
+                className="secondary-button"
+                disabled={joining}
+                type="submit"
+              >
+                {joining ? "Checking…" : "Verify membership"}
+              </button>
+            </form>
+            <div className="boundary-note">
+              <span className="boundary-icon" aria-hidden="true">
+                ◇
+              </span>
+              <div>
+                <strong>Server-resolved boundary</strong>
+                <p>Identity, role, and capabilities never come from the URL.</p>
+              </div>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
       </section>
     </main>
   );
@@ -2721,7 +2815,11 @@ function WorkspaceShell({
         </p>
       )}
 
-      <nav className="progress-rail" aria-label="Flagship progress">
+      <nav
+        className="progress-rail"
+        aria-label="Flagship progress"
+        tabIndex={0}
+      >
         {stageLabels.map((label, index) => {
           const stage = index + 1;
           return (
@@ -3165,6 +3263,24 @@ export function App() {
     }
   }
 
+  async function create(input: {
+    readonly idempotencyKey: string;
+    readonly participantUserIds: readonly string[];
+    readonly purpose: string;
+  }) {
+    if (session === undefined) {
+      return;
+    }
+    setError(undefined);
+    try {
+      const created = await createMeeting(session, input);
+      setMeetings((current) => [...current, created]);
+      setSelectedMeeting(created);
+    } catch (cause) {
+      setError(messageFor(cause));
+    }
+  }
+
   if (displayMode) {
     return (
       <SharedDisplayScreen
@@ -3202,6 +3318,7 @@ export function App() {
       error={error}
       loading={loading}
       meetings={meetings}
+      onCreate={create}
       onJoin={join}
       onLogout={signOut}
       onOpen={setSelectedMeeting}

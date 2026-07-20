@@ -726,6 +726,54 @@ The canonical implementation-facing artifacts are:
   visual capture was retained. Reel shooting and reel-material organization
   remain deferred from the active goal; product visibility stays the priority.
 
+## 2026-07-20 local deployment-readiness closeout
+
+- The facilitator meeting list now includes a browser-native fixed-identity
+  creation path. It creates one facilitator plus two to four selected
+  participants, enters the new workspace, and remains server-authorized.
+  A lost successful response is retried with the same operation key, so reload
+  proves only one room exists; separate Safety and Legal browser contexts prove
+  the selected assignments.
+- Dedicated browser acceptance proof now covers Meeting A/B isolation across
+  projection, shared Evidence, Decisions, Realtime access, and private artifact
+  retrieval, then resets only the flagship and proves Meeting B's purpose and
+  owner-private source remain unchanged.
+- Keyboard coverage includes visible focus, login, code join, disclosure
+  preview/keep-private, and push-to-talk Enter down/up behavior. Axe reports no
+  serious or critical WCAG 2 A/AA/2.1 AA violations in the exercised login,
+  meeting-list, workspace, and mobile reduced-motion states. The horizontally
+  scrollable mobile progress rail is now keyboard-focusable.
+- Normal E2E writes screenshots and clips under `test-results/evidence/`.
+  `npm run e2e:capture` is the explicit path for intentional updates under
+  `docs/media/`, preventing CI and verification reruns from silently replacing
+  committed evidence. The generated media manifest preserves reviewed
+  provenance and fails closed when a new PNG/WebM has no explicit review.
+- A deterministic direct/transitive lockfile inventory now fails closed on
+  missing package-license metadata. It records review-required identifiers but
+  does not claim to replace authoritative package license/NOTICE or final
+  bundle review. Project metadata remains `UNLICENSED` until the product owner
+  makes the final public-license decision.
+- The fresh Compose smoke uses only an isolated `counterpoint-smoke-*` project,
+  clears inherited provider credentials, reaches an external-style host,
+  creates an owner-private source, force-recreates the app container, reuses
+  the same Bearer session and source, then removes only its exact temporary
+  project and volume.
+- Cloudflare preview resource creation now requires an exact 32-character
+  account ID and an account-bound confirmation value. It lists D1/R2 first and
+  skips exact-name existing resources, allowing a partial create to resume
+  without mutating existing state. No remote resource, migration, Secret, or
+  deployment was created in this closeout.
+- Fresh verification passes 73 Vitest files and 814 tests, the focused security
+  matrix's 296 tests, the Cloudflare pool's 11 files and 141 tests, all 22 Node
+  browser E2E cases, and both real-Wrangler browser cases. Environment,
+  generated notices/media, formatting, architecture, ESLint, typecheck, build,
+  secret scan, Worker bindings, Cloudflare configuration, shell syntax,
+  deployment plans, and Worker dry-run also pass.
+- AC-03, AC-11, and AC-13 now have direct browser proof. AC-12 remains partial:
+  the Compose smoke proves authenticated source persistence, while a single
+  restart journey covering Decision revisions/history and downloadable
+  artifacts plus hosted D1/DO proof remains outstanding.
+
 ## Not started
 
 - Approved hosted deployment, hosted flagship smoke, and remaining submission

@@ -23,6 +23,11 @@ date, exact source, and observed value when each item is closed.
 
 ER-07 is scheduled for product-owner inspection on 2026-07-20.
 
-ER-03 was closed on 2026-07-19. ER-04 has a verified model/WebRTC topology but
-remains open for account-specific expiry and limit verification. See
+ER-03 was closed on 2026-07-19. ER-01, ER-02, and ER-08 were rechecked and
+closed for the current slice on 2026-07-20, with ER-01 still requiring the
+mandated immediate pre-submit refresh. ER-11 now has generated dependency and
+media inventories and a compatibility result, but remains open for the
+product-owner's public-license/private-repository choice and final NOTICE
+review. ER-04 has a verified model/WebRTC topology but remains open for
+account-specific expiry and limit verification. See
 [`external-recheck-results.md`](./external-recheck-results.md).

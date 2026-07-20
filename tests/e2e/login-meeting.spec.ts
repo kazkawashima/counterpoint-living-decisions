@@ -1,5 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import {
@@ -7,14 +6,15 @@ import {
   CreateMeetingResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
-const screenshotDirectory = resolve("docs/media/screenshots/login-meeting");
-const clipDirectory = resolve("docs/media/clips/login-meeting");
-const disclosureScreenshotDirectory = resolve(
-  "docs/media/screenshots/permission-disclosure",
+const screenshotDirectory = evidenceDirectory("screenshots/login-meeting");
+const clipDirectory = evidenceDirectory("clips/login-meeting");
+const disclosureScreenshotDirectory = evidenceDirectory(
+  "screenshots/permission-disclosure",
 );
-const disclosureClipDirectory = resolve(
-  "docs/media/clips/permission-disclosure",
+const disclosureClipDirectory = evidenceDirectory(
+  "clips/permission-disclosure",
 );
 
 async function signIn(page: Page, identity: string, password: string) {
@@ -58,7 +58,9 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
 
   await signIn(page, "Safety", "counterpoint-safety");
   await expect(
-    page.getByRole("heading", { name: "Global AI Product Rollout" }),
+    page.getByRole("heading", {
+      name: "Work & Productivity — Global AI Product Rollout",
+    }),
   ).toBeVisible();
   await expect(page.getByText("participant", { exact: true })).toBeVisible();
   expect(apiRequests.length).toBeGreaterThanOrEqual(2);
@@ -137,14 +139,31 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   await signIn(otherPage, "Engineering", "counterpoint-engineering");
   await otherPage
     .getByRole("article")
-    .filter({ hasText: "Global AI Product Rollout" })
+    .filter({ hasText: "Work & Productivity — Global AI Product Rollout" })
     .getByRole("button", { name: "Open workspace" })
     .click();
   await expect(otherPage.getByText("Permission recorded")).toBeVisible();
   await expect(otherPage.locator(".shared-evidence blockquote")).toHaveText(
     "Regional launch requires a documented approval gate.",
   );
-  await otherContext.close();
+
+  const facilitatorContext = await browser.newContext();
+  const facilitatorPage = await facilitatorContext.newPage();
+  await facilitatorPage.goto(baseURL ?? "/");
+  await signIn(facilitatorPage, "Product", "counterpoint-product");
+  await facilitatorPage
+    .getByRole("article")
+    .filter({ hasText: "Work & Productivity — Global AI Product Rollout" })
+    .getByRole("button", { name: "Open workspace" })
+    .click();
+  await expect(
+    facilitatorPage.getByRole("heading", { name: "product workspace" }),
+  ).toBeVisible();
+  await expect(
+    facilitatorPage.locator(".shared-evidence blockquote"),
+  ).toHaveText("Regional launch requires a documented approval gate.");
+
+  await Promise.all([otherContext.close(), facilitatorContext.close()]);
 });
 
 test("invalid credential is safe and visually explicit", async ({ page }) => {
