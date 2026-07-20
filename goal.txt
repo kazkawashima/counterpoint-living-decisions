@@ -72,6 +72,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - 2026-07-21の現行treeでも `npm run security:verify` が再成功し、build、secret scan、
   security matrix `300/300`、Cloudflare pool `142/142` を確認した。これは同じく
   local/contract evidenceであり、hosted C5の完了とは扱わない。
+- Previewのjudge reconciliation dry-runは `attempted=0 settled=0 released=0 failed=0` で
+  完了した。stale rowのSELECTだけを行い、provider、judge/HMAC Secret、D1 mutationを
+  発生させていない。これはpre-billable運用経路の確認であり、production judge enableや
+  measured derived limitsの完了とは扱わない。
 - production Secretを登録しないまま、rollback、judge shutdown、credential rotation/deleteの
   runbookとguarded deployment workflowを確認した。対象shellの`bash -n`とCloudflare
   deployment/config契約22/22が成功し、preview/productionのplan commandもremote

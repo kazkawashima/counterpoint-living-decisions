@@ -1150,6 +1150,15 @@ The canonical implementation-facing artifacts are:
   external owner-controlled surfaces; this repository audit cannot close that
   comparison gate or the open UD-05 message hierarchy.
 
+## 2026-07-21 Preview reconciliation dry-run
+
+- `npm run judge:reconcile -- preview --dry-run` completed after rebuilding the
+  Cloudflare adapter and returned `attempted=0 settled=0 released=0 failed=0`.
+- The command executed the content-free stale-row SELECT path only; it did not
+  call a provider, read judge/HMAC Secrets, or mutate Preview D1. This is an
+  operational safety proof for the pre-billable reconciliation path, not proof
+  of production judge enablement or the measured derived-limit gate.
+
 ## Next executable slice
 
 The product is now viewable through the explicit Cloudflare preview command and
