@@ -525,6 +525,11 @@ interface DecisionDraftForm {
   readonly title: string;
 }
 
+type FacilitatorReviewReceipt = Pick<
+  NonNullable<InvalidationEvaluation["review"]>,
+  "disposition" | "heldActionIds" | "reason" | "reconsiderationTask"
+>;
+
 function SharedDecisionCard({
   decision,
   externalEvent,
@@ -588,7 +593,7 @@ function SharedDecisionCard({
         {decision.snapshot.monitorCondition.description}
       </p>
       {externalEvent === undefined ? null : (
-        <div className="shared-regulatory-event">
+        <div className="shared-regulatory-event" role="status">
           <span>External event received</span>
           <strong>{externalEvent.jurisdiction}</strong>
           <small>
@@ -738,6 +743,9 @@ function FacilitatorDecisionPanel({
   const [audit, setAudit] = useState<DecisionAuditResponse>();
   const [externalEvent, setExternalEvent] = useState(existingExternalEvent);
   const [invalidation, setInvalidation] = useState(existingInvalidation);
+  const [reviewReceipt, setReviewReceipt] = useState<
+    FacilitatorReviewReceipt | undefined
+  >(existingInvalidation?.review);
   const [reviewReason, setReviewReason] = useState("");
   const [resolutionChoice, setResolutionChoice] = useState<
     "recommit_revision" | "reject_decision" | "supersede_decision"
@@ -787,6 +795,26 @@ function FacilitatorDecisionPanel({
   });
   const decisionForgeRef = useRef<HTMLElement>(null);
   const decisionForgeMounted = useRef(false);
+  const reviewReasonRef = useRef<HTMLTextAreaElement>(null);
+  const resolutionChoiceRef = useRef<HTMLInputElement>(null);
+  const resolutionTitleRef = useRef<HTMLInputElement>(null);
+  const resolutionOutcomeRef = useRef<HTMLTextAreaElement>(null);
+  const resolutionMonitorRef = useRef<HTMLTextAreaElement>(null);
+  const resolutionChangeReasonRef = useRef<HTMLTextAreaElement>(null);
+  const resolutionReplacementRef = useRef<HTMLInputElement>(null);
+  const resolutionRejectionRef = useRef<HTMLTextAreaElement>(null);
+  const reviewErrorId = useId();
+  const resolutionErrorId = useId();
+  const [reviewReasonInvalid, setReviewReasonInvalid] = useState(false);
+  const [resolutionInvalidField, setResolutionInvalidField] = useState<
+    | "changeReason"
+    | "monitorCondition"
+    | "outcome"
+    | "rejectionReason"
+    | "replacementDecisionId"
+    | "title"
+    | undefined
+  >();
   const commandKeys = useRef({
     commit: crypto.randomUUID(),
     confirm: crypto.randomUUID(),
@@ -807,9 +835,29 @@ function FacilitatorDecisionPanel({
   useEffect(() => {
     if (!decisionForgeMounted.current) {
       decisionForgeMounted.current = true;
-      return;
+      if (phase !== "at-risk" && phase !== "review-required") {
+        return;
+      }
     }
-    decisionForgeRef.current?.focus({ preventScroll: true });
+    const focusTarget =
+      phase === "at-risk"
+        ? reviewReasonRef.current
+        : phase === "review-required"
+          ? resolutionInvalidField === "title"
+            ? resolutionTitleRef.current
+            : resolutionInvalidField === "outcome"
+              ? resolutionOutcomeRef.current
+              : resolutionInvalidField === "monitorCondition"
+                ? resolutionMonitorRef.current
+                : resolutionInvalidField === "changeReason"
+                  ? resolutionChangeReasonRef.current
+                  : resolutionInvalidField === "replacementDecisionId"
+                    ? resolutionReplacementRef.current
+                    : resolutionInvalidField === "rejectionReason"
+                      ? resolutionRejectionRef.current
+                      : resolutionChoiceRef.current
+          : decisionForgeRef.current;
+    focusTarget?.focus({ preventScroll: true });
   }, [phase]);
 
   useEffect(() => {
@@ -848,7 +896,7 @@ function FacilitatorDecisionPanel({
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setError(messageFor(cause));
+          setError((current) => current ?? messageFor(cause));
         }
       });
     return () => controller.abort();
@@ -1185,14 +1233,22 @@ function FacilitatorDecisionPanel({
       return;
     }
     const reason = reviewReason.trim();
-    if (reason.length === 0) {
-      setError("Enter a facilitator review reason before choosing an outcome.");
+    if (reason.length === 0 || reason.length > 4096) {
+      setReviewReasonInvalid(true);
+      setError(
+        reason.length === 0
+          ? "Enter a facilitator review reason before choosing an outcome."
+          : "Keep the facilitator review reason within 4096 characters.",
+      );
+      reviewReasonRef.current?.focus({ preventScroll: true });
       return;
     }
+    setReviewReasonInvalid(false);
     setPhase("reviewing");
     setError(undefined);
+    let response: Awaited<ReturnType<typeof reviewInvalidation>>;
     try {
-      const response = await reviewInvalidation(session, {
+      response = await reviewInvalidation(session, {
         decisionId: decision.decisionId,
         disposition,
         expectedPosition: position,
@@ -1204,6 +1260,33 @@ function FacilitatorDecisionPanel({
         reason,
         suggestionId: invalidation.suggestionId,
       });
+    } catch (cause) {
+      setError(messageFor(cause));
+      setPhase("at-risk");
+      return;
+    }
+
+    advancePosition(response.position);
+    setDecision(response.decision);
+    onDecisionChange(response.decision);
+    setReviewReceipt({
+      disposition: response.disposition,
+      heldActionIds:
+        response.disposition === "confirm_invalidation"
+          ? response.heldActionIds
+          : [],
+      reason: response.reviewReason,
+      reconsiderationTask:
+        response.disposition === "confirm_invalidation"
+          ? response.reconsiderationTask
+          : undefined,
+    });
+    setPhase(
+      disposition === "confirm_invalidation"
+        ? "review-required"
+        : "review-rejected",
+    );
+    try {
       const [evaluationState, decisionState, nextAudit] = await Promise.all([
         listInvalidationEvaluations(session, meeting.meetingId),
         listSharedDecisions(session, meeting.meetingId),
@@ -1225,15 +1308,14 @@ function FacilitatorDecisionPanel({
       if (nextInvalidation !== undefined) {
         setInvalidation(nextInvalidation);
         onInvalidationChange(nextInvalidation);
+        if (nextInvalidation.review !== undefined) {
+          setReviewReceipt(nextInvalidation.review);
+        }
       }
-      setPhase(
-        disposition === "confirm_invalidation"
-          ? "review-required"
-          : "review-rejected",
-      );
     } catch (cause) {
-      setError(messageFor(cause));
-      setPhase("at-risk");
+      setError(
+        `Review recorded, but shared state and audit refresh are temporarily unavailable. Reload to retry. ${messageFor(cause)}`,
+      );
     }
   }
 
@@ -1242,32 +1324,86 @@ function FacilitatorDecisionPanel({
     value: string,
   ) {
     setResolutionDraft((current) => ({ ...current, [field]: value }));
+    if (resolutionInvalidField === field) {
+      setResolutionInvalidField(undefined);
+      setError(undefined);
+    }
+  }
+
+  function chooseResolution(
+    choice: "recommit_revision" | "reject_decision" | "supersede_decision",
+  ) {
+    setResolutionChoice(choice);
+    setResolutionInvalidField(undefined);
+    setError(undefined);
   }
 
   async function submitDecisionResolution() {
     if (decision === undefined) {
       return;
     }
-    if (
-      (resolutionChoice === "recommit_revision" &&
-        resolutionDraft.changeReason.trim().length === 0) ||
-      (resolutionChoice === "reject_decision" &&
-        resolutionDraft.rejectionReason.trim().length === 0) ||
-      (resolutionChoice === "supersede_decision" &&
-        resolutionDraft.replacementDecisionId.trim().length === 0)
-    ) {
-      setError("Complete the required resolution field before continuing.");
+    let invalidField: typeof resolutionInvalidField;
+    if (resolutionChoice === "recommit_revision") {
+      invalidField =
+        resolutionDraft.title.trim().length === 0 ||
+        resolutionDraft.title.trim().length > 256
+          ? "title"
+          : resolutionDraft.outcome.trim().length === 0
+            ? "outcome"
+            : resolutionDraft.monitorCondition.trim().length === 0
+              ? "monitorCondition"
+              : resolutionDraft.changeReason.trim().length === 0 ||
+                  resolutionDraft.changeReason.trim().length > 4096
+                ? "changeReason"
+                : undefined;
+    } else if (resolutionChoice === "reject_decision") {
+      invalidField =
+        resolutionDraft.rejectionReason.trim().length === 0 ||
+        resolutionDraft.rejectionReason.trim().length > 4096
+          ? "rejectionReason"
+          : undefined;
+    } else {
+      const replacementDecisionId =
+        resolutionDraft.replacementDecisionId.trim();
+      invalidField =
+        !/^\S{1,256}$/u.test(replacementDecisionId) ||
+        replacementDecisionId === decision.decisionId
+          ? "replacementDecisionId"
+          : undefined;
+    }
+    if (invalidField !== undefined) {
+      setResolutionInvalidField(invalidField);
+      setError(
+        invalidField === "replacementDecisionId"
+          ? "Enter a different valid Decision ID without spaces."
+          : "Complete the required resolution field before continuing.",
+      );
+      const target =
+        invalidField === "title"
+          ? resolutionTitleRef.current
+          : invalidField === "outcome"
+            ? resolutionOutcomeRef.current
+            : invalidField === "monitorCondition"
+              ? resolutionMonitorRef.current
+              : invalidField === "changeReason"
+                ? resolutionChangeReasonRef.current
+                : invalidField === "replacementDecisionId"
+                  ? resolutionReplacementRef.current
+                  : resolutionRejectionRef.current;
+      target?.focus({ preventScroll: true });
       return;
     }
+    setResolutionInvalidField(undefined);
     setPhase("resolving");
     setError(undefined);
+    const common = {
+      decisionId: decision.decisionId,
+      expectedPosition: position,
+      meetingId: meeting.meetingId,
+    };
+    let response: Awaited<ReturnType<typeof resolveDecisionReview>>;
     try {
-      const common = {
-        decisionId: decision.decisionId,
-        expectedPosition: position,
-        meetingId: meeting.meetingId,
-      };
-      const response = await resolveDecisionReview(
+      response = await resolveDecisionReview(
         session,
         resolutionChoice === "recommit_revision"
           ? {
@@ -1296,6 +1432,37 @@ function FacilitatorDecisionPanel({
                 resolution: "reject_decision",
               },
       );
+    } catch (cause) {
+      if (
+        resolutionChoice === "supersede_decision" &&
+        cause instanceof ApiError &&
+        cause.code === "VALIDATION_FAILED"
+      ) {
+        setResolutionInvalidField("replacementDecisionId");
+        setError(
+          "Choose an existing active replacement Decision in this meeting.",
+        );
+      } else {
+        setError(messageFor(cause));
+      }
+      setPhase("review-required");
+      return;
+    }
+
+    advancePosition(response.position);
+    setDecision(response.decision);
+    onDecisionChange(response.decision);
+    setHistory(undefined);
+    setAudit(undefined);
+    setDecisionExport(undefined);
+    setPhase(
+      response.resolution === "recommit_revision"
+        ? "recommitted"
+        : response.resolution === "supersede_decision"
+          ? "superseded"
+          : "decision-rejected",
+    );
+    try {
       const [nextHistory, nextAudit, exported] = await Promise.all([
         getDecisionHistory(session, {
           decisionId: response.decision.decisionId,
@@ -1310,22 +1477,13 @@ function FacilitatorDecisionPanel({
           meetingId: meeting.meetingId,
         }),
       ]);
-      advancePosition(response.position);
-      setDecision(response.decision);
-      onDecisionChange(response.decision);
       setHistory(nextHistory);
       setAudit(nextAudit);
       setDecisionExport(exported);
-      setPhase(
-        response.resolution === "recommit_revision"
-          ? "recommitted"
-          : response.resolution === "supersede_decision"
-            ? "superseded"
-            : "decision-rejected",
-      );
     } catch (cause) {
-      setError(messageFor(cause));
-      setPhase("review-required");
+      setError(
+        `Resolution recorded, but history, audit, and export refresh are temporarily unavailable. Reload to retry. ${messageFor(cause)}`,
+      );
     }
   }
 
@@ -1609,7 +1767,7 @@ function FacilitatorDecisionPanel({
       ) : null}
 
       {phase === "draft" && decision !== undefined ? (
-        <div className="lifecycle-gate">
+        <div className="lifecycle-gate" role="status">
           <div>
             <span>Revision 1 · immutable DRAFT</span>
             <strong>All 5 readiness conditions are assembled</strong>
@@ -1621,7 +1779,7 @@ function FacilitatorDecisionPanel({
       ) : null}
 
       {phase === "ready" && decision !== undefined ? (
-        <div className="commit-gate">
+        <div className="commit-gate" role="status">
           <div className="commit-lock" aria-hidden="true">
             ◇
           </div>
@@ -1665,7 +1823,6 @@ function FacilitatorDecisionPanel({
           className={`committed-decision${
             phase === "at-risk" || phase === "reviewing" ? " at-risk" : ""
           }${phase === "review-required" ? " review-required" : ""}`}
-          aria-live="polite"
         >
           <div className="commit-seal" aria-hidden="true">
             <span>
@@ -1677,7 +1834,7 @@ function FacilitatorDecisionPanel({
             </span>
           </div>
           <div>
-            <p className="zone-label shared">
+            <p aria-atomic="true" className="zone-label shared" role="status">
               {phase === "at-risk" || phase === "reviewing"
                 ? "AT_RISK · AI suggestion"
                 : phase === "review-required"
@@ -1803,7 +1960,7 @@ function FacilitatorDecisionPanel({
           {invalidation === undefined ? null : (
             <div
               className={`invalidation-risk-pulse${
-                invalidation.review === undefined ? "" : " reviewed"
+                reviewReceipt === undefined ? "" : " reviewed"
               }`}
               role="status"
             >
@@ -1812,9 +1969,9 @@ function FacilitatorDecisionPanel({
               </div>
               <div>
                 <span>
-                  {invalidation.review === undefined
+                  {reviewReceipt === undefined
                     ? "AI inferred · Human review required"
-                    : invalidation.review.disposition === "confirm_invalidation"
+                    : reviewReceipt.disposition === "confirm_invalidation"
                       ? "Human reviewed · Impact confirmed"
                       : "Human reviewed · Suggestion rejected"}
                 </span>
@@ -1834,9 +1991,9 @@ function FacilitatorDecisionPanel({
                 </div>
                 <small>
                   Revision {decision.activeRevision} remains immutable ·{" "}
-                  {invalidation.review === undefined
+                  {reviewReceipt === undefined
                     ? "REVIEW_REQUIRED has not been confirmed"
-                    : `Facilitator reason: ${invalidation.review.reason}`}
+                    : `Facilitator reason: ${reviewReceipt.reason}`}
                 </small>
               </div>
             </div>
@@ -1845,9 +2002,9 @@ function FacilitatorDecisionPanel({
             <section
               aria-labelledby="facilitator-risk-review-title"
               className={`review-workbench${
-                invalidation.review?.disposition === "confirm_invalidation"
+                reviewReceipt?.disposition === "confirm_invalidation"
                   ? " review-confirmed"
-                  : invalidation.review?.disposition === "reject_suggestion"
+                  : reviewReceipt?.disposition === "reject_suggestion"
                     ? " review-rejected"
                     : ""
               }`}
@@ -1861,9 +2018,9 @@ function FacilitatorDecisionPanel({
                   </h4>
                 </div>
                 <strong>
-                  {invalidation.review === undefined
+                  {reviewReceipt === undefined
                     ? "Decision pending"
-                    : invalidation.review.disposition === "confirm_invalidation"
+                    : reviewReceipt.disposition === "confirm_invalidation"
                       ? "Review required"
                       : "Monitoring resumed"}
                 </strong>
@@ -1903,7 +2060,7 @@ function FacilitatorDecisionPanel({
                   <span>Affected Action</span>
                   <strong>{invalidation.affectedActionIds[0]}</strong>
                   <p>
-                    {invalidation.review?.disposition === "confirm_invalidation"
+                    {reviewReceipt?.disposition === "confirm_invalidation"
                       ? "Held pending Decision revision"
                       : "Active until a facilitator confirms impact"}
                   </p>
@@ -1916,14 +2073,26 @@ function FacilitatorDecisionPanel({
                 </span>
                 <p>{invalidation.reason}</p>
               </div>
-              {invalidation.review === undefined ? (
+              {reviewReceipt === undefined ? (
                 <>
                   <label className="review-reason-field">
                     <span>Facilitator review reason</span>
                     <textarea
+                      aria-describedby={
+                        reviewReasonInvalid ? reviewErrorId : undefined
+                      }
+                      aria-invalid={reviewReasonInvalid || undefined}
                       disabled={phase === "reviewing"}
-                      onChange={(event) => setReviewReason(event.target.value)}
+                      maxLength={4096}
+                      onChange={(event) => {
+                        setReviewReason(event.target.value);
+                        if (reviewReasonInvalid) {
+                          setReviewReasonInvalid(false);
+                          setError(undefined);
+                        }
+                      }}
                       placeholder="Record why this evidence does or does not change the Decision."
+                      ref={reviewReasonRef}
                       rows={3}
                       value={reviewReason}
                     />
@@ -1958,25 +2127,23 @@ function FacilitatorDecisionPanel({
               ) : (
                 <div className="review-outcome">
                   <span>
-                    {invalidation.review.disposition === "confirm_invalidation"
+                    {reviewReceipt.disposition === "confirm_invalidation"
                       ? "REVIEW_REQUIRED · Human confirmed"
                       : "AI suggestion rejected by facilitator"}
                   </span>
-                  <strong>{invalidation.review.reason}</strong>
-                  {invalidation.review.disposition ===
-                  "confirm_invalidation" ? (
+                  <strong>{reviewReceipt.reason}</strong>
+                  {reviewReceipt.disposition === "confirm_invalidation" ? (
                     <div
                       className="reconsideration-task-card"
                       data-testid="reconsideration-task"
                     >
                       <span>Reconsideration task</span>
                       <strong>
-                        {invalidation.review.reconsiderationTask?.state ??
-                          "open"}
+                        {reviewReceipt.reconsiderationTask?.state ?? "open"}
                       </strong>
                       <small>
-                        {invalidation.review.heldActionIds.length} affected
-                        Action held · revision {decision.activeRevision} remains
+                        {reviewReceipt.heldActionIds.length} affected Action
+                        held · revision {decision.activeRevision} remains
                         immutable
                       </small>
                     </div>
@@ -1990,7 +2157,7 @@ function FacilitatorDecisionPanel({
               )}
             </section>
           )}
-          {invalidation?.review?.disposition === "confirm_invalidation" &&
+          {reviewReceipt?.disposition === "confirm_invalidation" &&
           phase !== "at-risk" &&
           phase !== "reviewing" ? (
             <section
@@ -2013,7 +2180,11 @@ function FacilitatorDecisionPanel({
               </div>
               {phase === "review-required" || phase === "resolving" ? (
                 <>
-                  <div className="resolution-options">
+                  <div
+                    aria-labelledby="decision-resolution-title"
+                    className="resolution-options"
+                    role="radiogroup"
+                  >
                     {(
                       [
                         [
@@ -2038,7 +2209,12 @@ function FacilitatorDecisionPanel({
                           checked={resolutionChoice === value}
                           disabled={phase === "resolving"}
                           name="decision-resolution"
-                          onChange={() => setResolutionChoice(value)}
+                          onChange={() => chooseResolution(value)}
+                          ref={
+                            resolutionChoice === value
+                              ? resolutionChoiceRef
+                              : undefined
+                          }
                           type="radio"
                           value={value}
                         />
@@ -2075,20 +2251,39 @@ function FacilitatorDecisionPanel({
                       <label>
                         Revised Decision title
                         <input
+                          aria-describedby={
+                            resolutionInvalidField === "title"
+                              ? resolutionErrorId
+                              : undefined
+                          }
+                          aria-invalid={
+                            resolutionInvalidField === "title" || undefined
+                          }
                           disabled={phase === "resolving"}
+                          maxLength={256}
                           onChange={(event) =>
                             setResolutionField("title", event.target.value)
                           }
+                          ref={resolutionTitleRef}
                           value={resolutionDraft.title}
                         />
                       </label>
                       <label>
                         Revised outcome
                         <textarea
+                          aria-describedby={
+                            resolutionInvalidField === "outcome"
+                              ? resolutionErrorId
+                              : undefined
+                          }
+                          aria-invalid={
+                            resolutionInvalidField === "outcome" || undefined
+                          }
                           disabled={phase === "resolving"}
                           onChange={(event) =>
                             setResolutionField("outcome", event.target.value)
                           }
+                          ref={resolutionOutcomeRef}
                           rows={3}
                           value={resolutionDraft.outcome}
                         />
@@ -2096,6 +2291,15 @@ function FacilitatorDecisionPanel({
                       <label>
                         Revised monitor condition
                         <textarea
+                          aria-describedby={
+                            resolutionInvalidField === "monitorCondition"
+                              ? resolutionErrorId
+                              : undefined
+                          }
+                          aria-invalid={
+                            resolutionInvalidField === "monitorCondition" ||
+                            undefined
+                          }
                           disabled={phase === "resolving"}
                           onChange={(event) =>
                             setResolutionField(
@@ -2103,6 +2307,7 @@ function FacilitatorDecisionPanel({
                               event.target.value,
                             )
                           }
+                          ref={resolutionMonitorRef}
                           rows={2}
                           value={resolutionDraft.monitorCondition}
                         />
@@ -2110,13 +2315,24 @@ function FacilitatorDecisionPanel({
                       <label>
                         Revision change reason
                         <textarea
+                          aria-describedby={
+                            resolutionInvalidField === "changeReason"
+                              ? resolutionErrorId
+                              : undefined
+                          }
+                          aria-invalid={
+                            resolutionInvalidField === "changeReason" ||
+                            undefined
+                          }
                           disabled={phase === "resolving"}
+                          maxLength={4096}
                           onChange={(event) =>
                             setResolutionField(
                               "changeReason",
                               event.target.value,
                             )
                           }
+                          ref={resolutionChangeReasonRef}
                           rows={2}
                           value={resolutionDraft.changeReason}
                         />
@@ -2126,7 +2342,17 @@ function FacilitatorDecisionPanel({
                     <label className="resolution-single-field">
                       Replacement Decision ID
                       <input
+                        aria-describedby={
+                          resolutionInvalidField === "replacementDecisionId"
+                            ? resolutionErrorId
+                            : undefined
+                        }
+                        aria-invalid={
+                          resolutionInvalidField === "replacementDecisionId" ||
+                          undefined
+                        }
                         disabled={phase === "resolving"}
+                        maxLength={256}
                         onChange={(event) =>
                           setResolutionField(
                             "replacementDecisionId",
@@ -2134,6 +2360,7 @@ function FacilitatorDecisionPanel({
                           )
                         }
                         placeholder="Select a different canonical Decision ID"
+                        ref={resolutionReplacementRef}
                         value={resolutionDraft.replacementDecisionId}
                       />
                       <small>
@@ -2145,13 +2372,24 @@ function FacilitatorDecisionPanel({
                     <label className="resolution-single-field">
                       Decision rejection reason
                       <textarea
+                        aria-describedby={
+                          resolutionInvalidField === "rejectionReason"
+                            ? resolutionErrorId
+                            : undefined
+                        }
+                        aria-invalid={
+                          resolutionInvalidField === "rejectionReason" ||
+                          undefined
+                        }
                         disabled={phase === "resolving"}
+                        maxLength={4096}
                         onChange={(event) =>
                           setResolutionField(
                             "rejectionReason",
                             event.target.value,
                           )
                         }
+                        ref={resolutionRejectionRef}
                         rows={3}
                         value={resolutionDraft.rejectionReason}
                       />
@@ -2229,7 +2467,17 @@ function FacilitatorDecisionPanel({
       ) : null}
 
       {error === undefined ? null : (
-        <p className="form-error" role="alert">
+        <p
+          className="form-error"
+          id={
+            reviewReasonInvalid
+              ? reviewErrorId
+              : resolutionInvalidField !== undefined
+                ? resolutionErrorId
+                : undefined
+          }
+          role="alert"
+        >
           {error}
         </p>
       )}

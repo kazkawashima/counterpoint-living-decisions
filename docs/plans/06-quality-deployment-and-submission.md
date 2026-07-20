@@ -34,8 +34,8 @@ lightweight verification evidence in the meantime.
 
 ### Q2 — Accessibility and product polish
 
-- [ ] Keyboard and focus audit of all flagship controls.
-- [ ] Contrast, labels, target size, live-region, and reduced-motion audit.
+- [x] Keyboard and focus audit of all flagship controls.
+- [x] Contrast, labels, target size, live-region, and reduced-motion audit.
 - [x] Empty/loading/success/error/offline/degraded/limit states.
 - [x] Remove placeholder copy and any unsupported product claims.
 - [x] Confirm English primary UI and synthetic data consistency.

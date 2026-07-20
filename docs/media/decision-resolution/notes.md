@@ -9,8 +9,15 @@ material.
 | State | Viewport | Suggested reel use |
 |---|---|---|
 | Resolution options | Desktop, 1440×900 | Show the three facilitator-only exits from `REVIEW_REQUIRED`: commit a revised Decision, replace it, or close it without replacement. |
+| Recommit title required | Desktop, 1440×900 | Accessibility/error proof: the invalid title is visibly marked, described by the alert, and receives focus. Outcome, monitor condition, and change reason use the same tested field-level treatment. |
+| Replacement ID required | Desktop, 1440×900 | Accessibility/error proof for an empty replacement. Malformed, self-referential, missing, and inactive Decision IDs are also rejected with focus returned to this field. |
+| Supersede transport unavailable | Desktop, 1440×900 | Degraded-state proof that a network failure remains a service error and is not mislabeled as an invalid replacement ID. |
+| Decision rejection reason required | Desktop, 1440×900 | Accessibility/error proof that terminal rejection cannot proceed without a human reason. |
 | Before/after comparison | Desktop, 1440×900 | Hold on immutable revision 2 beside proposed revision 3 while title, outcome, monitor condition, and change reason remain editable. |
 | Recommit success and history | Desktop, 1440×900 | Hero frame: revision 3 becomes active, revisions 1–3 remain visible, `DecisionRevisionCommitted` joins the audit trail, and JSON export reports three revisions. |
+| Decision rejected | Desktop, 1440×900 | Show the successful human terminal path that closes the reviewed Decision without implying replacement or automatic correctness. |
+| Decision superseded | Desktop, 1440×900 | Show the successful replacement terminal UI, including the new canonical Decision reference and preserved prior history. |
+| Resolution refresh unavailable | Desktop, 1440×900 | Degraded-state proof that a durable terminal mutation remains visible when the follow-up history, audit, or export refresh fails; reload is offered without reopening the mutation form. |
 | Participant recommitted state | Desktop, 1440×900 | Prove that an assigned participant sees the new current state and originating review context without resolution controls. |
 | Participant terminal state | Mobile, 390×844, reduced motion | Responsive and accessibility proof for the same shared state without motion dependence. |
 
@@ -32,4 +39,5 @@ domain has no release/completion event for the D5 Action hold or
 reconsideration task, so D6 truthfully preserves them instead of implying they
 were automatically closed.
 
-Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: D6 Decision review resolution.
+Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice:
+D6 Decision review resolution and Q2 accessible resolution-state completion.

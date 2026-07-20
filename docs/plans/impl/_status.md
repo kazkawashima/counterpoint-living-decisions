@@ -840,6 +840,50 @@ The canonical implementation-facing artifacts are:
   browser rendering of those durable records. Hosted D1/DO migration and
   deployment proof remains the remote residual.
 
+## 2026-07-20 Decision-state accessibility closeout
+
+- Q2 keyboard/focus and accessibility audits now cover the full flagship
+  workspace at DRAFT, READY, COMMITTED, MONITORING, `AT_RISK`,
+  `REVIEW_REQUIRED`, recommitted, review-rejected, Decision-rejected, and
+  superseded states, plus participant desktop and mobile reduced-motion
+  rendering. Axe runs WCAG 2 A/AA, 2.1 AA, 2.2 AA, explicit target-size
+  execution, and accessible-name checks across every visible interactive
+  element in the workspace.
+- State transitions move focus to the next actionable boundary: the Decision
+  forge for general lifecycle changes, facilitator reason for `AT_RISK`, the
+  selected resolution radio for `REVIEW_REQUIRED`, and the exact invalid field
+  after review/resolution validation. Persisted `AT_RISK` and
+  `REVIEW_REQUIRED` entry uses the same focus contract. Sequential Tab,
+  Shift+Tab, radio-arrow, and keyboard activation proof covers the resolution
+  surface and alternate human outcomes.
+- DRAFT and READY have concise status regions. Later states announce only the
+  lifecycle label instead of the complete Decision card. Participant external
+  receipts are status regions. The required review and resolution fields carry
+  `aria-invalid`, alert association, protocol-aligned length/ID checks, and a
+  visible invalid border.
+- Commit, risk arrival, and review transitions execute while reduced motion is
+  active; computed animation/transition duration and iteration assertions also
+  cover participant mobile state. Critical export and resolution targets are
+  at least 44 px high.
+- Review and resolution mutations are separated from follow-up read-model
+  refresh. A successful human review or terminal Decision mutation is never
+  rolled back in the browser merely because history, audit, export, or shared
+  projection refresh fails. Stale history/audit/export values are cleared
+  before terminal refresh, while transport failures remain service errors
+  rather than being mislabeled as invalid replacement IDs.
+- `tests/e2e/decision-commit.spec.ts` now contains seven Decision browser
+  journeys, including provider degradation, the full recommit arc, successful
+  review rejection, successful Decision rejection, superseded UI contract,
+  review-refresh degradation, and terminal-refresh degradation. The complete
+  file passes locally; focused transport and post-mutation failure reruns pass.
+- Eight new synthetic screenshots cover review rejection, three field-level
+  validation states, Decision rejection, supersede, supersede transport loss,
+  and terminal refresh loss. They are reviewed first-party assets in
+  `docs/media/ASSET_MANIFEST.json`. The otherwise equivalent
+  review-refresh-loss screenshot remains a Q3 capture residual because the
+  final capture process was refused by the execution approval usage limit; its
+  browser behavior is automated and passing.
+
 ## Not started
 
 - Approved hosted deployment, hosted flagship smoke, and remaining submission

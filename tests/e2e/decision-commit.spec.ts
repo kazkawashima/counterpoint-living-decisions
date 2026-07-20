@@ -1,12 +1,14 @@
 import { copyFile, mkdir } from "node:fs/promises";
 
-import { expect, test, type Page } from "@playwright/test";
+import { AxeBuilder } from "@axe-core/playwright";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   createErrorEnvelope,
   CreateMeetingResponseSchema,
   DecisionAuditResponseSchema,
   DecisionJsonExportResponseSchema,
   GetRoleProjectionResponseSchema,
+  ListSharedDecisionsResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
@@ -36,12 +38,183 @@ const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
 const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
 
 async function signIn(page: Page, identity: string, password: string) {
-  await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: new RegExp(identity, "iu") }),
+  );
   await page.getByLabel("Demo password").fill(password);
-  await page.getByRole("button", { name: "Continue to meetings" }).click();
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Continue to meetings" }),
+  );
   await expect(
     page.getByRole("heading", { name: "Your assigned meetings" }),
   ).toBeVisible();
+}
+
+async function expectAccessibleDecisionState(
+  page: Page,
+  stateText: string,
+  focusTarget?: Locator,
+) {
+  const decisionForge = page.getByRole("region", {
+    name: "Turn evidence into commitment",
+  });
+  await expect(focusTarget ?? decisionForge).toBeFocused();
+  await expect(
+    decisionForge
+      .locator('[role="status"], [aria-live]')
+      .filter({ hasText: stateText })
+      .first(),
+  ).toBeVisible();
+
+  await expectAccessibleSurface(page, `Decision state: ${stateText}`);
+}
+
+async function expectAccessibleSurface(page: Page, stateLabel: string) {
+  const surface = page.locator(".workspace-shell");
+  const wcag = await new AxeBuilder({ page })
+    .include(".workspace-shell")
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(
+    wcag.violations.map(({ id, nodes }) => ({
+      id,
+      targets: nodes.map(({ target }) => target),
+    })),
+    `WCAG violations in ${stateLabel}`,
+  ).toEqual([]);
+
+  const targets = await new AxeBuilder({ page })
+    .include(".workspace-shell")
+    .withRules(["target-size"])
+    .analyze();
+  expect(
+    targets.violations.map(({ id, nodes }) => ({
+      id,
+      targets: nodes.map(({ target }) => target),
+    })),
+    `Target-size violations in ${stateLabel}`,
+  ).toEqual([]);
+  expect(
+    targets.passes.some(({ id }) => id === "target-size"),
+    `Expected target-size to run in ${stateLabel}`,
+  ).toBe(true);
+
+  const controls = surface.locator("button, a[href], input, textarea, select");
+  for (let index = 0; index < (await controls.count()); index += 1) {
+    const control = controls.nth(index);
+    if (await control.isVisible()) {
+      await expect(control).toHaveAccessibleName(/\S/u);
+    }
+  }
+}
+
+async function expectMinimumControlHeight(control: Locator) {
+  const bounds = await control.boundingBox();
+  expect(
+    bounds,
+    "Expected control to have a rendered bounding box",
+  ).not.toBeNull();
+  expect(bounds?.height).toBeGreaterThanOrEqual(44);
+}
+
+async function expectReducedMotionStyles(target: Locator) {
+  const styles = await target.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      animationDuration: Number.parseFloat(style.animationDuration),
+      animationIterationCount: style.animationIterationCount,
+      transitionDuration: Number.parseFloat(style.transitionDuration),
+    };
+  });
+  expect(styles.animationDuration).toBeLessThanOrEqual(0.000_01);
+  expect(styles.animationIterationCount).toBe("1");
+  expect(styles.transitionDuration).toBeLessThanOrEqual(0.000_01);
+}
+
+async function expectAssociatedFieldError(page: Page, field: Locator) {
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  const errorId = await field.getAttribute("aria-describedby");
+  expect(errorId).toBeTruthy();
+  await expect(page.locator(`#${errorId}`)).toHaveAttribute("role", "alert");
+}
+
+async function driveFlagshipToAtRisk(page: Page) {
+  await signIn(page, "Product", "counterpoint-product");
+  const meeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    page,
+    meeting.getByRole("button", { name: "Open workspace" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Reset staged demo" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Confirm meeting reset" }),
+  );
+  const privateWorkspace = page.locator(".private-zone");
+  await activateByKeyboard(
+    page,
+    privateWorkspace.getByRole("button", {
+      name: "Prepare grounded sharing preview",
+    }),
+  );
+  await activateByKeyboard(
+    page,
+    privateWorkspace
+      .getByRole("region", { name: "Review the exact payload" })
+      .getByRole("button", { name: "Approve exact excerpt" }),
+  );
+  const decisionForge = page.getByRole("region", {
+    name: "Turn evidence into commitment",
+  });
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", {
+      name: "Generate Decision candidate",
+    }),
+  );
+  await expect(decisionForge.getByText("AI proposed")).toBeVisible();
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Confirm edited premise" }),
+  );
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Save Decision draft" }),
+  );
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Validate and mark ready" }),
+  );
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Commit Decision" }),
+  );
+  const committedDecision = decisionForge.locator(".committed-decision");
+  await expect(committedDecision).toContainText("Revision 2 · COMMITTED");
+  await activateByKeyboard(
+    page,
+    committedDecision.getByRole("button", { name: "Start Decision monitor" }),
+  );
+  await activateByKeyboard(
+    page,
+    committedDecision.getByRole("button", {
+      name: "Inject staged regulatory event",
+    }),
+  );
+  await expect(committedDecision).toContainText("AT_RISK · AI suggestion");
+  return {
+    committedDecision,
+    decisionForge,
+    review: page.getByRole("region", { name: "Facilitator risk review" }),
+  };
 }
 
 test.beforeAll(async () => {
@@ -275,7 +448,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   baseURL,
   browser,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const facilitatorContext = await browser.newContext({
     recordVideo: {
       dir: "test-results/reel-video",
@@ -375,6 +548,10 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     facilitatorPage.getByText("Revision 1 · immutable DRAFT"),
   ).toBeVisible();
+  await expectAccessibleDecisionState(
+    facilitatorPage,
+    "Revision 1 · immutable DRAFT",
+  );
   await activateByKeyboard(
     facilitatorPage,
     decisionForge.getByRole("button", { name: "Validate and mark ready" }),
@@ -382,6 +559,9 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     facilitatorPage.locator(".commit-gate").getByText("DECISION_READY"),
   ).toBeVisible();
+  await expectAccessibleDecisionState(facilitatorPage, "DECISION_READY");
+  await facilitatorPage.emulateMedia({ reducedMotion: "reduce" });
+  await expectReducedMotionStyles(facilitatorPage.locator(".commit-lock"));
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -399,6 +579,15 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     }),
   ).toBeVisible();
   await expect(committedDecision).toContainText("Revision 2 · COMMITTED");
+  await expectAccessibleDecisionState(facilitatorPage, "Human committed");
+  await expect(committedDecision).not.toHaveAttribute("aria-live", /.+/u);
+  await expectMinimumControlHeight(
+    committedDecision.getByRole("button", {
+      name: "Prepare Decision JSON export",
+    }),
+  );
+  await expectReducedMotionStyles(committedDecision);
+  await facilitatorPage.emulateMedia({ reducedMotion: "no-preference" });
   await expect(
     facilitatorPage.locator(".audit-line").getByText("Drafted"),
   ).toBeVisible();
@@ -419,6 +608,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     committedDecision.getByRole("button", { name: "Start Decision monitor" }),
   );
   await expect(committedDecision).toContainText("Monitoring active");
+  await expectAccessibleDecisionState(facilitatorPage, "Monitoring active");
   await expect(
     facilitatorPage.locator(".audit-line").getByText("MonitoringStarted"),
   ).toBeVisible();
@@ -428,6 +618,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${screenshotDirectory}/2026-07-19-monitoring-active-desktop.png`,
   });
 
+  await facilitatorPage.emulateMedia({ reducedMotion: "reduce" });
   await activateByKeyboard(
     facilitatorPage,
     committedDecision.getByRole("button", {
@@ -457,6 +648,20 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   const facilitatorReview = facilitatorPage.getByRole("region", {
     name: "Facilitator risk review",
   });
+  const reviewReason = facilitatorReview.getByLabel(
+    "Facilitator review reason",
+  );
+  await expectAccessibleDecisionState(
+    facilitatorPage,
+    "AT_RISK · AI suggestion",
+    reviewReason,
+  );
+  await facilitatorPage.emulateMedia({ reducedMotion: "reduce" });
+  await expectReducedMotionStyles(facilitatorPage.locator(".risk-pulse-orbit"));
+  await expectReducedMotionStyles(
+    facilitatorPage.locator(".invalidation-risk-pulse"),
+  );
+  await facilitatorPage.emulateMedia({ reducedMotion: "no-preference" });
   await expect(facilitatorReview).toContainText("External event");
   await expect(
     facilitatorReview.getByTestId("review-affected-premise"),
@@ -479,20 +684,42 @@ test("facilitator commits a grounded Decision that participants can revisit", as
       "Enter a facilitator review reason before choosing an outcome.",
     ),
   ).toBeVisible();
+  await expectAssociatedFieldError(facilitatorPage, reviewReason);
+  await expect(reviewReason).toHaveAttribute("maxlength", "4096");
+  await activateByKeyboard(
+    facilitatorPage,
+    facilitatorReview.getByRole("button", {
+      name: "Reject AI suggestion",
+    }),
+  );
+  await expectAssociatedFieldError(facilitatorPage, reviewReason);
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
     path: `${reviewScreenshotDirectory}/2026-07-19-reason-required-desktop.png`,
   });
-  await facilitatorReview
-    .getByLabel("Facilitator review reason")
-    .fill(
-      "The staged regulatory evidence materially affects the launch premise.",
-    );
+  await reviewReason.fill(
+    "The staged regulatory evidence materially affects the launch premise.",
+  );
+  await facilitatorPage.emulateMedia({ reducedMotion: "reduce" });
   await activateByKeyboard(facilitatorPage, confirmImpact);
   await expect(committedDecision).toContainText(
     "REVIEW_REQUIRED · Human confirmed",
   );
+  const resolutionWorkbench = facilitatorPage.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  const recommitChoice = resolutionWorkbench.getByRole("radio", {
+    name: /Commit revised Decision/u,
+  });
+  await expectAccessibleDecisionState(
+    facilitatorPage,
+    "REVIEW_REQUIRED · Human confirmed",
+    recommitChoice,
+  );
+  await expectReducedMotionStyles(facilitatorPage.locator(".review-workbench"));
+  await expectReducedMotionStyles(resolutionWorkbench);
+  await facilitatorPage.emulateMedia({ reducedMotion: "no-preference" });
   await expect(
     committedDecision
       .getByRole("status")
@@ -521,27 +748,144 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     path: `${reviewScreenshotDirectory}/2026-07-19-review-required-desktop.png`,
   });
 
-  const resolutionWorkbench = facilitatorPage.getByRole("region", {
-    name: "Resolve Decision review",
-  });
+  await facilitatorPage.reload();
+  const persistedReviewMeeting = facilitatorPage
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    facilitatorPage,
+    persistedReviewMeeting.getByRole("button", { name: "Open workspace" }),
+  );
+  await expect(recommitChoice).toBeFocused();
   await expect(resolutionWorkbench).toContainText("Commit revised Decision");
   await expect(resolutionWorkbench).toContainText("Close without replacement");
+  const revisedTitle = resolutionWorkbench.getByLabel("Revised Decision title");
+  const revisedOutcome = resolutionWorkbench.getByLabel("Revised outcome");
+  const revisedMonitor = resolutionWorkbench.getByLabel(
+    "Revised monitor condition",
+  );
+  const changeReason = resolutionWorkbench.getByLabel("Revision change reason");
+  const resolutionSubmit = resolutionWorkbench.getByRole("button", {
+    name: "Commit revision 3",
+  });
+  await facilitatorPage.keyboard.press("Tab");
+  await expect(revisedTitle).toBeFocused();
+  await facilitatorPage.keyboard.press("Tab");
+  await expect(revisedOutcome).toBeFocused();
+  await facilitatorPage.keyboard.press("Tab");
+  await expect(revisedMonitor).toBeFocused();
+  await facilitatorPage.keyboard.press("Tab");
+  await expect(changeReason).toBeFocused();
+  await facilitatorPage.keyboard.press("Tab");
+  await expect(resolutionSubmit).toBeFocused();
+  await facilitatorPage.keyboard.press("Shift+Tab");
+  await expect(changeReason).toBeFocused();
+  await recommitChoice.focus();
+  await recommitChoice.press("ArrowRight");
+  const replaceChoice = resolutionWorkbench.getByRole("radio", {
+    name: /Replace this Decision/u,
+  });
+  await expect(replaceChoice).toBeChecked();
+  await activateByKeyboard(
+    facilitatorPage,
+    resolutionWorkbench.getByRole("button", {
+      name: "Replace this Decision",
+    }),
+  );
+  const replacementDecisionId = resolutionWorkbench.getByLabel(
+    "Replacement Decision ID",
+  );
+  await expectAssociatedFieldError(facilitatorPage, replacementDecisionId);
+  await expect(replacementDecisionId).toHaveAttribute("maxlength", "256");
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-replacement-id-required-desktop.png`,
+  });
+  await replacementDecisionId.fill("not a valid opaque id");
+  await activateByKeyboard(
+    facilitatorPage,
+    resolutionWorkbench.getByRole("button", {
+      name: "Replace this Decision",
+    }),
+  );
+  await expectAssociatedFieldError(facilitatorPage, replacementDecisionId);
+  await expect(facilitatorPage.getByRole("alert")).toContainText(
+    "Enter a different valid Decision ID without spaces.",
+  );
+  await replacementDecisionId.fill("decision-does-not-exist");
+  await activateByKeyboard(
+    facilitatorPage,
+    resolutionWorkbench.getByRole("button", {
+      name: "Replace this Decision",
+    }),
+  );
+  await expectAssociatedFieldError(facilitatorPage, replacementDecisionId);
+  await expect(facilitatorPage.getByRole("alert")).toContainText(
+    "Choose an existing active replacement Decision in this meeting.",
+  );
+  await replaceChoice.press("ArrowRight");
+  const rejectChoice = resolutionWorkbench.getByRole("radio", {
+    name: /Close without replacement/u,
+  });
+  await expect(rejectChoice).toBeChecked();
+  const rejectionReason = resolutionWorkbench.getByLabel(
+    "Decision rejection reason",
+  );
+  await rejectionReason.fill("");
+  await activateByKeyboard(
+    facilitatorPage,
+    resolutionWorkbench.getByRole("button", {
+      name: "Close Decision as rejected",
+    }),
+  );
+  await expectAssociatedFieldError(facilitatorPage, rejectionReason);
+  await expect(rejectionReason).toHaveAttribute("maxlength", "4096");
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-rejection-reason-required-desktop.png`,
+  });
+  await rejectChoice.press("ArrowRight");
+  await expect(recommitChoice).toBeChecked();
+  await expectMinimumControlHeight(
+    resolutionWorkbench.locator(".resolution-option").first(),
+  );
+  await expectMinimumControlHeight(resolutionSubmit);
   await facilitatorPage.screenshot({
     animations: "disabled",
     fullPage: true,
     path: `${resolutionScreenshotDirectory}/2026-07-19-resolution-options-desktop.png`,
   });
-  await resolutionWorkbench
-    .getByLabel("Revised Decision title")
-    .fill("Regulation-aware regional launch");
-  await resolutionWorkbench
-    .getByLabel("Revised outcome")
-    .fill(
-      "Pause regional launch until the revised regulatory approval gate is satisfied.",
-    );
-  await resolutionWorkbench
-    .getByLabel("Revised monitor condition")
-    .fill("Monitor the revised approval gate before resuming regional launch.");
+  await revisedTitle.fill("");
+  await activateByKeyboard(facilitatorPage, resolutionSubmit);
+  await expectAssociatedFieldError(facilitatorPage, revisedTitle);
+  await expect(revisedTitle).toHaveAttribute("maxlength", "256");
+  await facilitatorPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-recommit-title-required-desktop.png`,
+  });
+  await revisedTitle.fill("Regulation-aware regional launch");
+  await revisedOutcome.fill("");
+  await activateByKeyboard(facilitatorPage, resolutionSubmit);
+  await expectAssociatedFieldError(facilitatorPage, revisedOutcome);
+  await revisedOutcome.fill(
+    "Pause regional launch until the revised regulatory approval gate is satisfied.",
+  );
+  await revisedMonitor.fill("");
+  await activateByKeyboard(facilitatorPage, resolutionSubmit);
+  await expectAssociatedFieldError(facilitatorPage, revisedMonitor);
+  await revisedMonitor.fill(
+    "Monitor the revised approval gate before resuming regional launch.",
+  );
+  await changeReason.fill("");
+  await activateByKeyboard(facilitatorPage, resolutionSubmit);
+  await expectAssociatedFieldError(facilitatorPage, changeReason);
+  await expect(changeReason).toHaveAttribute("maxlength", "4096");
+  await changeReason.fill(
+    "The staged regulation requires a documented revised approval gate.",
+  );
   await expect(
     resolutionWorkbench.locator(".revision-comparison"),
   ).toContainText("Proposed revision 3");
@@ -550,10 +894,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     fullPage: true,
     path: `${resolutionScreenshotDirectory}/2026-07-19-recommit-comparison-desktop.png`,
   });
-  await activateByKeyboard(
-    facilitatorPage,
-    resolutionWorkbench.getByRole("button", { name: "Commit revision 3" }),
-  );
+  await activateByKeyboard(facilitatorPage, resolutionSubmit);
   const resolutionStatus = resolutionWorkbench.getByRole("status");
   await expect(resolutionStatus).toContainText("Revision 3 is now active");
   await expect(
@@ -608,9 +949,10 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   const participantMeeting = participantPage
     .getByRole("article")
     .filter({ hasText: FLAGSHIP_PURPOSE });
-  await participantMeeting
-    .getByRole("button", { name: "Open workspace" })
-    .click();
+  await activateByKeyboard(
+    participantPage,
+    participantMeeting.getByRole("button", { name: "Open workspace" }),
+  );
   await expect(
     participantPage.getByRole("heading", {
       name: "Regulation-aware regional launch",
@@ -634,6 +976,9 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(
     participantPage.locator(".shared-regulatory-event"),
   ).toContainText("External event received");
+  await expect(
+    participantPage.locator(".shared-regulatory-event"),
+  ).toHaveAttribute("role", "status");
   await expect(
     participantPage.locator(".shared-risk-suggestion"),
   ).toContainText("Facilitator reason");
@@ -663,6 +1008,10 @@ test("facilitator commits a grounded Decision that participants can revisit", as
       name: "Inject staged regulatory event",
     }),
   ).not.toBeVisible();
+  await expectAccessibleSurface(
+    participantPage,
+    "participant recommitted desktop",
+  );
   await participantPage.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -681,6 +1030,16 @@ test("facilitator commits a grounded Decision that participants can revisit", as
 
   await participantPage.setViewportSize({ height: 844, width: 390 });
   await participantPage.emulateMedia({ reducedMotion: "reduce" });
+  await expectReducedMotionStyles(
+    participantPage.locator(".shared-decision-card"),
+  );
+  await expectReducedMotionStyles(
+    participantPage.locator(".shared-risk-suggestion"),
+  );
+  await expectAccessibleSurface(
+    participantPage,
+    "participant recommitted mobile reduced motion",
+  );
   await participantPage.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -706,4 +1065,329 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     clipPath,
     `${resolutionClipDirectory}/2026-07-19-review-required-to-recommit.webm`,
   );
+});
+
+test("facilitator can reject an AI invalidation and resume monitoring", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  const { committedDecision, decisionForge, review } =
+    await driveFlagshipToAtRisk(page);
+  await review
+    .getByLabel("Facilitator review reason")
+    .fill("The staged evidence does not change the bounded launch Decision.");
+  await activateByKeyboard(
+    page,
+    review.getByRole("button", { name: "Reject AI suggestion" }),
+  );
+  await expect(committedDecision).toContainText(
+    "Monitoring · AI suggestion rejected",
+  );
+  await expectAccessibleDecisionState(
+    page,
+    "Monitoring · AI suggestion rejected",
+    decisionForge,
+  );
+  await expect(review).toContainText("No Action held");
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${reviewScreenshotDirectory}/2026-07-20-review-rejected-desktop.png`,
+  });
+});
+
+test("human review remains recorded when shared refresh fails", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  const { committedDecision, review } = await driveFlagshipToAtRisk(page);
+  await page.route(
+    "**/api/v1/meetings/meeting-global-ai-rollout/invalidation-evaluations",
+    async (route) => {
+      await route.fulfill({
+        body: JSON.stringify(
+          createErrorEnvelope({
+            code: "REALTIME_UNAVAILABLE",
+            correlationId: "correlation-e2e-review-refresh",
+          }),
+        ),
+        contentType: "application/json",
+        status: 503,
+      });
+    },
+  );
+  const reviewReason = "The staged evidence requires a human Decision review.";
+  await review.getByLabel("Facilitator review reason").fill(reviewReason);
+  await activateByKeyboard(
+    page,
+    review.getByRole("button", { name: "Confirm impact and open review" }),
+  );
+  const resolution = page.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  const recommit = resolution.getByRole("radio", {
+    name: /Commit revised Decision/u,
+  });
+  await expect(committedDecision).toContainText(
+    "REVIEW_REQUIRED · Human confirmed",
+  );
+  await expect(review).toContainText(reviewReason);
+  await expect(review).toContainText("Reconsideration task");
+  await expect(page.getByRole("alert")).toContainText(
+    "Review recorded, but shared state and audit refresh are temporarily unavailable.",
+  );
+  await expectAccessibleDecisionState(
+    page,
+    "REVIEW_REQUIRED · Human confirmed",
+    recommit,
+  );
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${reviewScreenshotDirectory}/2026-07-20-review-refresh-unavailable-desktop.png`,
+  });
+});
+
+test("facilitator can close a reviewed Decision without replacement", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  const { committedDecision, decisionForge, review } =
+    await driveFlagshipToAtRisk(page);
+  await review
+    .getByLabel("Facilitator review reason")
+    .fill("The staged evidence requires a human Decision review.");
+  await activateByKeyboard(
+    page,
+    review.getByRole("button", { name: "Confirm impact and open review" }),
+  );
+  const resolution = page.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  const recommit = resolution.getByRole("radio", {
+    name: /Commit revised Decision/u,
+  });
+  await expect(recommit).toBeFocused();
+  await recommit.press("ArrowLeft");
+  await expect(
+    resolution.getByRole("radio", {
+      name: /Close without replacement/u,
+    }),
+  ).toBeChecked();
+  await activateByKeyboard(
+    page,
+    resolution.getByRole("button", {
+      name: "Close Decision as rejected",
+    }),
+  );
+  await expect(committedDecision).toContainText("REJECTED · Human resolved");
+  await expectAccessibleDecisionState(
+    page,
+    "REJECTED · Human resolved",
+    decisionForge,
+  );
+  await expect(resolution.getByRole("status")).toContainText(
+    "Decision closed without replacement",
+  );
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-decision-rejected-desktop.png`,
+  });
+});
+
+test("superseded Decision response renders the terminal accessible state", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  const { committedDecision, decisionForge, review } =
+    await driveFlagshipToAtRisk(page);
+  await review
+    .getByLabel("Facilitator review reason")
+    .fill("The staged evidence requires a human Decision review.");
+  await activateByKeyboard(
+    page,
+    review.getByRole("button", { name: "Confirm impact and open review" }),
+  );
+
+  const storedSession = await page.evaluate(() =>
+    window.sessionStorage.getItem("counterpoint.session"),
+  );
+  expect(storedSession).toBeTruthy();
+  const bearerToken = (
+    JSON.parse(storedSession ?? "{}") as { bearerToken?: string }
+  ).bearerToken;
+  expect(bearerToken).toBeTruthy();
+  const decisionResponse = await page.request.get(
+    "/api/v1/meetings/meeting-global-ai-rollout/decisions",
+    {
+      headers: { authorization: `Bearer ${bearerToken}` },
+    },
+  );
+  const listed = ListSharedDecisionsResponseSchema.parse(
+    await decisionResponse.json(),
+  );
+  const reviewedDecision = listed.decisions.at(-1);
+  if (reviewedDecision === undefined) {
+    throw new Error("Expected the reviewed flagship Decision.");
+  }
+  const replacementDecisionId = "decision-replacement-e2e";
+  let transportUnavailable = true;
+
+  await page.route("**/api/v1/decisions/review-resolution", async (route) => {
+    if (transportUnavailable) {
+      await route.abort("connectionfailed");
+      return;
+    }
+    const request = route.request().postDataJSON() as {
+      replacementDecisionId?: string;
+      resolution?: string;
+    };
+    expect(request).toMatchObject({
+      replacementDecisionId,
+      resolution: "supersede_decision",
+    });
+    await route.fulfill({
+      body: JSON.stringify({
+        correlationId: "correlation-e2e-supersede-ui",
+        decision: {
+          ...reviewedDecision,
+          snapshot: {
+            ...reviewedDecision.snapshot,
+            status: "SUPERSEDED",
+          },
+          status: "SUPERSEDED",
+          supersededByDecisionId: replacementDecisionId,
+        },
+        meetingId: "meeting-global-ai-rollout",
+        position: listed.position + 1,
+        replacementDecisionId,
+        resolution: "supersede_decision",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+
+  const resolution = page.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  const replaceChoice = resolution.getByRole("radio", {
+    name: /Replace this Decision/u,
+  });
+  await replaceChoice.focus();
+  await replaceChoice.press("Space");
+  await expect(replaceChoice).toBeChecked();
+  const replacementField = resolution.getByLabel("Replacement Decision ID");
+  await replacementField.fill(replacementDecisionId);
+  await activateByKeyboard(
+    page,
+    resolution.getByRole("button", { name: "Replace this Decision" }),
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Counterpoint could not reach the local decision service.",
+  );
+  await expect(replacementField).not.toHaveAttribute("aria-invalid", "true");
+  await expect(replaceChoice).toBeFocused();
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-supersede-transport-unavailable-desktop.png`,
+  });
+  transportUnavailable = false;
+  await activateByKeyboard(
+    page,
+    resolution.getByRole("button", { name: "Replace this Decision" }),
+  );
+  await expect(committedDecision).toContainText("SUPERSEDED · Human resolved");
+  await expectAccessibleDecisionState(
+    page,
+    "SUPERSEDED · Human resolved",
+    decisionForge,
+  );
+  await expect(resolution.getByRole("status")).toContainText(
+    `Replaced by ${replacementDecisionId}`,
+  );
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-decision-superseded-desktop.png`,
+  });
+});
+
+test("terminal resolution survives history and export refresh failure", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  const { committedDecision, decisionForge, review } =
+    await driveFlagshipToAtRisk(page);
+  await review
+    .getByLabel("Facilitator review reason")
+    .fill("The staged evidence requires a human Decision review.");
+  await activateByKeyboard(
+    page,
+    review.getByRole("button", { name: "Confirm impact and open review" }),
+  );
+  const resolution = page.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  const recommit = resolution.getByRole("radio", {
+    name: /Commit revised Decision/u,
+  });
+  await recommit.press("ArrowLeft");
+  await activateByKeyboard(
+    page,
+    committedDecision.getByRole("button", {
+      name: "Prepare Decision JSON export",
+    }),
+  );
+  await expect(
+    committedDecision.getByRole("link", { name: /Download JSON/u }),
+  ).toBeVisible();
+  await page.route(
+    "**/api/v1/meetings/meeting-global-ai-rollout/decisions/*/history",
+    async (route) => {
+      await route.fulfill({
+        body: JSON.stringify(
+          createErrorEnvelope({
+            code: "REALTIME_UNAVAILABLE",
+            correlationId: "correlation-e2e-resolution-refresh",
+          }),
+        ),
+        contentType: "application/json",
+        status: 503,
+      });
+    },
+  );
+  await activateByKeyboard(
+    page,
+    resolution.getByRole("button", {
+      name: "Close Decision as rejected",
+    }),
+  );
+  await expect(committedDecision).toContainText("REJECTED · Human resolved");
+  await expect(page.getByRole("alert")).toContainText(
+    "Resolution recorded, but history, audit, and export refresh are temporarily unavailable.",
+  );
+  await expect(
+    committedDecision.getByRole("link", { name: /Download JSON/u }),
+  ).toHaveCount(0);
+  await expectAccessibleDecisionState(
+    page,
+    "REJECTED · Human resolved",
+    decisionForge,
+  );
+  await expect(resolution.getByRole("status")).toContainText(
+    "Decision closed without replacement",
+  );
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${resolutionScreenshotDirectory}/2026-07-20-resolution-refresh-unavailable-desktop.png`,
+  });
 });

@@ -23,7 +23,7 @@
       "sha256": "7f6de9c47c8c5ada11133c30c76368a58894342e15fe85d97146ff1c62dea214"
     },
     {
-      "bytes": 3231658,
+      "bytes": 9737155,
       "mediaType": "video/webm",
       "path": "docs/media/clips/decision-commit/2026-07-19-candidate-to-commit.webm",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -31,10 +31,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "83a3447e8cbda358be75c4f9b0738e4e4eb69caa33d49f0e846ec9b501e740b9"
+      "sha256": "83bbaa51eede96155836e6c9c251fb7af6e187a3674e9f220773212383123aa2"
     },
     {
-      "bytes": 3231658,
+      "bytes": 9737155,
       "mediaType": "video/webm",
       "path": "docs/media/clips/decision-resolution/2026-07-19-review-required-to-recommit.webm",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -42,7 +42,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "83a3447e8cbda358be75c4f9b0738e4e4eb69caa33d49f0e846ec9b501e740b9"
+      "sha256": "83bbaa51eede96155836e6c9c251fb7af6e187a3674e9f220773212383123aa2"
     },
     {
       "bytes": 3172207,
@@ -56,7 +56,7 @@
       "sha256": "c5933e028d2bcb6ecf581ffa3ac41e6a83bbc687abd779d1940a30eaff2abf98"
     },
     {
-      "bytes": 2077457,
+      "bytes": 1615269,
       "mediaType": "video/webm",
       "path": "docs/media/clips/degraded-mode/2026-07-19-openai-failure-to-manual-decision.webm",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -64,7 +64,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "ec3855c8f69519cbc70664373107286d0f56ea6064857f1015e599cf64a54259"
+      "sha256": "b0ffff425a93faf83d03c764e5df0f3c0092861f549eec0fbd4699e2b8a3bf9c"
     },
     {
       "bytes": 1361622,
@@ -199,7 +199,7 @@
       "sha256": "04719081523d6641204fdac33fbd3704bcbe904a31f27fc3b3adb3d87ba00333"
     },
     {
-      "bytes": 1442917,
+      "bytes": 1434642,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/assumption-invalidation/2026-07-19-at-risk-facilitator-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -207,7 +207,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "0395a985f5165307f1f162cc58ad6fb2e073fbfd00528085eb000455d691ab4c"
+      "sha256": "37fe2e9ab2a2430af3f6e296282ee82c3068e60cba5646db95f3f932bb9ba87c"
     },
     {
       "bytes": 446836,
@@ -232,7 +232,7 @@
       "sha256": "f8efbef6fd2053871974115c388baa31e63b194a818e50cf7a75b5c6ba6db0dd"
     },
     {
-      "bytes": 1025574,
+      "bytes": 1025874,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-ai-candidate-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -240,10 +240,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "ea7586c2076647553f3510d9b5d96e2ab8906ed6849768940b312fa2d043153f"
+      "sha256": "c4dafaab5e8ae39264711186dfc9bca01cef87d235a1b14378779f9d973a107b"
     },
     {
-      "bytes": 1106467,
+      "bytes": 1118154,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-committed-decision-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -251,10 +251,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "645fbf99091108f5c7c43a0ba5bfec9f7d76f732c0a346cea2993a2be88aefda"
+      "sha256": "d81b0e94f1ebdedbaecf010b4d967b4ae791f25307250433ef062b2b97f28c70"
     },
     {
-      "bytes": 746485,
+      "bytes": 746383,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-committed-mobile-reduced-motion.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -262,10 +262,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "72367459e9bc3e46b5e1cd99ed93ccec3a6d5a3f413ba0010b9dbb3201ec6fc1"
+      "sha256": "43adc7d4df4a92344389381c41dc5397210d8f0bf318986957f09bef2b4be013"
     },
     {
-      "bytes": 1058891,
+      "bytes": 1059169,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-human-ready-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -273,10 +273,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "df0c34cd1e0d91c0ee785bcd276df09a27dd5bc79ab8de8f26ef28efc3ac74e2"
+      "sha256": "b821e24ac8741049860e3b374193ea4c2af71acea0bfcc0c38cb9c3ed6d00796"
     },
     {
-      "bytes": 1139331,
+      "bytes": 1130436,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-monitoring-active-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -284,10 +284,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "b6538bc28b37f602d793d5139600b970712de962a0f90b9fbc1e96d87aa783b5"
+      "sha256": "0704a551d018b792ae85023148129f35b92f7ff5d57e5ab5c5b32dd570410c49"
     },
     {
-      "bytes": 970876,
+      "bytes": 970972,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-participant-committed-shared.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -295,10 +295,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "f06a93b64b1b49b3bcc38eb3d98e6922e81c13fa950b78b76d60b825138fd15c"
+      "sha256": "60ab64ecab5c3406d0db74760aaa9f2ee37af6bda70e7ce45531d09293c10a39"
     },
     {
-      "bytes": 970707,
+      "bytes": 970801,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-participant-recommitted-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -306,10 +306,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "46571422b885fc5024d2873a27cf422e46ca1048fe2d2fdea7f856358742f9a1"
+      "sha256": "6e32c1e3a2dd3cc39211ccf98ec1ad175b15d67ae470658621d00eb7a788ad4c"
     },
     {
-      "bytes": 746485,
+      "bytes": 746383,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-participant-terminal-mobile-reduced-motion.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -317,10 +317,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "72367459e9bc3e46b5e1cd99ed93ccec3a6d5a3f413ba0010b9dbb3201ec6fc1"
+      "sha256": "43adc7d4df4a92344389381c41dc5397210d8f0bf318986957f09bef2b4be013"
     },
     {
-      "bytes": 1357141,
+      "bytes": 1216027,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-recommit-comparison-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -328,10 +328,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "1682251400259200342982ee2284b07e2222eda43c536429a4d9a1cd19e4ec9b"
+      "sha256": "193f9fbcdd24eb0c22d6ba6dec7684a061dd39d15717c4a60f96ecabe4c7beaf"
     },
     {
-      "bytes": 1327221,
+      "bytes": 1182430,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-recommit-success-history-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -339,10 +339,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "5722773ab44d0b35ec4dc279a3ac56705d37234372b182934b811341092344f8"
+      "sha256": "2ec6b469b35767450509599bd117e45fc071d4f07d4ab4f67fb454edd8de0af2"
     },
     {
-      "bytes": 1358140,
+      "bytes": 1216655,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-resolution-options-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -350,10 +350,87 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "669f58a676d8cfdc96ddb5e5343362d6146e7f11464e5a9b5f9f7134f5130082"
+      "sha256": "4b45cb5d397aca622e7946450df7ad98e469cff93caff93ba1c735d9336ed93a"
     },
     {
-      "bytes": 1442917,
+      "bytes": 1247635,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-decision-rejected-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "f1102bed712259994f5552822674d65b21396f17f222f7b4912885e5f1635bd0"
+    },
+    {
+      "bytes": 1248036,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-decision-superseded-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "8cd6a746ef0e9859e59e34b457231ffd8b62e04bbe95612867cbe314220afa8a"
+    },
+    {
+      "bytes": 1210577,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-recommit-title-required-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "62d056cd34bf65b8c31b33fbc57585764a71d8e6cdb0c07a378cb668419fe688"
+    },
+    {
+      "bytes": 1178451,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-rejection-reason-required-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "3b0ec9e68eaa1ab3af91081a59a94353cb5ffcd2ad27760687bdab8cb5b1246d"
+    },
+    {
+      "bytes": 1193179,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-replacement-id-required-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "2040d64a11b5615c7c2d6a29fab7a238966de96b8847cb7a3ddd9a8fe616319b"
+    },
+    {
+      "bytes": 1238455,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-resolution-refresh-unavailable-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "b8b78e95a028f38ee696313b517881bd715b3b017d394d99b69b36ce43b2d9e1"
+    },
+    {
+      "bytes": 1246911,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-resolution/2026-07-20-supersede-transport-unavailable-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "2275443be585ed6d75d946fcfda05490296d8f3e995728fecd73edc4d7381f65"
+    },
+    {
+      "bytes": 1434642,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-review/2026-07-19-facilitator-review-workbench-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -361,7 +438,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "0395a985f5165307f1f162cc58ad6fb2e073fbfd00528085eb000455d691ab4c"
+      "sha256": "37fe2e9ab2a2430af3f6e296282ee82c3068e60cba5646db95f3f932bb9ba87c"
     },
     {
       "bytes": 529650,
@@ -375,7 +452,7 @@
       "sha256": "1b187ca5f275906934f28885dd92b02c18d2d8cef212632d3c6f72445b2fab2c"
     },
     {
-      "bytes": 1441293,
+      "bytes": 1436081,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-review/2026-07-19-reason-required-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -383,10 +460,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "597b1082d0f69280c023a4a02769eb1e5c8789d6875d9596662fa07b03e1630a"
+      "sha256": "6ee8d5c8774ec64c7eaa38e079ba8271a91cb4062c83e762c525bb0e9c70500c"
     },
     {
-      "bytes": 1358140,
+      "bytes": 1349874,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-review/2026-07-19-review-required-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -394,7 +471,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "669f58a676d8cfdc96ddb5e5343362d6146e7f11464e5a9b5f9f7134f5130082"
+      "sha256": "f79bd1506b7321a337305863e988b2bb6df5af9757d4b0754f038e7b3962f293"
     },
     {
       "bytes": 403438,
@@ -408,6 +485,17 @@
       "sha256": "38d7d3f5257178392f3d094085427cd16e61fafd59fffb8cf020044894c5e3c1"
     },
     {
+      "bytes": 1154275,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/decision-review/2026-07-20-review-rejected-desktop.png",
+      "creator": "Counterpoint project via committed Playwright browser scenario",
+      "license": "LicenseRef-Counterpoint-Pending",
+      "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "f7544282eac1d1bcdba00e267719566209f893b5afae0f8765fbe24b182ded02"
+    },
+    {
       "bytes": 348497,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/degraded-mode/2026-07-19-api-key-loss-state-preserved-desktop.png",
@@ -419,7 +507,7 @@
       "sha256": "c571dcdad1b20d3f0e3dd0a1514fd017e497625f7a64b923da02b00d8fc04814"
     },
     {
-      "bytes": 1037098,
+      "bytes": 1037475,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/degraded-mode/2026-07-19-manual-decision-audit-export-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -427,10 +515,10 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "b749ef799d594004d88076d858eca9c5f1a8b3aacf7c7d6ac1d885ceae395a1b"
+      "sha256": "ca3858b17b8292a83535d1e364c72121acf698127524227d88b1347b3d1ecb1d"
     },
     {
-      "bytes": 926057,
+      "bytes": 926177,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/degraded-mode/2026-07-19-openai-unavailable-manual-decision-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -438,7 +526,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "25918342c71d1e5458dcacd70acd4fbcdf70244b1b45cf8e3529b95cc4992667"
+      "sha256": "2fe7f9a331e46acab01ebb2fce7a1fb86f48c6ebb0fa3531674b6aa625267147"
     },
     {
       "bytes": 32462,
@@ -738,7 +826,7 @@
       "sha256": "c6c07e74924fff08bf56c23c773724271da1a05ecaca85f75a3a908f987f7887"
     },
     {
-      "bytes": 970707,
+      "bytes": 970801,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/regulatory-event/2026-07-19-participant-event-received-desktop.png",
       "creator": "Counterpoint project via committed Playwright browser scenario",
@@ -746,7 +834,7 @@
       "origin": "First-party Counterpoint UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "46571422b885fc5024d2873a27cf422e46ca1048fe2d2fdea7f856358742f9a1"
+      "sha256": "6e32c1e3a2dd3cc39211ccf98ec1ad175b15d67ae470658621d00eb7a788ad4c"
     },
     {
       "bytes": 268008,

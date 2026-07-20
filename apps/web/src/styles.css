@@ -3306,7 +3306,7 @@ button:disabled {
 
 .committed-export button,
 .committed-export a {
-  min-height: 2.35rem;
+  min-height: 2.75rem;
   padding: 0.52rem 0.7rem;
   font-size: 0.56rem;
 }
@@ -3678,6 +3678,10 @@ button:disabled {
   outline-offset: 2px;
 }
 
+.review-reason-field textarea[aria-invalid="true"] {
+  border-color: #ff7368;
+}
+
 .review-actions {
   flex-wrap: wrap;
 }
@@ -3804,6 +3808,7 @@ button:disabled {
 
 .resolution-option {
   display: flex;
+  min-height: 2.75rem;
   min-width: 0;
   padding: 0.7rem;
   align-items: flex-start;
@@ -3868,6 +3873,11 @@ button:disabled {
   background: #0c100d;
   font: inherit;
   line-height: 1.45;
+}
+
+.resolution-recommit-form [aria-invalid="true"],
+.resolution-single-field [aria-invalid="true"] {
+  border-color: #ff7368;
 }
 
 .resolution-single-field small {
@@ -3952,6 +3962,12 @@ button:disabled {
   border-color: rgba(196, 255, 93, 0.42);
   color: #d5ff8d;
   background: transparent;
+}
+
+.resolution-submit,
+.resolution-export button,
+.resolution-export a {
+  min-height: 2.75rem;
 }
 
 @keyframes risk-arrival {
