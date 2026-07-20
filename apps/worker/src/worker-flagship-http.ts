@@ -1236,7 +1236,9 @@ export async function handleWorkerFlagshipHttp(input: {
                 },
               ),
             ipAddress: managed.ipAddress,
+            nextReservationId: managed.nextReservationId,
             proposer: managed.proposer,
+            reconcile: managed.reconcile,
             request: aiRequest,
             usage: managed.usage,
           });

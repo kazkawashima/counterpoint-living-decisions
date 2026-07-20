@@ -175,9 +175,7 @@ function meteredProposal(
     },
     billing: {
       attemptCount: 1,
-      attempts: [
-        { inputTokens: 120, model: "gpt-5.6", outputTokens: 20 },
-      ],
+      attempts: [{ inputTokens: 120, model: "gpt-5.6", outputTokens: 20 }],
       inputTokens: 120,
       outputTokens: 20,
     },
@@ -1346,6 +1344,20 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       status: "finalized",
     });
     expect(reservation?.ip_hash).toMatch(/^hmac-sha256:[a-f0-9]{64}$/u);
+    const lifecycle = await env.DB.prepare(
+      `
+        SELECT
+          provider_started_at_epoch,
+          settled_at_epoch,
+          status
+        FROM judge_managed_ai_operation_lifecycle
+      `,
+    ).first<Record<string, unknown>>();
+    expect(lifecycle).toMatchObject({
+      status: "settled",
+    });
+    expect(lifecycle?.provider_started_at_epoch).toEqual(expect.any(Number));
+    expect(lifecycle?.settled_at_epoch).toEqual(expect.any(Number));
 
     const claims = await env.DB.prepare(
       "SELECT * FROM judge_managed_ai_operation_claims",
@@ -1424,7 +1436,9 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
     } finally {
       releaseProvider();
     }
-    expect((await first).status).toBe(201);
+    const firstResponse = await first;
+    expect(firstResponse.status).toBe(201);
+    const firstBody = await json(firstResponse);
     expect(proposer.propose).toHaveBeenCalledTimes(1);
 
     await environment.ARTIFACTS.put(
@@ -1436,9 +1450,9 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       environment,
       {} as ExecutionContext,
     );
-    expect(changedContent.status).toBe(409);
+    expect(changedContent.status).toBe(201);
     await expect(json(changedContent)).resolves.toMatchObject({
-      code: "IDEMPOTENCY_CONFLICT",
+      candidate: firstBody.candidate,
     });
     expect(proposer.propose).toHaveBeenCalledTimes(1);
 

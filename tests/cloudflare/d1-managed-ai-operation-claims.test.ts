@@ -525,6 +525,71 @@ describe("D1 managed-AI operation claims", () => {
     });
   });
 
+  it("settles an exact reserved generation directly", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const input = lifecycleClaim("u");
+    await repository.reserveClaim(input);
+    const settledAtEpoch = input.createdAtEpoch + 2;
+
+    await expect(
+      repository.markSettled({
+        claimKeyHash: input.claimKeyHash,
+        createdAtEpoch: input.createdAtEpoch,
+        expectedStatus: "reserved",
+        requestFingerprint: input.requestFingerprint,
+        reservationId: input.reservationId,
+        reuseAfterEpoch: settledAtEpoch + 25 * 60 * 60,
+        settledAtEpoch,
+      }),
+    ).resolves.toBe("settled");
+    await expect(lifecycleRow(input.claimKeyHash)).resolves.toMatchObject({
+      provider_started_at_epoch: null,
+      reuse_after_epoch: settledAtEpoch + 25 * 60 * 60,
+      settled_at_epoch: settledAtEpoch,
+      status: "settled",
+    });
+  });
+
+  it("refuses reserved settlement for the wrong generation or lifecycle status", async () => {
+    const repository = new D1ManagedAiOperationClaimRepository(env.DB);
+    const input = lifecycleClaim("v");
+    await repository.reserveClaim(input);
+    const settledAtEpoch = input.createdAtEpoch + 2;
+    const settlement = {
+      claimKeyHash: input.claimKeyHash,
+      expectedStatus: "reserved" as const,
+      requestFingerprint: input.requestFingerprint,
+      reservationId: input.reservationId,
+      reuseAfterEpoch: settledAtEpoch + 25 * 60 * 60,
+      settledAtEpoch,
+    };
+
+    await expect(
+      repository.markSettled({
+        ...settlement,
+        createdAtEpoch: input.createdAtEpoch + 1,
+      }),
+    ).resolves.toBe("unavailable");
+    await repository.markProviderStarted({
+      claimKeyHash: input.claimKeyHash,
+      createdAtEpoch: input.createdAtEpoch,
+      expectedStatus: "reserved",
+      providerStartedAtEpoch: input.createdAtEpoch + 1,
+      requestFingerprint: input.requestFingerprint,
+      reservationId: input.reservationId,
+    });
+    await expect(
+      repository.markSettled({
+        ...settlement,
+        createdAtEpoch: input.createdAtEpoch,
+      }),
+    ).resolves.toBe("unavailable");
+    await expect(lifecycleRow(input.claimKeyHash)).resolves.toMatchObject({
+      settled_at_epoch: null,
+      status: "provider_started",
+    });
+  });
+
   it("reuses settled work only after retention", async () => {
     const repository = new D1ManagedAiOperationClaimRepository(env.DB);
     const input = lifecycleClaim("m");

@@ -106,7 +106,7 @@ export interface ManagedAiOperationProviderStart
 
 export interface ManagedAiOperationSettlement
   extends ManagedAiOperationLifecycleMutation {
-  readonly expectedStatus: "provider_started";
+  readonly expectedStatus: "provider_started" | "reserved";
   readonly reuseAfterEpoch: number;
   readonly settledAtEpoch: number;
 }
@@ -689,7 +689,14 @@ export class D1ManagedAiOperationClaimRepository {
     input: ManagedAiOperationSettlement,
   ): Promise<"settled" | "unavailable"> {
     validateLifecycleIdentity(input);
-    requireExpectedStatus(input.expectedStatus, "provider_started");
+    if (
+      input.expectedStatus !== "reserved" &&
+      input.expectedStatus !== "provider_started"
+    ) {
+      throw new TypeError(
+        "expectedStatus must be reserved or provider_started",
+      );
+    }
     requireEpoch(input.settledAtEpoch, "settledAtEpoch");
     requireEpoch(input.reuseAfterEpoch, "reuseAfterEpoch");
     if (
@@ -710,7 +717,16 @@ export class D1ManagedAiOperationClaimRepository {
         WHERE claim_key_hash = ?
           AND status = ?
           AND reservation_id = ?
-          AND provider_started_at_epoch <= ?
+          AND (
+            (
+              status = 'reserved'
+              AND provider_started_at_epoch IS NULL
+            )
+            OR (
+              status = 'provider_started'
+              AND provider_started_at_epoch <= ?
+            )
+          )
           AND EXISTS (
             SELECT 1
             FROM judge_managed_ai_operation_claims

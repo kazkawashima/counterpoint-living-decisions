@@ -191,7 +191,9 @@ async function createJudgePrivateDisclosureRuntime(
   return {
     claims: new D1ManagedAiOperationClaimRepository(env.DB),
     ipAddress: ipReservation.ipAddress,
+    nextReservationId: () => `judge-ai:${crypto.randomUUID()}`,
     proposer,
+    reconcile: () => Promise.resolve(),
     usage: createJudgePrivateDisclosureUsageLimiter(env.DB, {
       clock,
       hashIp: ipReservation.hashIp,

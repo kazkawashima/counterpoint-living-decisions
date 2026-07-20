@@ -1,17 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { OpenAiCandidateError } from "@counterpoint/adapters-openai";
+import {
+  OpenAiCandidateError,
+  type PrivateDisclosureProposal,
+} from "@counterpoint/adapters-openai";
+import type {
+  D1NamedUsageDecision,
+  ManagedAiOperationReserveClaim,
+} from "@counterpoint/adapters-cloudflare";
 import {
   registerPrivateTextSource,
   type DisclosureDependencies,
 } from "@counterpoint/application";
 import type { DomainEvent, MeetingProjection } from "@counterpoint/domain";
-import type { SessionRecord } from "@counterpoint/ports";
+import type {
+  SessionRecord,
+  UsageRequest,
+  UsageSubject,
+} from "@counterpoint/ports";
 
 import {
   handleWorkerFlagshipHttp,
   type WorkerFlagshipHttpDependencies,
 } from "../../../apps/worker/src/worker-flagship-http.js";
+import type { JudgePrivateDisclosureRuntimeDependencies } from "../../../apps/worker/src/judge-private-disclosure.js";
+import {
+  JUDGE_STRUCTURED_AI_DESCRIPTORS,
+  PRIVATE_DISCLOSURE_OPERATION,
+} from "../../../apps/worker/src/judge-structured-ai.js";
 import {
   MutableClock,
   SequenceIdGenerator,
@@ -31,6 +47,91 @@ const BEARER = "bearer-worker-disclosure";
 const NOW = "2026-07-20T12:00:00.000Z";
 const SOURCE_TEXT = "Synthetic private note with a bounded rollout.";
 const EXACT_SNIPPET = "bounded rollout";
+
+function managedRuntime(input: {
+  readonly claim: (
+    value: unknown,
+  ) => Promise<"claimed" | "conflict" | "replayed">;
+  readonly finalize?: (
+    reservationId: string,
+    actual: UsageRequest,
+  ) => Promise<void>;
+  readonly ipAddress: string;
+  readonly propose: (
+    value: Parameters<
+      JudgePrivateDisclosureRuntimeDependencies["proposer"]["propose"]
+    >[0],
+  ) => Promise<PrivateDisclosureProposal>;
+  readonly reserve: (
+    subject: unknown,
+    request: unknown,
+  ) => Promise<
+    | { readonly kind: "allowed"; readonly reservationId: string }
+    | { readonly kind: "denied"; readonly limit: "tokens" }
+  >;
+}): JudgePrivateDisclosureRuntimeDependencies {
+  const nowEpoch = Date.parse(NOW) / 1_000;
+  const descriptor =
+    JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION];
+  return {
+    claims: {
+      abandonReserved: vi.fn(() => Promise.resolve("abandoned" as const)),
+      markProviderStarted: vi.fn(() => Promise.resolve("started" as const)),
+      markSettled: vi.fn(() => Promise.resolve("settled" as const)),
+      reserveClaim: vi.fn(
+        async (claimInput: ManagedAiOperationReserveClaim) => {
+          const legacyResult = await input.claim(claimInput);
+          if (legacyResult === "conflict") {
+            return { kind: "conflict" as const };
+          }
+          return {
+            claim: {
+              ...claimInput,
+              providerStartedAtEpoch: undefined,
+              reuseAfterEpoch: undefined,
+              settledAtEpoch: undefined,
+              status: "reserved" as const,
+            },
+            kind:
+              legacyResult === "replayed"
+                ? ("replayed" as const)
+                : ("reserved" as const),
+          };
+        },
+      ),
+      takeOverReserved: vi.fn(() => Promise.resolve("taken_over" as const)),
+    },
+    ipAddress: input.ipAddress,
+    nextReservationId: () => "reservation-worker-boundary",
+    proposer: { propose: input.propose },
+    reconcile: () => Promise.resolve(),
+    usage: {
+      finalize: input.finalize ?? vi.fn(() => Promise.resolve()),
+      findReservation: vi.fn(() => Promise.resolve(undefined)),
+      release: vi.fn(() => Promise.resolve()),
+      reserveWithId: vi.fn(
+        async (
+          identity: {
+            readonly reservationId: string;
+            readonly requestFingerprint: string;
+          },
+          subject: UsageSubject,
+          request: UsageRequest,
+        ): Promise<D1NamedUsageDecision> => {
+          const decision = await input.reserve(subject, request);
+          return decision.kind === "denied"
+            ? decision
+            : {
+                activeUntilEpoch: nowEpoch + descriptor.claimLeaseSeconds,
+                kind: "allowed" as const,
+                reservationId: identity.reservationId,
+                reservedAtEpoch: nowEpoch,
+              };
+        },
+      ),
+    },
+  };
+}
 
 function stableHash(value: string): string {
   return `fixture-${value.length}`;
@@ -169,19 +270,12 @@ describe("Worker private-disclosure boundary", () => {
         ...fixtureValue.dependencies.disclosures,
         candidateProposer: { propose: candidateProposer },
       },
-      judgePrivateDisclosure: {
-        claims: {
-          claim,
-          release: vi.fn(() => Promise.resolve("released" as const)),
-        },
+      judgePrivateDisclosure: managedRuntime({
+        claim,
         ipAddress: "203.0.113.45",
-        proposer: { propose: candidateProposer },
-        usage: {
-          finalize: vi.fn(() => Promise.resolve()),
-          release: vi.fn(() => Promise.resolve()),
-          reserve,
-        },
-      },
+        propose: candidateProposer,
+        reserve,
+      }),
     };
 
     const response = await handleWorkerFlagshipHttp({
@@ -255,34 +349,26 @@ describe("Worker private-disclosure boundary", () => {
       authorizationPolicy: {
         judgeManagedAiUserIds: new Set([USER_ID]),
       },
-      judgePrivateDisclosure: {
-        claims: {
-          claim: vi.fn(() => Promise.resolve("claimed" as const)),
-          release: vi.fn(() => Promise.resolve("released" as const)),
-        },
+      judgePrivateDisclosure: managedRuntime({
+        claim: vi.fn(() => Promise.resolve("claimed" as const)),
+        finalize,
         ipAddress: "203.0.113.46",
-        proposer: {
-          propose: vi.fn(() =>
-            Promise.reject(
-              new OpenAiCandidateError(
-                "OPENAI_UNAVAILABLE",
-                "sensitive upstream detail",
-                true,
-              ),
+        propose: vi.fn(() =>
+          Promise.reject(
+            new OpenAiCandidateError(
+              "OPENAI_UNAVAILABLE",
+              "sensitive upstream detail",
+              true,
             ),
           ),
-        },
-        usage: {
-          finalize,
-          release: vi.fn(() => Promise.resolve()),
-          reserve: vi.fn(() =>
-            Promise.resolve({
-              kind: "allowed" as const,
-              reservationId: "reservation-worker-boundary",
-            }),
-          ),
-        },
-      },
+        ),
+        reserve: vi.fn(() =>
+          Promise.resolve({
+            kind: "allowed" as const,
+            reservationId: "reservation-worker-boundary",
+          }),
+        ),
+      }),
     };
 
     const response = await handleWorkerFlagshipHttp({
@@ -316,19 +402,12 @@ describe("Worker private-disclosure boundary", () => {
       correlationId: "correlation-worker-ordinary-denied",
       dependencies: {
         ...fixtureValue.dependencies,
-        judgePrivateDisclosure: {
-          claims: {
-            claim,
-            release: vi.fn(() => Promise.resolve("released" as const)),
-          },
+        judgePrivateDisclosure: managedRuntime({
+          claim,
           ipAddress: "203.0.113.47",
-          proposer: { propose },
-          usage: {
-            finalize: vi.fn(() => Promise.resolve()),
-            release: vi.fn(() => Promise.resolve()),
-            reserve,
-          },
-        },
+          propose,
+          reserve,
+        }),
       },
       operation: "propose-disclosure",
       request: request(fixtureValue.sourceArtifactId, "ai_preferred"),
@@ -362,19 +441,12 @@ describe("Worker private-disclosure boundary", () => {
         authorizationPolicy: {
           judgeManagedAiUserIds: new Set([USER_ID]),
         },
-        judgePrivateDisclosure: {
-          claims: {
-            claim,
-            release: vi.fn(() => Promise.resolve("released" as const)),
-          },
+        judgePrivateDisclosure: managedRuntime({
+          claim,
           ipAddress: "203.0.113.48",
-          proposer: { propose },
-          usage: {
-            finalize: vi.fn(() => Promise.resolve()),
-            release: vi.fn(() => Promise.resolve()),
-            reserve,
-          },
-        },
+          propose,
+          reserve,
+        }),
         meetings: {
           ...fixtureValue.dependencies.meetings,
           findAssignment: () =>

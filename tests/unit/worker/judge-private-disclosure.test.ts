@@ -4,20 +4,23 @@ import {
   OpenAiCandidateError,
   type PrivateDisclosureProposal,
 } from "@counterpoint/adapters-openai";
+import type {
+  ManagedAiOperationLifecycleClaim,
+  ManagedUsageReservation,
+} from "@counterpoint/adapters-cloudflare";
 import {
   proposeDisclosure,
   registerPrivateTextSource,
   type DisclosureDependencies,
 } from "@counterpoint/application";
 import type { DomainEvent, MeetingProjection } from "@counterpoint/domain";
-import type { UsageLimiter } from "@counterpoint/ports";
-
 import {
   JudgePrivateDisclosureError,
   runJudgePrivateDisclosure,
   type ConcretePrivateDisclosureProposer,
   type JudgeManagedAiOperationClaimRepository,
 } from "../../../apps/worker/src/judge-private-disclosure.js";
+import type { JudgeManagedStructuredAiUsageLimiter } from "../../../apps/worker/src/judge-managed-structured-ai.js";
 import {
   PRIVATE_DISCLOSURE_RESERVED_USAGE,
   calculatePrivateDisclosureActualUsage,
@@ -79,9 +82,7 @@ function baseDependencies(): DisclosureDependencies {
 function proposal(
   billing: PrivateDisclosureProposal["billing"] = {
     attemptCount: 1,
-    attempts: [
-      { inputTokens: 120, model: "gpt-5.6", outputTokens: 30 },
-    ],
+    attempts: [{ inputTokens: 120, model: "gpt-5.6", outputTokens: 30 }],
     inputTokens: 120,
     outputTokens: 30,
   },
@@ -124,7 +125,7 @@ interface Fixture {
   readonly releaseClaim: ReturnType<typeof vi.fn>;
   readonly releaseUsage: ReturnType<typeof vi.fn>;
   readonly reserve: ReturnType<typeof vi.fn>;
-  readonly usage: UsageLimiter;
+  readonly usage: JudgeManagedStructuredAiUsageLimiter;
 }
 
 function rejectFixture(error: unknown): Promise<never> {
@@ -148,38 +149,89 @@ function fixture(
 ): Fixture {
   const order: string[] = [];
   const claimInputs: unknown[] = [];
+  const nowEpoch = Date.parse(NOW) / 1_000;
+  const lifecycleClaim = (input: {
+    readonly claimKeyHash: string;
+    readonly createdAtEpoch: number;
+    readonly expiresAtEpoch: number;
+    readonly leaseExpiresAtEpoch: number;
+    readonly model: string;
+    readonly operation: string;
+    readonly pricingVersion: string;
+    readonly requestFingerprint: string;
+    readonly reservationId: string;
+  }): ManagedAiOperationLifecycleClaim => ({
+    ...input,
+    providerStartedAtEpoch: undefined,
+    reuseAfterEpoch: undefined,
+    settledAtEpoch: undefined,
+    status: "reserved",
+  });
   const claim = vi.fn((input: unknown) => {
     order.push("claim");
     claimInputs.push(input);
-    return options.claimError === undefined
-      ? Promise.resolve(options.claimResult ?? "claimed")
-      : rejectFixture(options.claimError);
+    if (options.claimError !== undefined) {
+      return rejectFixture(options.claimError);
+    }
+    if (options.claimResult === "conflict") {
+      return Promise.resolve({ kind: "conflict" as const });
+    }
+    const persisted = lifecycleClaim(
+      input as Parameters<typeof lifecycleClaim>[0],
+    );
+    return Promise.resolve({
+      claim: persisted,
+      kind:
+        options.claimResult === "replayed"
+          ? ("replayed" as const)
+          : ("reserved" as const),
+    });
   });
   const releaseClaim = vi.fn(() => {
     order.push("release-claim");
     return options.releaseClaimError === undefined
-      ? Promise.resolve("released" as const)
+      ? Promise.resolve("abandoned" as const)
       : rejectFixture(options.releaseClaimError);
   });
   const claims: JudgeManagedAiOperationClaimRepository = {
-    claim,
-    release: releaseClaim,
+    abandonReserved: releaseClaim,
+    markProviderStarted: vi.fn(() => {
+      order.push("provider-start");
+      return Promise.resolve("started" as const);
+    }),
+    markSettled: vi.fn(() => {
+      order.push("settle-claim");
+      return Promise.resolve("settled" as const);
+    }),
+    reserveClaim: claim,
+    takeOverReserved: vi.fn(() => Promise.resolve("taken_over" as const)),
   };
-  const reserve = vi.fn((subject: unknown, request: unknown) => {
-    order.push("reserve");
-    claimInputs.push({ request, subject });
-    if (options.reserveError !== undefined) {
-      return rejectFixture(options.reserveError);
-    }
-    return Promise.resolve(
-      options.reservationLimit === undefined
-        ? { kind: "allowed" as const, reservationId: "reservation-1" }
-        : {
-            kind: "denied" as const,
-            limit: options.reservationLimit,
-          },
-    );
-  });
+  const reserve = vi.fn(
+    (
+      identity: { readonly reservationId: string },
+      subject: unknown,
+      request: unknown,
+    ) => {
+      order.push("reserve");
+      claimInputs.push({ request, subject });
+      if (options.reserveError !== undefined) {
+        return rejectFixture(options.reserveError);
+      }
+      return Promise.resolve(
+        options.reservationLimit === undefined
+          ? {
+              activeUntilEpoch: nowEpoch + 120,
+              kind: "allowed" as const,
+              reservationId: identity.reservationId,
+              reservedAtEpoch: nowEpoch,
+            }
+          : {
+              kind: "denied" as const,
+              limit: options.reservationLimit,
+            },
+      );
+    },
+  );
   const finalize = vi.fn(() => {
     order.push("finalize");
     return options.finalizeError === undefined
@@ -192,10 +244,13 @@ function fixture(
       ? Promise.resolve()
       : rejectFixture(options.releaseUsageError);
   });
-  const usage: UsageLimiter = {
+  const usage: JudgeManagedStructuredAiUsageLimiter = {
     finalize,
+    findReservation: vi.fn((): Promise<ManagedUsageReservation | undefined> =>
+      Promise.resolve(undefined),
+    ),
     release: releaseUsage,
-    reserve,
+    reserveWithId: reserve,
   };
   const proposer = {
     propose: vi.fn(
@@ -274,8 +329,10 @@ async function execute(
     clock: { now: () => NOW },
     dependencies: fixtureValue.dependencies,
     ipAddress: IP_ADDRESS,
+    nextReservationId: () => "reservation-1",
     proposer:
       fixtureValue.proposer as unknown as ConcretePrivateDisclosureProposer,
+    reconcile: () => Promise.resolve(),
     request: requestValue,
     usage: fixtureValue.usage,
     execute: (dependencies) =>
@@ -290,6 +347,61 @@ async function execute(
 }
 
 describe("judge private-disclosure orchestration", () => {
+  it("durably marks the exact generation provider-started before invoking OpenAI", async () => {
+    const fixtureValue = fixture();
+    const sourceArtifactId = await registerSource(fixtureValue.dependencies);
+    const markProviderStarted = vi.fn(() => {
+      fixtureValue.order.push("provider-start");
+      return Promise.resolve("started" as const);
+    });
+    Object.assign(fixtureValue.claims, {
+      abandonReserved: vi.fn(),
+      markProviderStarted,
+      markSettled: vi.fn(() => Promise.resolve("settled" as const)),
+      reserveClaim: vi.fn(() =>
+        Promise.resolve({
+          claim: {
+            claimKeyHash: `sha256:${"a".repeat(64)}`,
+            createdAtEpoch: Date.parse(NOW) / 1_000,
+            expiresAtEpoch: Date.parse(NOW) / 1_000 + 120,
+            leaseExpiresAtEpoch: Date.parse(NOW) / 1_000 + 120,
+            model: "gpt-5.6",
+            operation: "private_evidence_disclosure",
+            pricingVersion: "test",
+            providerStartedAtEpoch: undefined,
+            requestFingerprint: `sha256:${"b".repeat(64)}`,
+            reservationId: "reservation-1",
+            reuseAfterEpoch: undefined,
+            settledAtEpoch: undefined,
+            status: "reserved",
+          },
+          kind: "reserved" as const,
+        }),
+      ),
+      takeOverReserved: vi.fn(),
+    });
+    Object.assign(fixtureValue.usage, {
+      findReservation: vi.fn(),
+      reserveWithId: vi.fn(() =>
+        Promise.resolve({
+          activeUntilEpoch: Date.parse(NOW) / 1_000 + 120,
+          kind: "allowed" as const,
+          reservationId: "reservation-1",
+          reservedAtEpoch: Date.parse(NOW) / 1_000,
+        }),
+      ),
+    });
+
+    await expect(
+      execute(fixtureValue, sourceArtifactId),
+    ).resolves.toMatchObject({ kind: "proposed" });
+
+    expect(markProviderStarted).toHaveBeenCalledTimes(1);
+    expect(fixtureValue.order.indexOf("provider-start")).toBeLessThan(
+      fixtureValue.order.indexOf("provider"),
+    );
+  });
+
   it("claims, reserves, calls the provider, then finalizes trustworthy actual usage", async () => {
     const fixtureValue = fixture();
     const sourceArtifactId = await registerSource(fixtureValue.dependencies);
@@ -303,8 +415,10 @@ describe("judge private-disclosure orchestration", () => {
     expect(fixtureValue.order).toEqual([
       "claim",
       "reserve",
+      "provider-start",
       "provider",
       "finalize",
+      "settle-claim",
     ]);
     expect(fixtureValue.finalize).toHaveBeenCalledWith(
       "reservation-1",
@@ -508,7 +622,7 @@ describe("judge private-disclosure orchestration", () => {
     expect(fixtureValue.proposer.propose).not.toHaveBeenCalled();
   });
 
-  it("releases reservation and exact claim generation on a pre-provider failure", async () => {
+  it("does not allocate a claim or reservation before provider invocation", async () => {
     const fixtureValue = fixture();
     const sourceArtifactId = await registerSource(fixtureValue.dependencies);
     const requestValue = request(sourceArtifactId);
@@ -529,27 +643,19 @@ describe("judge private-disclosure orchestration", () => {
           throw new Error("pre-provider application failure");
         },
         ipAddress: IP_ADDRESS,
+        nextReservationId: () => "reservation-1",
         proposer:
           fixtureValue.proposer as unknown as ConcretePrivateDisclosureProposer,
+        reconcile: () => Promise.resolve(),
         request: requestValue,
         usage: fixtureValue.usage,
       }),
     ).rejects.toThrow("pre-provider application failure");
 
-    expect(fixtureValue.order).toEqual([
-      "claim",
-      "reserve",
-      "release-usage",
-      "release-claim",
-    ]);
-    expect(fixtureValue.releaseClaim).toHaveBeenCalledWith(
-      expect.objectContaining({
-        createdAtEpoch: Date.parse(NOW) / 1_000,
-      }),
-    );
+    expect(fixtureValue.order).toEqual([]);
   });
 
-  it("retains the claim and redacts the error when reservation release fails", async () => {
+  it("preserves a pre-provider application failure without allocating usage", async () => {
     const fixtureValue = fixture({
       releaseUsageError: new Error("sensitive ledger release failure"),
     });
@@ -572,13 +678,16 @@ describe("judge private-disclosure orchestration", () => {
           throw new Error("pre-provider application failure");
         },
         ipAddress: IP_ADDRESS,
+        nextReservationId: () => "reservation-1",
         proposer:
           fixtureValue.proposer as unknown as ConcretePrivateDisclosureProposer,
+        reconcile: () => Promise.resolve(),
         request: requestValue,
         usage: fixtureValue.usage,
       }),
-    ).rejects.toEqual(new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE"));
+    ).rejects.toThrow("pre-provider application failure");
     expect(fixtureValue.releaseClaim).not.toHaveBeenCalled();
+    expect(fixtureValue.releaseUsage).not.toHaveBeenCalled();
   });
 
   it("finalizes the full envelope and retains the claim after provider-started failure", async () => {
@@ -590,8 +699,8 @@ describe("judge private-disclosure orchestration", () => {
     const fixtureValue = fixture({ proposerError: providerError });
     const sourceArtifactId = await registerSource(fixtureValue.dependencies);
 
-    await expect(execute(fixtureValue, sourceArtifactId)).rejects.toBe(
-      providerError,
+    await expect(execute(fixtureValue, sourceArtifactId)).rejects.toEqual(
+      new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE"),
     );
     expect(fixtureValue.finalize).toHaveBeenCalledWith(
       "reservation-1",
@@ -643,8 +752,10 @@ describe("judge private-disclosure orchestration", () => {
         ]);
       },
       ipAddress: IP_ADDRESS,
+      nextReservationId: () => "reservation-1",
       proposer:
         fixtureValue.proposer as unknown as ConcretePrivateDisclosureProposer,
+      reconcile: () => Promise.resolve(),
       request: request(sourceArtifactId),
       usage: fixtureValue.usage,
     });
@@ -673,9 +784,7 @@ describe("judge private-disclosure orchestration", () => {
       "malformed",
       proposal({
         attemptCount: 1,
-        attempts: [
-          { inputTokens: -1, model: "gpt-5.6", outputTokens: 1 },
-        ],
+        attempts: [{ inputTokens: -1, model: "gpt-5.6", outputTokens: 1 }],
         inputTokens: -1,
         outputTokens: 1,
       }),
@@ -713,7 +822,14 @@ describe("judge private-disclosure orchestration", () => {
     expect(claimInput?.requestFingerprint).toEqual(
       expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
     );
+    if (typeof claimInput?.requestFingerprint !== "string") {
+      throw new Error("Expected an opaque request fingerprint");
+    }
     expect(fixtureValue.reserve).toHaveBeenCalledWith(
+      {
+        requestFingerprint: claimInput.requestFingerprint,
+        reservationId: "reservation-1",
+      },
       {
         accountId: USER_ID,
         ipAddress: IP_ADDRESS,

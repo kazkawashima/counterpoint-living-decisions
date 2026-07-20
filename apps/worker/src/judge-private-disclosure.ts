@@ -1,39 +1,30 @@
-import type {
-  ManagedAiOperationClaim,
-  ManagedAiOperationClaimRelease,
-  ManagedAiOperationClaimResult,
-} from "@counterpoint/adapters-cloudflare";
 import type { PrivateDisclosureProposal } from "@counterpoint/adapters-openai";
 import type {
   DisclosureCandidateProposer,
   DisclosureDependencies,
   UserAuthorizationContext,
 } from "@counterpoint/application";
-import type {
-  ArtifactStore,
-  Clock,
-  UsageDecision,
-  UsageLimiter,
-} from "@counterpoint/ports";
+import type { ArtifactStore, Clock, UsageDecision } from "@counterpoint/ports";
 
 import {
-  PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS,
+  JudgeManagedStructuredAiError,
+  runJudgeManagedStructuredAiOperation,
+  type JudgeManagedStructuredAiClaimRepository,
+  type JudgeManagedStructuredAiReconcileRequest,
+  type JudgeManagedStructuredAiUsageLimiter,
+} from "./judge-managed-structured-ai.js";
+import {
+  JUDGE_STRUCTURED_AI_DESCRIPTORS,
   PRIVATE_DISCLOSURE_MAX_SOURCE_BYTES,
   PRIVATE_DISCLOSURE_MODEL,
   PRIVATE_DISCLOSURE_OPERATION,
-  PRIVATE_DISCLOSURE_PRICING_VERSION,
-  PRIVATE_DISCLOSURE_RESERVED_USAGE,
   calculatePrivateDisclosureActualUsage,
 } from "./judge-structured-ai.js";
 
 type UsageLimit = Extract<UsageDecision, { kind: "denied" }>["limit"];
 
-export interface JudgeManagedAiOperationClaimRepository {
-  claim(claim: ManagedAiOperationClaim): Promise<ManagedAiOperationClaimResult>;
-  release(
-    release: ManagedAiOperationClaimRelease,
-  ): Promise<"released" | "unavailable">;
-}
+export type JudgeManagedAiOperationClaimRepository =
+  JudgeManagedStructuredAiClaimRepository;
 
 export interface JudgePrivateDisclosureRequest {
   readonly assistance: "ai_preferred";
@@ -74,164 +65,102 @@ export interface ConcretePrivateDisclosureProposer {
 }
 
 export interface JudgePrivateDisclosureRuntimeDependencies {
-  readonly claims: JudgeManagedAiOperationClaimRepository;
+  readonly claims: JudgeManagedStructuredAiClaimRepository;
   readonly ipAddress: string;
+  readonly nextReservationId: () => string;
   readonly proposer: ConcretePrivateDisclosureProposer;
-  readonly usage: UsageLimiter;
+  readonly reconcile: (
+    input: JudgeManagedStructuredAiReconcileRequest,
+  ) => Promise<void>;
+  readonly usage: JudgeManagedStructuredAiUsageLimiter;
 }
 
-interface ClaimedState {
-  readonly claim: ManagedAiOperationClaim;
-  readonly kind: "claimed";
-  providerStarted: boolean;
-  readonly reservationId: string;
-  settled: boolean;
+interface PreparedSource {
+  readonly claimKeyHash: string;
+  readonly providerInputBytes: number;
+  readonly requestFingerprint: string;
 }
-
-type PreparationState =
-  | ClaimedState
-  | { readonly kind: "replayed" }
-  | { readonly kind: "unprepared" };
 
 export async function runJudgePrivateDisclosure<T>(input: {
   readonly authorization: UserAuthorizationContext;
-  readonly claims: JudgeManagedAiOperationClaimRepository;
+  readonly claims: JudgeManagedStructuredAiClaimRepository;
   readonly clock: Clock;
   readonly dependencies: DisclosureDependencies;
   readonly execute: (dependencies: DisclosureDependencies) => Promise<T> | T;
   readonly ipAddress: string;
+  readonly nextReservationId: () => string;
   readonly proposer: ConcretePrivateDisclosureProposer;
+  readonly reconcile: (
+    input: JudgeManagedStructuredAiReconcileRequest,
+  ) => Promise<void>;
   readonly request: JudgePrivateDisclosureRequest;
-  readonly usage: UsageLimiter;
+  readonly usage: JudgeManagedStructuredAiUsageLimiter;
 }): Promise<T> {
   if (!input.authorization.capabilities.has("judge:managed-ai")) {
     throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
   }
-  const lifecycle: { state: PreparationState } = {
-    state: { kind: "unprepared" },
-  };
-  let preparation: Promise<void> | undefined;
 
-  const prepare = (sourceContentHash: string): Promise<void> => {
-    preparation ??= prepareManagedCall({
-      ...input,
-      sourceContentHash,
-    }).then((prepared) => {
-      lifecycle.state = prepared;
-    });
-    return preparation;
-  };
-  const artifacts = guardedArtifactStore(input.dependencies.artifacts, prepare);
+  let prepared: PreparedSource | undefined;
+  let providerStarted = false;
+  const artifacts = guardedArtifactStore(
+    input.dependencies.artifacts,
+    async (bytes) => {
+      prepared ??= await prepareSource(input, bytes);
+    },
+  );
   const candidateProposer: DisclosureCandidateProposer = {
     async propose(proposalInput) {
-      await preparation;
-      const state = lifecycle.state;
-      if (state.kind === "replayed") {
+      if (providerStarted || prepared === undefined) {
         throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
       }
-      if (state.kind !== "claimed") {
-        throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-      }
-      if (state.providerStarted || state.settled) {
-        throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-      }
-
-      state.providerStarted = true;
-      let proposal: PrivateDisclosureProposal;
+      providerStarted = true;
       try {
-        proposal = await input.proposer.propose(proposalInput);
+        return await runJudgeManagedStructuredAiOperation({
+          actualUsage: (proposal) =>
+            proposal.billing === undefined
+              ? JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION]
+                  .reservedUsage
+              : calculatePrivateDisclosureActualUsage(
+                  PRIVATE_DISCLOSURE_MODEL,
+                  proposal.billing,
+                ),
+          claimKeyHash: prepared.claimKeyHash,
+          claims: input.claims,
+          descriptor:
+            JUDGE_STRUCTURED_AI_DESCRIPTORS[PRIVATE_DISCLOSURE_OPERATION],
+          model: PRIVATE_DISCLOSURE_MODEL,
+          nextReservationId: input.nextReservationId,
+          nowEpoch: () => epochSeconds(input.clock.now()),
+          provider: () => input.proposer.propose(proposalInput),
+          providerInputBytes: prepared.providerInputBytes,
+          reconcile: input.reconcile,
+          requestFingerprint: prepared.requestFingerprint,
+          subject: {
+            accountId: input.authorization.userId,
+            ipAddress: input.ipAddress,
+            meetingId: input.request.meetingId,
+          },
+          usage: input.usage,
+        });
       } catch (error) {
-        await finalizeUsage(
-          input.usage,
-          state,
-          PRIVATE_DISCLOSURE_RESERVED_USAGE,
-        );
+        if (error instanceof JudgeManagedStructuredAiError) {
+          throw privateError(error);
+        }
         throw error;
       }
-
-      let actual = PRIVATE_DISCLOSURE_RESERVED_USAGE;
-      if (proposal.billing !== undefined) {
-        try {
-          actual = calculatePrivateDisclosureActualUsage(
-            PRIVATE_DISCLOSURE_MODEL,
-            proposal.billing,
-          );
-        } catch {
-          actual = PRIVATE_DISCLOSURE_RESERVED_USAGE;
-        }
-      }
-      await finalizeUsage(input.usage, state, actual);
-      return proposal;
     },
   };
 
-  try {
-    return await input.execute({
-      ...input.dependencies,
-      artifacts,
-      candidateProposer,
-    });
-  } finally {
-    const state = lifecycle.state;
-    if (state.kind === "claimed" && !state.providerStarted && !state.settled) {
-      await releaseBeforeProvider(input.claims, input.usage, state);
-    }
-  }
-}
-
-async function finalizeUsage(
-  usage: UsageLimiter,
-  state: ClaimedState,
-  actual: Parameters<UsageLimiter["finalize"]>[1],
-): Promise<void> {
-  try {
-    await usage.finalize(state.reservationId, actual);
-    state.settled = true;
-  } catch {
-    throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-  }
-}
-
-async function releaseBeforeProvider(
-  claims: JudgeManagedAiOperationClaimRepository,
-  usage: UsageLimiter,
-  state: ClaimedState,
-): Promise<void> {
-  try {
-    await usage.release(state.reservationId);
-  } catch {
-    state.settled = true;
-    throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-  }
-  try {
-    const released = await claims.release(releaseFor(state.claim));
-    if (released !== "released") {
-      throw new Error("Managed-AI claim was unavailable during release");
-    }
-  } catch {
-    state.settled = true;
-    throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-  }
-  state.settled = true;
-}
-
-async function releaseClaimAfterUnreservedFailure(
-  claims: JudgeManagedAiOperationClaimRepository,
-  claim: ManagedAiOperationClaim,
-): Promise<void> {
-  try {
-    const released = await claims.release(releaseFor(claim));
-    if (released !== "released") {
-      throw new Error("Managed-AI claim was unavailable during release");
-    }
-  } catch {
-    throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-  }
+  return input.execute({
+    ...input.dependencies,
+    artifacts,
+    candidateProposer,
+  });
 }
 
 function guardedArtifactStore(
   artifacts: ArtifactStore,
-  prepare: (sourceContentHash: string) => Promise<void>,
+  prepare: (bytes: Uint8Array) => Promise<void>,
 ): ArtifactStore {
   return {
     delete: (scope) => artifacts.delete(scope),
@@ -248,34 +177,28 @@ function guardedArtifactStore(
       } catch {
         throw new JudgePrivateDisclosureError("VALIDATION_FAILED");
       }
-      await prepare(await sha256Bytes(bytes));
+      await prepare(bytes);
       return bytes;
     },
     put: (write) => artifacts.put(write),
   };
 }
 
-async function prepareManagedCall(input: {
-  readonly authorization: UserAuthorizationContext;
-  readonly claims: JudgeManagedAiOperationClaimRepository;
-  readonly clock: Clock;
-  readonly ipAddress: string;
-  readonly request: JudgePrivateDisclosureRequest;
-  readonly sourceContentHash: string;
-  readonly usage: UsageLimiter;
-}): Promise<PreparationState> {
-  const createdAtEpoch = epochSeconds(input.clock.now());
-  const claim: ManagedAiOperationClaim = {
+async function prepareSource(
+  input: {
+    readonly authorization: UserAuthorizationContext;
+    readonly request: JudgePrivateDisclosureRequest;
+  },
+  bytes: Uint8Array,
+): Promise<PreparedSource> {
+  const sourceContentHash = await sha256Bytes(bytes);
+  return {
     claimKeyHash: await sha256([
       PRIVATE_DISCLOSURE_OPERATION,
       input.request.meetingId,
       input.request.idempotencyKey,
     ]),
-    createdAtEpoch,
-    expiresAtEpoch: createdAtEpoch + PRIVATE_DISCLOSURE_CLAIM_TTL_SECONDS,
-    model: PRIVATE_DISCLOSURE_MODEL,
-    operation: PRIVATE_DISCLOSURE_OPERATION,
-    pricingVersion: PRIVATE_DISCLOSURE_PRICING_VERSION,
+    providerInputBytes: bytes.byteLength,
     requestFingerprint: await sha256([
       PRIVATE_DISCLOSURE_OPERATION,
       input.authorization.userId,
@@ -283,60 +206,18 @@ async function prepareManagedCall(input: {
       input.request.meetingId,
       input.request.idempotencyKey,
       input.request.sourceArtifactId,
-      input.sourceContentHash,
+      sourceContentHash,
     ]),
   };
-  let claimed: ManagedAiOperationClaimResult;
-  try {
-    claimed = await input.claims.claim(claim);
-  } catch {
-    throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-  }
-  if (claimed === "conflict") {
-    throw new JudgePrivateDisclosureError("IDEMPOTENCY_CONFLICT");
-  }
-  if (claimed === "replayed") {
-    return { kind: "replayed" };
-  }
-
-  let reservation: UsageDecision;
-  try {
-    reservation = await input.usage.reserve(
-      {
-        accountId: input.authorization.userId,
-        ipAddress: input.ipAddress,
-        meetingId: input.request.meetingId,
-      },
-      PRIVATE_DISCLOSURE_RESERVED_USAGE,
-    );
-  } catch {
-    throw new JudgePrivateDisclosureError("OPENAI_UNAVAILABLE");
-  }
-  if (reservation.kind === "denied") {
-    await releaseClaimAfterUnreservedFailure(input.claims, claim);
-    throw usageLimitError(reservation.limit);
-  }
-  return {
-    claim,
-    kind: "claimed",
-    providerStarted: false,
-    reservationId: reservation.reservationId,
-    settled: false,
-  };
 }
 
-function releaseFor(
-  claim: ManagedAiOperationClaim,
-): ManagedAiOperationClaimRelease {
-  return {
-    claimKeyHash: claim.claimKeyHash,
-    createdAtEpoch: claim.createdAtEpoch,
-    requestFingerprint: claim.requestFingerprint,
-  };
-}
-
-function usageLimitError(limit: UsageLimit): JudgePrivateDisclosureError {
-  return new JudgePrivateDisclosureError("USAGE_LIMIT_REACHED", { limit });
+function privateError(
+  error: JudgeManagedStructuredAiError,
+): JudgePrivateDisclosureError {
+  return new JudgePrivateDisclosureError(
+    error.code,
+    error.code === "USAGE_LIMIT_REACHED" ? error.details : {},
+  );
 }
 
 function epochSeconds(value: string): number {
@@ -348,8 +229,7 @@ function epochSeconds(value: string): number {
 }
 
 async function sha256(fields: readonly (number | string)[]): Promise<string> {
-  const serialized = JSON.stringify(fields);
-  return sha256Bytes(new TextEncoder().encode(serialized));
+  return sha256Bytes(new TextEncoder().encode(JSON.stringify(fields)));
 }
 
 async function sha256Bytes(bytes: Uint8Array): Promise<string> {
