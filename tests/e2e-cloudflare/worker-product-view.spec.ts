@@ -114,6 +114,27 @@ test("Worker keeps ordinary, judge, and shared-display browser contexts separate
     );
     expect(reset.status()).toBe(200);
 
+    const privateText =
+      "Remote hosted private boundary canary; never shared with legal.";
+    const sourceResponse = await productContext.request.post(
+      "/api/v1/disclosures/sources/text",
+      {
+        data: {
+          expectedPosition: 0,
+          idempotencyKey: `cloudflare-browser-private-source-${String(Date.now())}`,
+          meetingId: MEETING_ID,
+          text: privateText,
+          title: "Hosted private boundary canary",
+        },
+        headers: productAuthorization,
+      },
+    );
+    expect(sourceResponse.status()).toBe(201);
+    const sourceBody = (await sourceResponse.json()) as {
+      position: number;
+      source: { sourceArtifactId: string };
+    };
+
     const projection = await productContext.request.get(
       `/api/v1/meetings/${MEETING_ID}/projection`,
       { headers: productAuthorization },
@@ -144,9 +165,41 @@ test("Worker keeps ordinary, judge, and shared-display browser contexts separate
     });
     expect(ordinary.status()).toBe(200);
     const ordinaryBody = (await ordinary.json()) as { bearerToken: string };
+    const ordinaryAuthorization = {
+      authorization: `Bearer ${ordinaryBody.bearerToken}`,
+    };
+    const ordinaryProjection = await ordinaryContext.request.get(
+      `/api/v1/meetings/${MEETING_ID}/projection`,
+      { headers: ordinaryAuthorization },
+    );
+    expect(ordinaryProjection.status()).toBe(200);
+    const ordinaryProjectionBody = await ordinaryProjection.json();
+    expect(JSON.stringify(ordinaryProjectionBody)).not.toContain(privateText);
+    expect(ordinaryProjectionBody).toMatchObject({
+      privateWorkspace: { sources: [] },
+    });
+    const forbiddenProposal = await ordinaryContext.request.post(
+      "/api/v1/disclosures/proposals",
+      {
+        data: {
+          assistance: "manual",
+          exactSnippet: privateText,
+          expectedPosition: sourceBody.position,
+          idempotencyKey: `cloudflare-browser-cross-owner-proposal-${String(Date.now())}`,
+          meetingId: MEETING_ID,
+          sourceArtifactId: sourceBody.source.sourceArtifactId,
+          sourceRange: { end: privateText.length, start: 0 },
+        },
+        headers: ordinaryAuthorization,
+      },
+    );
+    expect(forbiddenProposal.status()).toBe(403);
+    await expect(forbiddenProposal.json()).resolves.toMatchObject({
+      code: "FORBIDDEN",
+    });
     const ordinaryJudgeUsage = await ordinaryContext.request.get(
       `/api/v1/meetings/${MEETING_ID}/judge/usage`,
-      { headers: { authorization: `Bearer ${ordinaryBody.bearerToken}` } },
+      { headers: ordinaryAuthorization },
     );
     expect(ordinaryJudgeUsage.status()).toBe(503);
     await expect(ordinaryJudgeUsage.json()).resolves.toMatchObject({

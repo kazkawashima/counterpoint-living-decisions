@@ -5,6 +5,11 @@ Updated: 2026-07-21
 This is an engineering inventory, not legal advice. The project license remains
 unselected until the owner confirms the public-release policy.
 
+The current [OpenAI Build Week Official Rules](https://openai.devpost.com/rules)
+require a public repository to have relevant licensing, or a private repository
+to be shared with `testing@devpost.com` and `build-week-event@openai.com`.
+Re-check the live Devpost page immediately before changing visibility.
+
 ## Current evidence
 
 `npm run licenses:check` passes and `THIRD_PARTY_NOTICES.md` is generated from

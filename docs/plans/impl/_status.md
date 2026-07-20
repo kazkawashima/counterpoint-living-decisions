@@ -1049,6 +1049,18 @@ The canonical implementation-facing artifacts are:
   history, audit, and JSON export after the staged review; all three returned
   200 and the export retained `REVIEW_REQUIRED`. This closes the hosted
   durable-record check without weakening the separate provider/cost gates.
+- The real preview role-boundary scenario now creates a synthetic product-owned
+  private source, verifies that the legal participant projection contains no
+  source text, rejects a cross-owner disclosure proposal with 403, keeps the
+  ordinary judge-usage route unavailable, and keeps private text out of the
+  read-only display projection. This is direct hosted owner-isolation evidence;
+  the full hosted C5 matrix (including SSRF, upload spoofing, and webhook
+  replay) remains a separate open gate.
+- The current Devpost rules were rechecked at
+  `https://openai.devpost.com/rules`: public repositories need relevant
+  licensing, while private repositories must be shared with the two specified
+  testing addresses. Public visibility and the project license remain
+  intentionally uncommitted pending the owner choice.
 
 ## Next executable slice
 
