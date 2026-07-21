@@ -10,6 +10,14 @@ assert_cloudflare_remote_approval() {
     echo "Refusing production mutation without the exact production confirmation." >&2
     return 3
   fi
+  if [[ "$target" == "production" && "${CLOUDFLARE_ENABLE_JUDGE_MODE:-}" != "production" ]]; then
+    echo "Refusing production deployment with judge routes disabled." >&2
+    return 3
+  fi
+  if [[ "$target" == "production" && -z "${CLOUDFLARE_JUDGE_USER_ID:-}" ]]; then
+    echo "Refusing production deployment without CLOUDFLARE_JUDGE_USER_ID." >&2
+    return 3
+  fi
   if [[ -n "$(git status --porcelain)" ]]; then
     echo "Refusing remote Cloudflare mutation from a dirty worktree." >&2
     return 5

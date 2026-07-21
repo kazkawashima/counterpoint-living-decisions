@@ -126,3 +126,17 @@ defaulted to successful starts, so they did not exercise this contradiction.
 Until step 5 is observed, hosted judge Realtime remains unverified even if all
 local gates are green. Manual text and durable meeting state remain the safe
 fallback.
+
+## Deployment follow-up — judge routes silently disabled
+
+The first deployment of `ff46f37` preserved the two Worker secret names but was
+rendered without `CLOUDFLARE_ENABLE_JUDGE_MODE=production` and
+`CLOUDFLARE_JUDGE_USER_ID=judge`. Inspection of the 100%-served version showed
+both judge routes set to `disabled` and no `JUDGE_USER_ID` binding. The browser
+therefore reported `API key required` even though `OPENAI_API_KEY_JUDGE` still
+existed. Secret presence was incorrectly treated as sufficient verification.
+
+The production approval guard now rejects this configuration before any remote
+phase. `AGENTS.md` also requires inspection of the rendered config and the
+active version bindings after every production deploy. A secret-name listing
+alone is no longer an acceptable agent-availability check.

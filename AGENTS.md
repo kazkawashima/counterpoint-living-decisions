@@ -67,3 +67,30 @@ reduced-motion behavior.
   `.env`, `.dev.vars`, API keys, credentials, or private user data.
 - Update the relevant documentation and capture evidence alongside meaningful
   UI changes.
+
+## Production deployment invariants
+
+The canonical hackathon deployment requires the server-funded judge agent. A
+production deploy must never silently fall back to an ordinary, judge-disabled
+configuration.
+
+- Every production deployment command must set
+  `CLOUDFLARE_ENABLE_JUDGE_MODE=production` and the exact nonempty
+  `CLOUDFLARE_JUDGE_USER_ID` in addition to the normal production approval
+  variables. Do not rely on shell history or an earlier rendered config.
+- Before deploying, inspect the newly rendered production config and require
+  `JUDGE_MANAGED_REALTIME_ROUTE_ENABLED=enabled`,
+  `JUDGE_STRUCTURED_AI_ROUTE_ENABLED=enabled`, and the intended
+  `JUDGE_USER_ID`. Stop if any are missing or disabled.
+- `wrangler secret list` proves only that secret names exist at the Worker. It
+  does not prove that the active version has enabled judge routes. After every
+  deploy, inspect the 100%-served version bindings and verify both route flags,
+  `JUDGE_USER_ID`, `OPENAI_API_KEY_JUDGE`, and `JUDGE_IP_HMAC_SECRET` before
+  asking a user to test Connect.
+- Registering `OPENAI_API_KEY_JUDGE` before a later deploy is insufficient on
+  its own. The post-deploy binding audit and an authenticated
+  `realtime/access` check are mandatory release gates.
+- This invariant exists because production commit `ff46f37` was first deployed
+  without the two judge-mode render inputs. That deployment preserved the
+  secret names but rendered both judge routes disabled and omitted
+  `JUDGE_USER_ID`, causing the UI to report `API key required`.

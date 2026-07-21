@@ -25,7 +25,7 @@ bucket_name_default="counterpoint-artifacts-$target"
 
 if [[ "$mode" == "--plan" ]]; then
   echo "Cloudflare $target deployment plan (no remote changes):"
-  echo "1. Require a clean, verified main commit and approved GitHub Environment."
+  echo "1. Require a clean, verified main commit, approved GitHub Environment, and explicit production judge-mode inputs."
   echo "2. Render an ignored 0600 Wrangler config from exact remote resource IDs."
   echo "3. Build, scan, run security tests, and perform a target-config dry run."
   echo "4. Apply forward-only D1 migrations remotely; Wrangler captures a backup."

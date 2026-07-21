@@ -50,6 +50,12 @@ describe("manually approved Cloudflare deployment workflow", () => {
     expect(approval).toContain(
       'if [[ "$target" == "production" && "${CLOUDFLARE_PRODUCTION_CONFIRMATION:-}" != "counterpoint-production" ]]',
     );
+    expect(approval).toContain(
+      'if [[ "$target" == "production" && "${CLOUDFLARE_ENABLE_JUDGE_MODE:-}" != "production" ]]',
+    );
+    expect(approval).toContain(
+      'if [[ "$target" == "production" && -z "${CLOUDFLARE_JUDGE_USER_ID:-}" ]]',
+    );
     expect(approval).toContain('if [[ -n "$(git status --porcelain)" ]]');
     expect(driver).toContain('run_private "forward D1 migrations"');
     expect(driver).toContain('run_private "strict Worker deploy"');
