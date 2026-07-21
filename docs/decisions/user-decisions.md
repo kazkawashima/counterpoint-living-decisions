@@ -56,8 +56,11 @@ crossed without a decision.
   their combined worst case cannot exceed the USD 25 application cap.
 - **Why:** These limits determine the maximum financial exposure of leaked
   judge credentials.
-- **Blocks:** Production judge-mode enablement until the hard cap and derived
-  limits are implemented and tested.
+- **Blocks:** Independent provider-backed flagship usage evidence, derived
+  secondary-limit review, and the final submission-safety recheck. The current
+  Production judge route already has the fixed USD 25 hard cap and its
+  implementation/contract tests; this decision does not require disabling that
+  explicitly approved route while the evidence gate remains open.
 - **Answer:** USD 25 per rolling 24 hours; USD 50 provider alert as secondary
   warning.
 
