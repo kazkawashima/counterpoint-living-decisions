@@ -14,6 +14,7 @@ appears in the material.
 | Human-rejected AI suggestion | Desktop, 1440×900 | Show the alternate human disposition: the reason is retained, no Action is held, no task is created, and the Decision returns to `MONITORING`. |
 | Participant read-only review | Desktop, 1440×900 | Show that an assigned participant receives the same shared disposition, reason, hold, and task without facilitator controls. |
 | Participant read-only review | Mobile, 390×844, reduced motion | Responsive and accessibility proof; status, text, borders, and hierarchy carry the meaning without motion. |
+| Ordinary production manual fallback | External hosted desktop | Production judge mode rejects ordinary AI access with `JUDGE_MODE_FORBIDDEN`, while the exact private excerpt remains available through the manual path. |
 
 The clip under `docs/media/clips/decision-review/` records the complete
 facilitator path from `AT_RISK` through reason entry to
