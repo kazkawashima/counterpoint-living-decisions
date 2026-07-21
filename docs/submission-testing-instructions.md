@@ -76,6 +76,9 @@ surfaced`, `Staged demo cue`, and `nothing shared`. This cue is a provider-free
   receives only the shared projection.
 - If managed AI is unavailable, the manual text and Decision path remains
   usable; no judge credential or provider key should be entered in the browser.
+- In the Production ordinary-user boundary, `This action is unavailable in
+judge mode` is an expected guarded response to the optional AI suggestion;
+  choose the visible manual excerpt continuation instead.
 - The private-agent cue is deliberately marked `Proposed only`; it never moves
   private source text into Shared evidence.
 
@@ -87,5 +90,7 @@ surfaced`, `Staged demo cue`, and `nothing shared`. This cue is a provider-free
       publicly visible.
 - [ ] Verify the hosted URL, credential, and manual Flagship path from a clean
       browser.
+- [ ] Time the first human walkthrough with a stopwatch and record whether it
+      stays within three minutes.
 - [ ] Do not paste credentials into this file, README, video description,
       screenshots, issue, commit message, or public Devpost fields.
