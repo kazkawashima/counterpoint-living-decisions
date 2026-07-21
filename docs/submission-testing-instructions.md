@@ -9,6 +9,8 @@ visible in the logged-out submission/gallery view.
 ## Demo
 
 - URL: <https://counterpoint-living-decisions-preview.gs2safari.workers.dev>
+- Production judge URL (private handoff only):
+  <https://counterpoint-living-decisions-production.gs2safari.workers.dev>
 - Category: Work & Productivity
 - Story: synthetic Flagship, `Work & Productivity — Global AI Product Rollout`
 - Data: all meeting notes, identities, evidence, events, and decisions are
@@ -16,6 +18,9 @@ visible in the logged-out submission/gallery view.
 - Access: no BYOK or local setup should be required for a judge; use the
   private credential handoff supplied with the submission if the hosted login
   asks for one.
+- The production URL uses the server-funded judge route only for the exact
+  private judge identity. Do not put that identity or password in this public
+  file; provide them through the private Testing Instructions field only.
 
 ## One path through the product
 

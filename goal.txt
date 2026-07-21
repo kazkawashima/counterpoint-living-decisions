@@ -27,8 +27,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - Worker側には judge allowlist、別HMACによるIP擬似化、D1予約台帳、opaque call
   handle、rolling 24時間 USD 25 hard cap、`USAGE_LIMIT_REACHED` の基盤がある。
 - providerのUSD 50 alertは二次警告であり、アプリ側のUSD 25制限の代替ではない。
-- C5の hosted Worker security matrix 再実行、C6の実デプロイ記録・最終D1/DO確認、
-  judge secret登録は未完了。production judge を先に有効化しない。
+- C5の hosted Worker security matrix 再実行、独立したcost-limit証明、3分の人間
+  リハーサル、最終公開切替は未完了。production D1/R2/DO、judge Secret、専用
+  `judge` identity、exact allowlist付きWorkerは明示承認のもとで有効化済み。
 - 直近の hosted parity 修正により、meeting作成、decision history、audit、export
   のWorker経路は実装済み。表示専用tokenの発行・projection・失効もWorkerへ接続済み。
   最新の名称・導線 preview は commit `221b6d5` で、
@@ -54,7 +55,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   確認している。
 - Previewの明示デプロイを、commit、config hash、migration境界、Worker/R2/DO binding、
   safety flags、検証結果を含むcredential-free記録
-  `docs/deployments/preview-2026-07-21.md` に残した。productionは未デプロイ・未有効化である。
+  `docs/deployments/preview-2026-07-21.md` に残した。productionも同じ形式で
+  `docs/deployments/production-2026-07-21.md` に記録し、judge/provider経路を
+  productionでoperator-confirmed smokeした。
 - `221b6d5` preview deployでは security matrix 300/300、Cloudflare pool 142/142、
   health/readiness/auth smoke、Flagship smokeを通過し、実previewのPlaywrightでも
   `AT_RISK → facilitator review → REVIEW_REQUIRED → Action hold/reconsideration task`
@@ -161,7 +164,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 
 - [x] previewでは `OPENAI_MODE=disabled`、judge structured/realtime route disabledを
       維持し、未設定・障害時は fail-closed しながら手動経路を残す。
-- [ ] productionでjudge modeを有効にする場合、exact allowlistのjudge user、正規化済み
+- [x] productionでjudge modeを有効にする場合、exact allowlistのjudge user、正規化済み
       `CF-Connecting-IP`、別HMAC secret、全feature flag、production bindingを同時に
       満たさない限り利用できない。
 - [ ] judgeはserver-fundedでBYOK不要、普通のユーザーはjudge keyを選択・継承・利用
@@ -183,7 +186,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       judge-only情報が認証前に見えない。
 - [x] ordinary user、judge user、display tokenを別browser contextで試し、権限境界と
       public displayのprojectionが仕様どおりである。
-- [ ] preview/productionの対象commit、config hash、migration状態、Worker/R2/D1/DO
+- [x] preview/productionの対象commit、config hash、migration状態、Worker/R2/D1/DO
       resourceをcredential-freeなdeployment recordへ残す。自動deployではなく、明示承認
       したコマンドから実行する。
 - [x] 本番secretを登録する前に、rollback、judge shutdown、credential rotation/deleteを

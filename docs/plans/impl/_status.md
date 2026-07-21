@@ -1226,3 +1226,29 @@ demonstrably viewable.
   handoff remain product-owner gates.
 - External rechecks are performed at their named implementation/submission
   gates.
+
+## 2026-07-21 production judge path and flagship smoke
+
+- The explicitly approved production Worker is deployed at
+  `https://counterpoint-living-decisions-production.gs2safari.workers.dev`.
+  The deployment uses commit `fd3a62f0a200342dcd521ed136c220e988730709` and
+  rendered config hash
+  `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`.
+- Production D1/R2/DO bindings, both separate judge Worker Secrets, and the
+  dedicated `judge` identity were provisioned. Preview remains provider-free
+  and judge-disabled.
+- Operator-confirmed production browser smoke passed the full flagship arc:
+  private server-funded excerpt suggestion, structured Decision candidate,
+  human premise confirmation, draft/ready/commit, monitor registration,
+  staged synthetic regulatory event, AI `AT_RISK` evaluation, human review,
+  `REVIEW_REQUIRED`, and Decision JSON export. No BYOK credential was used.
+- This closes the production judge enablement and deployment-record slice, but
+  does not close hosted C5, independent cost-limit evidence, the timed human
+  rehearsal, or the owner-controlled public visibility switch.
+
+### Next executable slice
+
+Run the hosted C5 security matrix and cost-boundary evidence against the
+production Worker, then update the submission testing instructions with the
+private judge handoff. Keep repository visibility private until the owner
+performs the final logged-out/public safety check.
