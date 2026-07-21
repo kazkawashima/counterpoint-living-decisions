@@ -136,6 +136,22 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   E2Eから完了推定しない。hosted C5、独立cost実測、3分人間リハーサル、public切替、tag、
   submissionは引き続き別gateとして未完了に保つ。
 
+## 2026-07-22 Production Realtime recovery slice
+
+- judge managed Realtimeの失敗を、provider本文やkeyを出さない5種類のsafe reasonへ閉じ、
+  UIがcredential/account拒否、offer不正、Location/SDP不正、transport障害ごとの回復方法を
+  表示できるようにした。失敗後retryとmanual text継続をbrowser E2Eで固定した。
+- ordinary userのBYOK configure / heartbeat / access / client secret / clearをCloudflare Workerへ
+  配線し、meeting coordinatorのmemory-only短命leaseとlogout時失効を実装した。Node serverに
+  routeがあるだけではWorker parityの証拠にしない。
+- 実OpenAIへのNode media-only smokeは現在のkey、multipart WebRTC request、
+  `gpt-realtime-2.1`で成功した。local workerdはjudge routeまで到達するが、このPCの必須proxyを
+  Worker `fetch()`へ継承できず、HTTP statusなしの`PROVIDER_UNAVAILABLE`で停止する。この環境差を
+  provider実装の不具合と誤認してconnectorを変更しない。
+- secret-safe workerd smoke、Worker実route E2E、safe recovery screenshotを追加済み。残るrelease
+  gateは、全local deterministic verification後の一回のproduction deployと、100% served versionでの
+  judge private/shared接続、およびordinary BYOK private/shared接続・clearのhosted確認である。
+
 ## 完了条件 A — 名称変更
 
 - [x] ユーザーに見える正式表示を `Descant — Living Decisions` に統一する。

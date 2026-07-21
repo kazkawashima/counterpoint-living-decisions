@@ -7,13 +7,16 @@ private meeting content, provider call IDs, or raw fingerprints.
 
 ## Summary
 
-Two independent production defects affected the judge path:
+Three independent production defects affected Realtime:
 
 1. projection polling repeatedly exceeded the Cloudflare Worker CPU limit and
    temporarily made login return 503;
 2. a failed managed Realtime start was automatically retried with its original
    idempotency key, but the Worker retained the failed start claim and returned
-   409 `CONFLICT` instead of retrying the provider operation.
+   409 `CONFLICT` instead of retrying the provider operation;
+3. the Cloudflare Worker did not expose the ordinary-user BYOK lease routes,
+   and the managed path collapsed distinct provider failure stages into a
+   generic 503, making UI recovery and root-cause diagnosis unreliable.
 
 The React application did not execute on the Worker or directly consume its
 CPU budget. It scheduled projection reads in the browser. Each read invoked an
@@ -140,3 +143,68 @@ The production approval guard now rejects this configuration before any remote
 phase. `AGENTS.md` also requires inspection of the rendered config and the
 active version bindings after every production deploy. A secret-name listing
 alone is no longer an acceptable agent-availability check.
+
+## Incident 3 — Worker route parity and failure-stage loss
+
+### Evidence
+
+- The Node server exposed meeting-scoped BYOK configure, heartbeat, and clear,
+  while the production Worker did not route those URLs. An ordinary user could
+  submit a key in the UI but subsequent access checks still returned
+  `API key required`; unmatched API requests could also be mislabeled as
+  artifact-storage failures.
+- The judge managed-call boundary reduced rejected provider requests, invalid
+  response metadata, invalid SDP, and transport failures to the same generic 503. The browser therefore could not distinguish a credential/account
+  rejection from a transient provider transport failure without exposing raw
+  provider text.
+- The current multipart WebRTC request shape and `gpt-realtime-2.1` succeeded
+  against the real provider from Node with the local key. The equivalent local
+  workerd smoke reached the judge route but returned the allowlisted
+  `PROVIDER_UNAVAILABLE` before any provider status existed. This PC requires an
+  outbound proxy; Wrangler applies that proxy to its own Cloudflare API client,
+  but it does not establish that the child workerd runtime can proxy Worker
+  `fetch()` traffic.
+
+`CLOUDFLARE_DEPLOY_URL` is not part of Realtime credential resolution. It is an
+operator input for guarded deployment and remote smoke targeting, so an empty
+value can block deployment but cannot make an already running Worker forget a
+provider key.
+
+### Root cause
+
+The two runtime implementations had drifted. Shared application use cases for
+BYOK existed, but the Worker entrypoint still used an unavailable lease store
+and had no public BYOK handlers. Separately, the managed-call adapter did not
+carry a closed, allowlisted failure classification through its Durable Object
+and public HTTP boundaries. Deployment checks emphasized secret presence and
+route flags instead of composing the browser, Worker, Durable Object, and
+provider path.
+
+### Remediation
+
+- Store ordinary BYOK only as a short-lived, meeting-bound in-memory lease in
+  `MeetingCoordinator`; expose configure, heartbeat, and clear through the
+  Worker and remove the lease on logout/session revocation.
+- Return `ROUTE_NOT_FOUND` for unmatched APIs so only real artifact operations
+  can report artifact-storage unavailability.
+- Carry only the closed safe reasons `OFFER_REJECTED`, `PROVIDER_REJECTED`,
+  `PROVIDER_LOCATION_INVALID`, `PROVIDER_SDP_INVALID`, and
+  `PROVIDER_UNAVAILABLE`, plus an integer provider status when one exists.
+  Never retain or return provider bodies, headers, SDP, call IDs, or keys.
+- Give each safe reason an actionable browser recovery message while preserving
+  manual private/shared text and retrying from a clean failed state.
+- Add browser coverage for safe failure then retry, and a real local Wrangler
+  test for ordinary BYOK connecting both agents. Add a secret-safe live workerd
+  smoke that attempts two private/shared cycles and prints only allowlisted
+  diagnostics.
+
+### Release gate
+
+The real Node media-only smoke proves the provider key and request shape, but
+not Worker composition. On this proxied development machine the local workerd
+provider attempt is expected to remain a diagnostic `PROVIDER_UNAVAILABLE`.
+Production completion therefore requires one guarded deployment followed by a
+clean-browser judge-managed private/shared Connect/Disconnect/reconnect check
+and an ordinary-user BYOK configure/private/shared/clear check on the 100%-served
+version. Until those hosted observations pass, this incident remains under
+verification and manual text remains the supported fallback.

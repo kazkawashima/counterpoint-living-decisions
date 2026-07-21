@@ -13,6 +13,7 @@
 ### Task 1: Preserve the safe judge failure stage
 
 **Files:**
+
 - Modify: `packages/adapters-openai/src/realtime-calls.ts`
 - Modify: `apps/worker/src/judge-realtime-call-controller.ts`
 - Modify: `apps/worker/src/judge-managed-realtime-http.ts`
@@ -87,6 +88,7 @@ git commit -m "fix: preserve safe realtime failure stages"
 ### Task 2: Add the meeting Durable Object BYOK lease
 
 **Files:**
+
 - Create: `apps/worker/src/meeting-api-key-leases.ts`
 - Modify: `apps/worker/src/meeting-coordinator.ts`
 - Modify: `tests/contract/meeting-coordinator-contract.ts`
@@ -100,10 +102,12 @@ expiry, wrong meeting, and session revocation. Internal synthetic example:
 
 ```ts
 await expect(request("/byok/configure", lease)).resolves.toMatchObject({
-  body: { kind: "configured" }, status: 201,
+  body: { kind: "configured" },
+  status: 201,
 });
-await expect(request("/byok/find", { meetingId: lease.meetingId }))
-  .resolves.toMatchObject({ body: { kind: "found", lease }, status: 200 });
+await expect(
+  request("/byok/find", { meetingId: lease.meetingId }),
+).resolves.toMatchObject({ body: { kind: "found", lease }, status: 200 });
 ```
 
 - [ ] **Step 2: Verify RED**
@@ -124,8 +128,7 @@ Test a bound adapter against a fake coordinator and require `configured`,
 `owner_mismatch`, `applied`, and `missing`. Implement:
 
 ```ts
-export class MeetingCoordinatorApiKeyLeaseStore
-  implements MeetingApiKeyLeaseStore {
+export class MeetingCoordinatorApiKeyLeaseStore implements MeetingApiKeyLeaseStore {
   constructor(
     private readonly meetingId: string,
     private readonly coordinator: DurableObjectStub<MeetingCoordinator>,
@@ -147,6 +150,7 @@ git commit -m "feat: add worker meeting byok lease"
 ### Task 3: Wire Worker BYOK parity and truthful API fallback
 
 **Files:**
+
 - Create: `apps/worker/src/meeting-byok-http.ts`
 - Modify: `apps/worker/src/index.ts`
 - Modify: `apps/worker/src/worker-flagship-http.ts`
@@ -212,6 +216,7 @@ git commit -m "fix: complete worker byok route parity"
 ### Task 4: Prove every visible Connect state
 
 **Files:**
+
 - Modify: `apps/web/src/realtime-panel.tsx`
 - Modify: `tests/e2e/realtime-channels.spec.ts`
 - Modify: `tests/e2e-cloudflare/flagship.spec.ts`
@@ -252,12 +257,13 @@ Commit UI, tests, notes, and generated synthetic captures as
 ### Task 5: Identify and fix the judge root under local workerd
 
 **Files:**
+
 - Create: `scripts/cloudflare-realtime-live-smoke.mjs`
 - Modify: `package.json`
 - Modify only the adapter/controller file identified by Task 1 diagnostics
 - Test the matching Task 1 file
 
-- [ ] **Step 1: Add a secret-safe live smoke**
+- [x] **Step 1: Add a secret-safe live smoke**
 
 Require `OPENAI_API_KEY`, generate a mode-0600 temporary Wrangler env file
 outside the repository, allowlist local `product` as judge, enable managed
@@ -272,7 +278,7 @@ Add package script:
 "smoke:cloudflare:realtime-live": "node --env-file-if-exists=.env scripts/cloudflare-realtime-live-smoke.mjs"
 ```
 
-- [ ] **Step 2: Run diagnostics before changing provider behavior**
+- [x] **Step 2: Run diagnostics before changing provider behavior**
 
 ```bash
 npm run cloudflare:d1:migrate:local
@@ -283,7 +289,7 @@ npm run smoke:cloudflare:realtime-live
 Expected: PASS or exactly one safe reason. Arbitrary text, absent reason, secret
 output, or competing reasons fails this gate.
 
-- [ ] **Step 3: TDD the one observed root**
+- [x] **Step 3: TDD the one observed root**
 
 Write one RED regression using the official shape observed in Step 2. Apply
 only the design decision for that reason; do not widen URL, identifier, SDP, or
@@ -296,9 +302,18 @@ and disconnect twice with no retained reservation or secret output. Commit the
 script, package command, regression, and confirmed fix as
 `fix: restore worker managed realtime connection`.
 
+Local diagnosis recorded: the real Node media-only smoke succeeds with the
+current key and official multipart request, while this machine's local workerd
+cannot inherit the required outbound proxy and safely reports
+`PROVIDER_UNAVAILABLE` without a provider status. Do not mutate the connector
+for this host-only transport difference. The two-pass requirement moves to the
+100%-served production Worker in Task 6; the smoke script remains the reusable
+local/CI gate for environments with direct provider egress.
+
 ### Task 6: Full verification and one production deployment
 
 **Files:**
+
 - Modify: `AGENTS.md`
 - Modify: `docs/incidents/2026-07-22-production-runtime-incidents.md`
 - Modify: `docs/deployments/production-2026-07-21.md`

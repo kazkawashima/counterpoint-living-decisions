@@ -90,6 +90,23 @@ configuration.
 - Registering `OPENAI_API_KEY_JUDGE` before a later deploy is insufficient on
   its own. The post-deploy binding audit and an authenticated
   `realtime/access` check are mandatory release gates.
+- Realtime releases must preserve route parity between the Node server and the
+  Cloudflare Worker. In particular, verify ordinary-user BYOK configure,
+  heartbeat, access, client-secret creation, clear, and logout cleanup through
+  the Worker; a Node-server test is not evidence that those Worker routes
+  exist.
+- Before a production Connect release, run the secret-safe browser Realtime
+  smoke through local workerd when workerd has direct provider egress. On a
+  machine where an outbound proxy is required, Wrangler's proxy support does
+  not prove that workerd `fetch()` can reach the provider: use the direct
+  media-only adapter smoke only as a preliminary credential/request-shape
+  check, then require the same private and shared Connect/Disconnect cycles on
+  the deployed Worker before declaring Realtime verified.
+- A secret-name listing, a successful `realtime/access` response, and a
+  Node-only provider smoke are each insufficient by themselves. The release
+  gate is the composed browser path through the active Worker version, for both
+  judge-managed access and ordinary meeting-scoped BYOK, with safe stage and
+  retry behavior verified for failures.
 - This invariant exists because production commit `ff46f37` was first deployed
   without the two judge-mode render inputs. That deployment preserved the
   secret names but rendered both judge routes disabled and omitted
