@@ -1507,6 +1507,8 @@ judge-enabled follow-up are recorded in the section below.
 - Final-tree gates passed: typecheck, lint, production build, unit/integration
   `901/901`, Cloudflare `140/140`, repository/generated-output secret scan,
   media-manifest check, formatting, and `git diff --check`.
+- The verified local implementation and evidence were committed as `b9edab0`
+  (`fix: complete flagship reliability audit`).
 - Canonical Production already contains the runtime reliability changes through
   commit `fd0534a47d5a28a55c9f01ba1df8f8b8cf9529fb`. The final evidence/control
   audit commit and Retry-button contrast polish still require the explicitly

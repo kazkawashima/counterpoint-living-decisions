@@ -579,7 +579,7 @@ Re-read
 and identify direct code, test, screenshot, or hosted evidence for each criterion.
 Any criterion without direct evidence remains open.
 
-- [ ] **Step 6: Commit the verified implementation**
+- [x] **Step 6: Commit the verified implementation**
 
 Stage only files owned by this plan. Preserve `.vscode/` and the user-provided
 review files as untracked unless the user separately requests them committed.
