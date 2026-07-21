@@ -149,8 +149,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   Worker `fetch()`へ継承できず、HTTP statusなしの`PROVIDER_UNAVAILABLE`で停止する。この環境差を
   provider実装の不具合と誤認してconnectorを変更しない。
 - secret-safe workerd smoke、Worker実route E2E、safe recovery screenshotを追加済み。残るrelease
-  gateは、全local deterministic verification後の一回のproduction deployと、100% served versionでの
-  judge private/shared接続、およびordinary BYOK private/shared接続・clearのhosted確認である。
+  gateのうち、全local deterministic verification、production deploy、100% served version監査、
+  ordinary BYOK private/shared接続・Disconnect・clearのhosted確認は完了した。Nodeでは見えなかった
+  native `fetch` receiver差もRED testで再現し、client-secret / managed call / sidebandを共通wrapperへ
+  修正した。残るのはprivate credentialを持つjudgeによるserver-funded private/shared接続確認だけである。
 
 ## 完了条件 A — 名称変更
 

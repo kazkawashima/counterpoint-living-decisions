@@ -1520,3 +1520,31 @@ judge-enabled follow-up are recorded in the section below.
 - This audit does not close the separately deferred hosted C5 matrix,
   independent real-provider cost exhaustion, three-minute human rehearsal,
   repository visibility switch, release tag, or submission action.
+
+## 2026-07-22 Production Realtime recovery
+
+- The Worker now has ordinary BYOK route parity through a meeting-scoped
+  transient Durable Object lease, including configure, heartbeat, access,
+  client-secret issuance, clear, and logout cleanup. Unknown `/api` routes no
+  longer masquerade as artifact-storage failures.
+- Managed call failures retain one of five closed safe reasons across the
+  adapter, Durable Object, HTTP, and browser boundaries. Browser retry and
+  manual continuity are covered without exposing provider bodies, SDP, call
+  identifiers, or credentials.
+- Production ordinary BYOK initially proved configure `201` and access `200`
+  but exposed a client-secret `503`. A receiver-sensitive RED test reproduced
+  the hidden Worker-only `Illegal invocation`: Realtime adapters had captured
+  native `globalThis.fetch` unbound and later called it as an object field.
+  Client-secret, managed-call create/hangup, and sideband now share a wrapper
+  that invokes `globalThis.fetch(input, init)` with the runtime receiver.
+- Final local gates passed: unit/integration `913/913`, security matrix
+  `337/337`, Cloudflare `148/148`, Wrangler browser `4/4`, typecheck, lint,
+  format, build, and secret scan. Direct OpenAI media-only call and
+  client-secret smokes also passed with `gpt-realtime-2.1`.
+- Canonical Production now serves commit
+  `36e1a83d2732b9a9fa18471af7aca5a4f85f903e` as Worker version 27. Root,
+  health, readiness, auth boundary, provider-free Flagship smoke, active
+  bindings audit, and ordinary BYOK private/shared real WebRTC plus clear all
+  passed. The remaining Realtime evidence is only the private-credential judge
+  server-funded private/shared owner observation; it is not inferred from the
+  ordinary BYOK result.
