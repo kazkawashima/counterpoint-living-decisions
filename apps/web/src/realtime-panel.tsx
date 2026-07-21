@@ -43,6 +43,10 @@ import {
   type OpenAiRealtimeState,
   type RealtimeFailureStage,
 } from "./realtime-openai.js";
+import {
+  HEALTHY_PROJECTION_DELAY_MS,
+  nextProjectionDelay,
+} from "./projection-recovery.js";
 
 interface RealtimePanelProps {
   readonly facilitator: boolean;
@@ -335,6 +339,8 @@ export function RealtimePanel({
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState("");
   const [projection, setProjection] = useState<GetRoleProjectionResponse>();
+  const [projectionError, setProjectionError] = useState<string>();
+  const [projectionRetryPaused, setProjectionRetryPaused] = useState(false);
   const [projectionState, setProjectionState] =
     useState<ProjectionState>("checking");
   const [judgeUsage, setJudgeUsage] = useState<JudgeUsageSummaryResponse>();
@@ -347,6 +353,10 @@ export function RealtimePanel({
     "Choose a channel. Hold to speak, or type the same command below.",
   );
   const lifecycleGeneration = useRef(0);
+  const projectionGeneration = useRef(0);
+  const projectionRefreshTrigger = useRef<(manual: boolean) => void>(() => {
+    // Installed by the projection scheduler effect.
+  });
   const configuredMeetingByok = useRef<string | undefined>(undefined);
   const pendingVoice = useRef<PendingVoiceTurn | undefined>(undefined);
   const transcriptHandlers = useRef<
@@ -512,22 +522,9 @@ export function RealtimePanel({
     }
   }
 
-  const refreshProjection = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        const next = await getRoleProjection(session, { meetingId }, signal);
-        setProjection(next);
-        setProjectionState("online");
-        return next;
-      } catch (cause) {
-        if (!(cause instanceof DOMException && cause.name === "AbortError")) {
-          setProjectionState("offline");
-        }
-        throw cause;
-      }
-    },
-    [meetingId, session],
-  );
+  const requestProjectionRefresh = useCallback((manual = false) => {
+    projectionRefreshTrigger.current(manual);
+  }, []);
 
   async function releaseTurnFloor(turn: PendingVoiceTurn) {
     if (turn.channel !== "shared") {
@@ -569,7 +566,7 @@ export function RealtimePanel({
           ? `Captured privately · ${captured.utterance.text}`
           : `Captured for the room · ${captured.utterance.text}`,
       );
-      await refreshProjection();
+      requestProjectionRefresh();
     } catch (cause) {
       setSpeechState("error");
       setSpeechStatus(safeMessage(cause));
@@ -770,7 +767,7 @@ export function RealtimePanel({
               realtimeDelivered ? "" : " · text-only"
             }`,
       );
-      await refreshProjection();
+      requestProjectionRefresh();
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "SHARED_FLOOR_BUSY") {
         setSpeechState("busy");
@@ -811,21 +808,146 @@ export function RealtimePanel({
   }, [meetingId, refreshJudgeUsage, session]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const update = async () => {
+    const generation = projectionGeneration.current + 1;
+    projectionGeneration.current = generation;
+    let activeController: AbortController | undefined;
+    let consecutiveFailureCount = 0;
+    let inFlight = false;
+    let nonretryablePaused = false;
+    let queuedImmediateRefresh = false;
+    let retryableBackoffPending = false;
+    let stopped = false;
+    let timer: number | undefined;
+
+    const current = () =>
+      !stopped && projectionGeneration.current === generation;
+    const clearTimer = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
+      retryableBackoffPending = false;
+    };
+    const schedule = (delay: number, retryableBackoff = false) => {
+      clearTimer();
+      retryableBackoffPending = retryableBackoff;
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        retryableBackoffPending = false;
+        void refresh();
+      }, delay);
+    };
+    const refresh = async () => {
+      if (!current() || nonretryablePaused) {
+        return;
+      }
+      if (inFlight) {
+        queuedImmediateRefresh = true;
+        return;
+      }
+      clearTimer();
+      inFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
+      let completionDelay: number | undefined;
+      let failed = false;
       try {
-        await refreshProjection(controller.signal);
-      } catch {
-        // The action paths surface errors. Poll failures remain non-disruptive.
+        const next = await getRoleProjection(
+          session,
+          { meetingId },
+          controller.signal,
+        );
+        if (!current()) {
+          return;
+        }
+        setProjection(next);
+        setProjectionError(undefined);
+        setProjectionRetryPaused(false);
+        setProjectionState("online");
+        consecutiveFailureCount = 0;
+        completionDelay = HEALTHY_PROJECTION_DELAY_MS;
+      } catch (cause) {
+        if (
+          !current() ||
+          (cause instanceof DOMException && cause.name === "AbortError")
+        ) {
+          return;
+        }
+        const retryable = cause instanceof ApiError ? cause.retryable : true;
+        failed = true;
+        queuedImmediateRefresh = false;
+        if (!retryable) {
+          nonretryablePaused = true;
+        }
+        setProjectionError(safeMessage(cause));
+        setProjectionRetryPaused(!retryable);
+        setProjectionState("offline");
+        completionDelay = nextProjectionDelay(
+          consecutiveFailureCount,
+          retryable,
+        );
+        consecutiveFailureCount += 1;
+      } finally {
+        if (activeController === controller) {
+          activeController = undefined;
+        }
+        inFlight = false;
+        if (current()) {
+          if (failed) {
+            queuedImmediateRefresh = false;
+            if (!nonretryablePaused && completionDelay !== undefined) {
+              schedule(completionDelay, true);
+            }
+          } else if (nonretryablePaused) {
+            queuedImmediateRefresh = false;
+          } else if (queuedImmediateRefresh) {
+            queuedImmediateRefresh = false;
+            schedule(0);
+          } else if (completionDelay !== undefined) {
+            schedule(completionDelay);
+          }
+        }
       }
     };
-    void update();
-    const interval = window.setInterval(() => void update(), 1_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
+
+    projectionRefreshTrigger.current = (manual) => {
+      if (!current()) {
+        return;
+      }
+      if (manual) {
+        nonretryablePaused = false;
+        consecutiveFailureCount = 0;
+        setProjectionError(undefined);
+        setProjectionRetryPaused(false);
+        setProjectionState("checking");
+      } else if (nonretryablePaused || retryableBackoffPending) {
+        return;
+      }
+      clearTimer();
+      if (inFlight) {
+        queuedImmediateRefresh = true;
+      } else {
+        schedule(0);
+      }
     };
-  }, [refreshProjection]);
+    setProjection(undefined);
+    setProjectionError(undefined);
+    setProjectionRetryPaused(false);
+    setProjectionState("checking");
+    void refresh();
+
+    return () => {
+      stopped = true;
+      clearTimer();
+      activeController?.abort();
+      if (projectionGeneration.current === generation) {
+        projectionGeneration.current += 1;
+        projectionRefreshTrigger.current = () => {
+          // Ignore refreshes after this scheduler has been disposed.
+        };
+      }
+    };
+  }, [meetingId, session]);
 
   useEffect(() => {
     lifecycleGeneration.current += 1;
@@ -1180,6 +1302,7 @@ export function RealtimePanel({
       <aside
         aria-label="Continuity status"
         className={`continuity-strip ${
+          projectionState === "offline" ||
           realtimeDegraded ||
           (realtimeAccess !== "checking" && !realtimeAccessReady)
             ? "degraded"
@@ -1229,6 +1352,19 @@ export function RealtimePanel({
           editing, export, and audit use the durable workspace and do not wait
           for AI.
         </p>
+        {projectionError === undefined ? null : (
+          <div className="projection-recovery" role="alert">
+            <span>{projectionError}</span>
+            {projectionRetryPaused ? (
+              <button
+                onClick={() => requestProjectionRefresh(true)}
+                type="button"
+              >
+                Retry meeting state
+              </button>
+            ) : null}
+          </div>
+        )}
       </aside>
       <section
         aria-label="Explicit speech controls"

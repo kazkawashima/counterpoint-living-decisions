@@ -244,8 +244,9 @@ test("durable projection exposes offline state and successful recovery", async (
     async (route) => {
       await route.fulfill({
         body: JSON.stringify({
-          code: "DEPENDENCY_UNAVAILABLE",
+          code: "REALTIME_UNAVAILABLE",
           correlationId: "correlation_e2e_projection_offline",
+          details: {},
           message: "Durable projection is temporarily unavailable.",
           retryable: true,
         }),

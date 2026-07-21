@@ -108,6 +108,7 @@ import {
   type UtteranceChannel,
   type UploadPrivateArtifactResponse,
 } from "@counterpoint/protocol";
+import { z } from "zod";
 
 export type {
   AcquireSharedFloorRequest,
@@ -307,6 +308,12 @@ export interface CaptureUtteranceClientInput {
 
 const SESSION_KEY = "counterpoint.session";
 const MEETING_BYOK_KEY_PREFIX = "counterpoint.byok.";
+const CloudflareWorkerResourceLimitProblemSchema = z.object({
+  error_code: z.literal(1102),
+  retryable: z.boolean().optional(),
+  status: z.number().int(),
+  title: z.string(),
+});
 
 export interface StoredSession {
   readonly bearerToken: string;
@@ -436,6 +443,13 @@ async function request(
         details: error.data.details,
         retryable: error.data.retryable,
       });
+    }
+    if (CloudflareWorkerResourceLimitProblemSchema.safeParse(body).success) {
+      throw new ApiError(
+        "CLOUDFLARE_WORKER_RESOURCE_LIMIT",
+        "Server capacity was exceeded. Your meeting state is safe; retry when ready.",
+        { retryable: false },
+      );
     }
     throw new ApiError("REQUEST_FAILED", "The request could not be completed.");
   }

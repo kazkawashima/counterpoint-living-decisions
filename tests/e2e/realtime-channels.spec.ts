@@ -151,6 +151,193 @@ test.beforeAll(async () => {
   await mkdir(judgeUsageScreenshotDirectory, { recursive: true });
 });
 
+test("projection polling is single-flight and backs off after retryable failures", async ({
+  baseURL,
+  page,
+}) => {
+  await page.goto(baseURL ?? "/");
+  await signIn(page, "Product", "counterpoint-product");
+  const continuity = page.getByRole("complementary", {
+    name: "Continuity status",
+  });
+  await expect(
+    continuity.getByText("Meeting state stays online"),
+  ).toBeVisible();
+  await page.getByLabel("Facilitator BYOK · tab only").fill(standardApiKey);
+  await page.getByRole("button", { name: "Set key" }).click();
+  await expect(page.getByText("Facilitator lease active")).toBeVisible();
+  await expect(continuity).toHaveClass(/\bready\b/u);
+
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const startedAt: number[] = [];
+  const completedAt: number[] = [];
+  await page.route(
+    "**/api/v1/meetings/meeting-global-ai-rollout/projection",
+    async (route) => {
+      const requestIndex = startedAt.length;
+      startedAt.push(Date.now());
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      if (requestIndex === 0) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 1_200);
+        });
+      }
+      completedAt.push(Date.now());
+      inFlight -= 1;
+      if (requestIndex < 2) {
+        await route.fulfill({
+          body: JSON.stringify({
+            code: "REALTIME_UNAVAILABLE",
+            correlationId: `correlation-projection-retry-${String(requestIndex + 1)}`,
+            details: {},
+            message: "Projection temporarily unavailable.",
+            retryable: true,
+          }),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
+      await route.continue();
+    },
+  );
+
+  await expect.poll(() => startedAt.length, { timeout: 12_000 }).toBe(2);
+  await page.waitForTimeout(250);
+  await expect(continuity.getByText("Offline", { exact: true })).toBeVisible();
+  await expect(continuity).toHaveClass(/\bdegraded\b/u);
+
+  const speech = page.getByRole("region", {
+    name: "Explicit speech controls",
+  });
+  const privateText = "Keep retryable projection backoff after private text.";
+  await speech.getByLabel("Equivalent text command").fill(privateText);
+  await speech.getByRole("button", { name: "Send privately" }).click();
+  await expect(
+    speech.getByText(`Sent privately · ${privateText} · text-only`),
+  ).toBeVisible();
+  await speech.getByRole("button", { name: /Shared · room/u }).click();
+  const sharedText = "Keep retryable projection backoff after shared text.";
+  await speech.getByLabel("Equivalent text command").fill(sharedText);
+  await speech.getByRole("button", { name: "Send to room" }).click();
+  await expect(
+    speech.getByText(`Sent to the room · ${sharedText} · text-only`),
+  ).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(startedAt).toHaveLength(2);
+
+  await expect
+    .poll(() => startedAt.length, { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(3);
+  expect(maxInFlight).toBe(1);
+  const firstRetryDelay = startedAt[1]! - completedAt[0]!;
+  const secondRetryDelay = startedAt[2]! - completedAt[1]!;
+  expect(firstRetryDelay).toBeGreaterThanOrEqual(1_500);
+  expect(firstRetryDelay).toBeLessThan(6_000);
+  expect(secondRetryDelay).toBeGreaterThanOrEqual(3_300);
+  expect(secondRetryDelay).toBeLessThan(9_000);
+  await expect(
+    continuity.getByText("Meeting state stays online"),
+  ).toBeVisible();
+});
+
+test("Cloudflare 1102 pauses projection polling until one manual retry recovers", async ({
+  baseURL,
+  page,
+}) => {
+  await page.goto(baseURL ?? "/");
+  await signIn(page, "Product", "counterpoint-product");
+  const continuity = page.getByRole("complementary", {
+    name: "Continuity status",
+  });
+  await expect(
+    continuity.getByText("Meeting state stays online"),
+  ).toBeVisible();
+
+  let projectionRequests = 0;
+  let releaseResourceLimit: (() => void) | undefined;
+  const resourceLimitGate = new Promise<void>((resolve) => {
+    releaseResourceLimit = resolve;
+  });
+  let releaseRecovery: (() => void) | undefined;
+  const recoveryGate = new Promise<void>((resolve) => {
+    releaseRecovery = resolve;
+  });
+  await page.route(
+    "**/api/v1/meetings/meeting-global-ai-rollout/projection",
+    async (route) => {
+      projectionRequests += 1;
+      if (projectionRequests === 1) {
+        await resourceLimitGate;
+        await route.fulfill({
+          body: JSON.stringify({
+            detail:
+              "A Worker script configured by the website owner exceeded its resource limits.",
+            error_code: 1102,
+            owner_action_required: true,
+            retryable: false,
+            status: 503,
+            title: "Error 1102: Worker exceeded resource limits",
+          }),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
+      await recoveryGate;
+      await route.continue();
+    },
+  );
+
+  try {
+    await expect.poll(() => projectionRequests).toBe(1);
+    const speech = page.getByRole("region", {
+      name: "Explicit speech controls",
+    });
+    const privateText = "Queue this private refresh before the 1102 arrives.";
+    await speech.getByLabel("Equivalent text command").fill(privateText);
+    await speech.getByRole("button", { name: "Send privately" }).click();
+    await expect(
+      speech.getByText(`Sent privately · ${privateText} · text-only`),
+    ).toBeVisible();
+
+    releaseResourceLimit?.();
+    await expect(
+      continuity.getByText(
+        "Server capacity was exceeded. Your meeting state is safe; retry when ready.",
+      ),
+    ).toBeVisible();
+    const retry = continuity.getByRole("button", {
+      name: "Retry meeting state",
+    });
+    await expect(retry).toHaveCount(1);
+
+    await speech.getByRole("button", { name: /Shared · room/u }).click();
+    const sharedText = "Do not refresh automatically while reads are paused.";
+    await speech.getByLabel("Equivalent text command").fill(sharedText);
+    await speech.getByRole("button", { name: "Send to room" }).click();
+    await expect(
+      speech.getByText(`Sent to the room · ${sharedText} · text-only`),
+    ).toBeVisible();
+    await page.waitForTimeout(1_250);
+    expect(projectionRequests).toBe(1);
+
+    await retry.click();
+    await expect.poll(() => projectionRequests).toBe(2);
+    await page.waitForTimeout(400);
+    expect(projectionRequests).toBe(2);
+    releaseRecovery?.();
+    await expect(
+      continuity.getByText("Meeting state stays online"),
+    ).toBeVisible();
+  } finally {
+    releaseResourceLimit?.();
+    releaseRecovery?.();
+  }
+});
+
 test("facilitator secures BYOK and connects isolated private/shared WebRTC channels", async ({
   baseURL,
   browser,

@@ -1,5 +1,6 @@
 import {
   acquireSharedFloor,
+  type ApiError,
   captureUtterance,
   getJudgeUsage,
   getRoleProjection,
@@ -173,6 +174,55 @@ describe("A7 browser API helpers", () => {
     expect(new Headers(options?.headers).get("authorization")).toBe(
       `Bearer ${session.bearerToken}`,
     );
+  });
+
+  it("normalizes only Cloudflare Worker resource-limit problems without exposing provider detail", async () => {
+    fetchMockFor(
+      {
+        detail:
+          "A Worker script configured by the website owner exceeded its resource limits.",
+        error_code: 1102,
+        owner_action_required: true,
+        retryable: false,
+        status: 503,
+        title: "Error 1102: Worker exceeded resource limits",
+      },
+      503,
+    );
+
+    const result = getRoleProjection(session, { meetingId: "meeting-1" });
+
+    await expect(result).rejects.toMatchObject({
+      code: "CLOUDFLARE_WORKER_RESOURCE_LIMIT",
+      message:
+        "Server capacity was exceeded. Your meeting state is safe; retry when ready.",
+      retryable: false,
+    } satisfies Partial<ApiError>);
+    await expect(result).rejects.not.toHaveProperty(
+      "message",
+      expect.stringContaining("Worker script"),
+    );
+  });
+
+  it("does not broadly normalize other Cloudflare problem codes", async () => {
+    fetchMockFor(
+      {
+        detail: "Provider-owned diagnostic detail.",
+        error_code: 1101,
+        retryable: false,
+        status: 503,
+        title: "A different Cloudflare problem",
+      },
+      503,
+    );
+
+    await expect(
+      getRoleProjection(session, { meetingId: "meeting-1" }),
+    ).rejects.toMatchObject({
+      code: "REQUEST_FAILED",
+      message: "The request could not be completed.",
+      retryable: false,
+    } satisfies Partial<ApiError>);
   });
 
   it("acquires the shared floor without accepting caller-selected ownership", async () => {
