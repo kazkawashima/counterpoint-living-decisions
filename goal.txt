@@ -164,8 +164,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   `/realtime/calls` request 0件をbrowser E2Eで固定した。usage summaryはhiddenとし、direct
   RealtimeへD1 USD 25 hard capが効くとは主張しない。structured judge AIの既存reservationは維持する。
 - commit `a10c4e1`をmainへpushし、canonical Production Worker version 29へdeploy済み。security
-  `337/337`、Cloudflare `149/149`、remote smoke、active binding監査が成功した。残るのは
-  private credentialを持つjudgeによるprivate/shared owner観測だけである。
+  `337/337`、Cloudflare `149/149`、remote smoke、active binding監査が成功した。さらにownerが
+  personal BYOKなしのjudgeでPrivate agentとShared room agentの双方の接続成功を確認した。
+  Judge ephemeral Realtime recovery sliceは完了とする。
 
 ## 完了条件 A — 名称変更
 

@@ -139,6 +139,6 @@ git push origin HEAD:main
 
 Load the existing local deployment inputs without printing secrets, render and inspect the production plan, then run `npm run cloudflare:deploy:production`. Stop if judge identity, structured AI, standard judge Secret, or canonical production Worker target is absent.
 
-- [ ] **Step 5: Verify the served deployment**
+- [x] **Step 5: Verify the served deployment**
 
 Inspect the 100%-served Worker version and bindings, run health/auth/access probes, and have a clean judge browser complete private and shared `Connect → Connected → Disconnect` without personal BYOK before claiming hosted success.

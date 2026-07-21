@@ -101,7 +101,8 @@ judge credentials, provider payloads, SDP, and private source content.
 
 Version 29 is the 100%-served canonical production Worker. Root, health,
 readiness, authentication boundary, provider-free Flagship smoke, active route
-flags, judge identity, and Secret-name bindings are verified. A fresh
-owner-observed private and shared server-funded judge
-`Connect → Connected → Disconnect` check remains the final hosted evidence
-because the private judge password is intentionally absent from local files.
+flags, judge identity, and Secret-name bindings are verified. The owner then
+confirmed from the canonical Production UI that the allowlisted judge, without
+personal BYOK, connected both Private agent and Shared room agent successfully.
+This closes the hosted Realtime evidence without placing the private judge
+password in local files or the repository.

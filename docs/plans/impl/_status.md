@@ -1582,5 +1582,8 @@ judge-enabled follow-up are recorded in the section below.
   deployed as the 100%-served canonical Production Worker version 29. The
   guarded deploy reran security `337/337`, Cloudflare `149/149`, strict deploy,
   root/health/readiness/auth, provider-free Flagship smoke, and active binding
-  audit. A clean owner-observed judge private/shared cycle is the only open item
-  in this recovery slice.
+  audit. The owner then confirmed from the canonical Production UI that the
+  allowlisted judge, without personal BYOK, connected both Private agent and
+  Shared room agent successfully. The judge ephemeral Realtime recovery slice
+  is complete; hosted C5 and the timed three-minute rehearsal remain separate
+  goal gates.
