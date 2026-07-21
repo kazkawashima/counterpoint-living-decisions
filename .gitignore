@@ -40,6 +40,7 @@ docs/*.zip
 playwright-report/
 test-results/
 .playwright-cli/
+.worktrees/
 
 # OS and editor files
 .DS_Store
