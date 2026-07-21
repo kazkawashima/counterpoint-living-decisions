@@ -53,6 +53,13 @@ import {
   synthesizeSharedDecisionCandidate,
   type StoredSession,
 } from "./api.js";
+import {
+  createResolutionDraft,
+  hasMaterialRevisionChange,
+  reconcileResolutionDraftState,
+  updateResolutionDraftField,
+  type ResolutionDraftState,
+} from "./decision-resolution.js";
 import { RealtimePanel } from "./realtime-panel.js";
 import { ArtifactPanel } from "./artifact-panel.js";
 
@@ -807,28 +814,20 @@ function FacilitatorDecisionPanel({
   const [resolutionChoice, setResolutionChoice] = useState<
     "recommit_revision" | "reject_decision" | "supersede_decision"
   >("recommit_revision");
-  const [resolutionDraft, setResolutionDraft] = useState({
-    changeReason: isFlagship
-      ? "Regulatory change requires a revised approval gate before launch."
-      : "New shared evidence requires a revised Decision.",
-    monitorCondition:
-      existingDecision?.snapshot.monitorCondition.description ??
-      (isFlagship
-        ? "Monitor the revised approval gate before resuming launch."
-        : "Review this Decision when the recorded condition changes."),
-    outcome:
-      existingDecision?.snapshot.outcome ??
-      (isFlagship
-        ? "Pause regional launch until the revised approval gate is satisfied."
-        : "Record the revised facilitator-confirmed outcome."),
-    rejectionReason: isFlagship
-      ? "The Decision can no longer proceed under the changed regulation."
-      : "The Decision can no longer proceed under the reviewed evidence.",
-    replacementDecisionId: "",
-    title:
-      existingDecision?.snapshot.title ??
-      (isFlagship ? "Revised conditional regional launch" : "Revised Decision"),
-  });
+  const [resolutionDraftState, setResolutionDraftState] =
+    useState<ResolutionDraftState>({
+      draft: {
+        changeReason: "",
+        monitorCondition: "",
+        outcome: "",
+        rejectionReason: "",
+        replacementDecisionId: "",
+        title: "",
+      },
+      edited: false,
+      target: undefined,
+    });
+  const resolutionDraft = resolutionDraftState.draft;
   const [decisionExport, setDecisionExport] =
     useState<DecisionJsonExportResponse>();
   const [receivingExternalEvent, setReceivingExternalEvent] = useState(false);
@@ -888,6 +887,41 @@ function FacilitatorDecisionPanel({
     save: crypto.randomUUID(),
     synthesize: crypto.randomUUID(),
   });
+
+  useEffect(() => {
+    if (existingDecision === undefined) {
+      return;
+    }
+    setDecision(existingDecision);
+    if (existingDecision.status === "REVIEW_REQUIRED") {
+      setResolutionDraftState((current) =>
+        reconcileResolutionDraftState(
+          current,
+          {
+            activeRevisionId: existingDecision.activeRevisionId,
+            decisionId: existingDecision.decisionId,
+          },
+          createResolutionDraft(
+            {
+              monitorCondition:
+                existingDecision.snapshot.monitorCondition.description,
+              outcome: existingDecision.snapshot.outcome,
+              title: existingDecision.snapshot.title,
+            },
+            isFlagship,
+          ),
+        ),
+      );
+    }
+  }, [
+    existingDecision?.activeRevisionId,
+    existingDecision?.decisionId,
+    existingDecision?.snapshot.monitorCondition.description,
+    existingDecision?.snapshot.outcome,
+    existingDecision?.snapshot.title,
+    existingDecision?.status,
+    isFlagship,
+  ]);
 
   useEffect(() => {
     if (!decisionForgeMounted.current) {
@@ -1376,7 +1410,9 @@ function FacilitatorDecisionPanel({
     field: keyof typeof resolutionDraft,
     value: string,
   ) {
-    setResolutionDraft((current) => ({ ...current, [field]: value }));
+    setResolutionDraftState((current) =>
+      updateResolutionDraftField(current, field, value),
+    );
     if (resolutionInvalidField === field) {
       setResolutionInvalidField(undefined);
       setError(undefined);
@@ -1444,6 +1480,23 @@ function FacilitatorDecisionPanel({
                   ? resolutionReplacementRef.current
                   : resolutionRejectionRef.current;
       target?.focus({ preventScroll: true });
+      return;
+    }
+    if (
+      resolutionChoice === "recommit_revision" &&
+      !hasMaterialRevisionChange(
+        {
+          monitorCondition: decision.snapshot.monitorCondition.description,
+          outcome: decision.snapshot.outcome,
+          title: decision.snapshot.title,
+        },
+        resolutionDraft,
+      )
+    ) {
+      setResolutionInvalidField(undefined);
+      setError(
+        "Change the title, outcome, or monitor condition before committing a new revision.",
+      );
       return;
     }
     setResolutionInvalidField(undefined);

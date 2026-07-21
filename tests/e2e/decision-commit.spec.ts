@@ -1142,6 +1142,102 @@ test("facilitator can reject an AI invalidation and resume monitoring", async ({
   });
 });
 
+test("prevents a content-free revision 3 after reload", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  const { review } = await driveFlagshipToAtRisk(page);
+  await review
+    .getByLabel("Facilitator review reason")
+    .fill("The staged regulatory evidence requires a revised approval gate.");
+  await activateByKeyboard(
+    page,
+    review.getByRole("button", { name: "Confirm impact and open review" }),
+  );
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "REVIEW_REQUIRED · Human confirmed" }),
+  ).toBeVisible();
+
+  await page.reload();
+  const meeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    page,
+    meeting.getByRole("button", { name: "Open workspace" }),
+  );
+
+  const resolution = page.getByRole("region", {
+    name: "Resolve Decision review",
+  });
+  const title = resolution.getByLabel("Revised Decision title");
+  const outcome = resolution.getByLabel("Revised outcome");
+  const monitorCondition = resolution.getByLabel("Revised monitor condition");
+  const commitRevision = resolution.getByRole("button", {
+    name: "Commit revision 3",
+  });
+  const revisionTwo = {
+    monitorCondition:
+      "Reopen if the approval gate, staffing plan, or applicable regulation changes.",
+    outcome:
+      "Regional launch proceeds only through a documented approval gate.",
+    title: "Establish Regional Launch Approval Gate",
+  };
+
+  await expect(title).toHaveValue("Revised conditional regional launch");
+  await expect(title).not.toHaveValue(revisionTwo.title);
+  await expect(outcome).toHaveValue(
+    "Pause regional launch until the revised approval gate is satisfied.",
+  );
+  await expect(outcome).not.toHaveValue(revisionTwo.outcome);
+  await expect(monitorCondition).toHaveValue(
+    "Monitor the revised approval gate before resuming launch.",
+  );
+  await expect(monitorCondition).not.toHaveValue(revisionTwo.monitorCondition);
+
+  let resolutionRequests = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/v1/decisions/review-resolution"
+    ) {
+      resolutionRequests += 1;
+    }
+  });
+  await title.fill(revisionTwo.title);
+  await outcome.fill(revisionTwo.outcome);
+  await monitorCondition.fill(revisionTwo.monitorCondition);
+  await activateByKeyboard(page, commitRevision);
+  await expect(page.getByRole("alert")).toContainText(
+    "Change the title, outcome, or monitor condition before committing a new revision.",
+  );
+  expect(resolutionRequests).toBe(0);
+
+  const revisedOutcome =
+    "Pause regional launch until the updated approval gate is satisfied.";
+  await outcome.fill(revisedOutcome);
+  await activateByKeyboard(page, commitRevision);
+  await expect(resolution.getByRole("status")).toContainText(
+    "Revision 3 is now active",
+  );
+  expect(resolutionRequests).toBe(1);
+
+  await page.reload();
+  const reloadedMeeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    page,
+    reloadedMeeting.getByRole("button", { name: "Open workspace" }),
+  );
+  const persistedDecision = page.locator(".committed-decision");
+  await expect(
+    persistedDecision.getByText("Revision 3 · COMMITTED", { exact: true }),
+  ).toBeVisible();
+  await expect(persistedDecision.locator("h3 + p")).toHaveText(revisedOutcome);
+});
+
 test("human review remains recorded when shared refresh fails", async ({
   page,
 }) => {
