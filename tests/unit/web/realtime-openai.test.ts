@@ -744,6 +744,41 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(peer.closed).toBe(true);
   });
 
+  it("retains only an allowlisted managed-call failure reason for recovery copy", async () => {
+    const peer = new FakePeer();
+    const providerFailure = Object.assign(
+      new Error("private provider response sk-never-expose"),
+      {
+        code: "REALTIME_UNAVAILABLE",
+        details: {
+          privateResponse: "account-private-never-expose",
+          providerStatus: 401,
+          reason: "PROVIDER_REJECTED",
+        },
+        retryable: true,
+      },
+    );
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () => Promise.reject(providerFailure),
+      idempotencyKey: "managed-safe-failure-reason",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      safeReason: "PROVIDER_REJECTED",
+      stage: "call_creation",
+    });
+    expect(JSON.stringify(failure)).not.toContain("private-never-expose");
+    expect(JSON.stringify(failure)).not.toContain("sk-never-expose");
+  });
+
   it("identifies offer creation as a peer-negotiation failure", async () => {
     const peer = new FakePeer();
     vi.spyOn(peer, "createOffer").mockRejectedValue(

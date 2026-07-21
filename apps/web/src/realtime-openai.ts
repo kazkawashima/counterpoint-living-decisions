@@ -7,6 +7,12 @@ const DEFAULT_RETRY_DELAYS_MS = [250, 500, 1_000] as const;
 export type OpenAiRealtimeChannel = "private" | "shared";
 export type RealtimeFailureStage =
   "access" | "call_creation" | "media" | "peer_negotiation";
+export type RealtimeManagedFailureReason =
+  | "OFFER_REJECTED"
+  | "PROVIDER_LOCATION_INVALID"
+  | "PROVIDER_REJECTED"
+  | "PROVIDER_SDP_INVALID"
+  | "PROVIDER_UNAVAILABLE";
 export type OpenAiRealtimeStatus =
   "off" | "connecting" | "connected" | "reconnecting" | "degraded";
 
@@ -179,10 +185,41 @@ export class RealtimeConnectionStageError extends Error {
     readonly stage: RealtimeFailureStage,
     message: string,
     readonly retryable = true,
+    readonly safeReason?: RealtimeManagedFailureReason,
   ) {
     super(message);
     this.name = "RealtimeConnectionStageError";
   }
+}
+
+const SAFE_MANAGED_FAILURE_REASONS = new Set<RealtimeManagedFailureReason>([
+  "OFFER_REJECTED",
+  "PROVIDER_LOCATION_INVALID",
+  "PROVIDER_REJECTED",
+  "PROVIDER_SDP_INVALID",
+  "PROVIDER_UNAVAILABLE",
+]);
+
+function safeManagedFailureReason(
+  error: unknown,
+): RealtimeManagedFailureReason | undefined {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error) ||
+    error.code !== "REALTIME_UNAVAILABLE" ||
+    !("details" in error) ||
+    typeof error.details !== "object" ||
+    error.details === null ||
+    !("reason" in error.details) ||
+    typeof error.details.reason !== "string" ||
+    !SAFE_MANAGED_FAILURE_REASONS.has(
+      error.details.reason as RealtimeManagedFailureReason,
+    )
+  ) {
+    return undefined;
+  }
+  return error.details.reason as RealtimeManagedFailureReason;
 }
 
 function isPermanentConnectionFailure(
@@ -727,6 +764,8 @@ export async function connectManagedOpenAiRealtime(
       throw new RealtimeConnectionStageError(
         "call_creation",
         "Realtime call creation failed.",
+        true,
+        safeManagedFailureReason(cause),
       );
     }
     managedCallId = answer.managedCallId;

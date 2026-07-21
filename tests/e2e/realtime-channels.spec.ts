@@ -18,6 +18,9 @@ const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
 const judgeUsageScreenshotDirectory = evidenceDirectory(
   "screenshots/judge-usage",
 );
+const realtimeRecoveryScreenshotDirectory = evidenceDirectory(
+  "screenshots/realtime-recovery",
+);
 const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
 async function installSyntheticWebRtc(context: BrowserContext) {
@@ -166,6 +169,7 @@ test.beforeAll(async () => {
   await mkdir(degradedScreenshotDirectory, { recursive: true });
   await mkdir(degradedClipDirectory, { recursive: true });
   await mkdir(judgeUsageScreenshotDirectory, { recursive: true });
+  await mkdir(realtimeRecoveryScreenshotDirectory, { recursive: true });
 });
 
 test.afterEach(async ({ page }) => {
@@ -856,6 +860,7 @@ test("server-owned access switches the browser to a credential-free managed call
   let managedStartRequests = 0;
   let managedTurnUtteranceId = "";
   let denyManagedStart = false;
+  let managedFailureReason: "PROVIDER_REJECTED" | undefined;
   let usageExhausted = false;
   let usageHost = "";
   let usageRequests = 0;
@@ -1052,6 +1057,23 @@ test("server-owned access switches the browser to a credential-free managed call
         });
         return;
       }
+      if (managedFailureReason !== undefined) {
+        await route.fulfill({
+          body: JSON.stringify({
+            code: "REALTIME_UNAVAILABLE",
+            correlationId: "correlation-managed-provider-rejected",
+            details: {
+              providerStatus: 401,
+              reason: managedFailureReason,
+            },
+            message: "Realtime updates are temporarily unavailable.",
+            retryable: true,
+          }),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
       await route.fulfill({
         body: JSON.stringify({
           channel: "private",
@@ -1114,6 +1136,29 @@ test("server-owned access switches the browser to a credential-free managed call
   expect(managedIdempotencyKey).toMatch(/^[0-9a-f-]{36}$/u);
   expect(clientSecretRequests).toBe(0);
   expect(directProviderRequests).toBe(0);
+
+  await privateCard.getByRole("button", { name: "Disconnect" }).click();
+  managedFailureReason = "PROVIDER_REJECTED";
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(privateCard.getByText("Text fallback")).toBeVisible({
+    timeout: 8_000,
+  });
+  await expect(
+    page
+      .getByRole("alert")
+      .getByText(
+        "Realtime call creation failed. Realtime provider rejected the call. Check the configured key or provider account, then retry.",
+      ),
+  ).toBeVisible();
+  await dock.screenshot({
+    animations: "disabled",
+    path: `${realtimeRecoveryScreenshotDirectory}/2026-07-22-judge-provider-rejected-recovery.png`,
+  });
+  expect(clientSecretRequests).toBe(0);
+  expect(directProviderRequests).toBe(0);
+  managedFailureReason = undefined;
+  await privateCard.getByRole("button", { name: "Try again" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
 
   const speech = page.getByRole("region", {
     name: "Explicit speech controls",

@@ -1,15 +1,150 @@
 import { mkdir } from "node:fs/promises";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
 const MEETING_ID = "meeting-global-ai-rollout";
 const recoveryScreenshotDirectory = evidenceDirectory(
   "screenshots/decision-review",
 );
+const realtimeRecoveryScreenshotDirectory = evidenceDirectory(
+  "screenshots/realtime-recovery",
+);
+
+async function installSyntheticWebRtc(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class SyntheticDataChannel extends EventTarget {
+      readyState: RTCDataChannelState = "open";
+      close(): void {
+        this.readyState = "closed";
+      }
+      send(): void {
+        // Connect-only Worker parity proof.
+      }
+    }
+    class SyntheticPeerConnection extends EventTarget {
+      connectionState: RTCPeerConnectionState = "new";
+      localDescription: RTCSessionDescription | null = null;
+      close(): void {
+        this.connectionState = "closed";
+        this.dispatchEvent(new Event("connectionstatechange"));
+      }
+      addTransceiver(): RTCRtpTransceiver {
+        return {
+          sender: { replaceTrack: () => Promise.resolve() },
+        } as unknown as RTCRtpTransceiver;
+      }
+      createDataChannel(): RTCDataChannel {
+        return new SyntheticDataChannel() as unknown as RTCDataChannel;
+      }
+      createOffer(): Promise<RTCSessionDescriptionInit> {
+        return Promise.resolve({
+          sdp: "v=0\r\ns=Cloudflare Worker BYOK synthetic offer\r\n",
+          type: "offer",
+        });
+      }
+      setLocalDescription(
+        description: RTCLocalSessionDescriptionInit,
+      ): Promise<void> {
+        this.localDescription = description as RTCSessionDescription;
+        return Promise.resolve();
+      }
+      setRemoteDescription(): Promise<void> {
+        this.connectionState = "connected";
+        this.dispatchEvent(new Event("connectionstatechange"));
+        return Promise.resolve();
+      }
+    }
+    Object.defineProperty(window, "RTCPeerConnection", {
+      configurable: true,
+      value: SyntheticPeerConnection,
+    });
+  });
+}
 
 test.beforeAll(async () => {
   await mkdir(recoveryScreenshotDirectory, { recursive: true });
+  await mkdir(realtimeRecoveryScreenshotDirectory, { recursive: true });
+});
+
+test("Worker BYOK UI configures both channels, disconnects, and clears the lease", async ({
+  page,
+}) => {
+  await installSyntheticWebRtc(page);
+  let issuedSecrets = 0;
+  await page.route(
+    "**/api/v1/meetings/*/realtime/client-secrets",
+    async (route) => {
+      const input = route.request().postDataJSON() as {
+        channel: "private" | "shared";
+        meetingId: string;
+      };
+      issuedSecrets += 1;
+      await route.fulfill({
+        body: JSON.stringify({
+          channel: input.channel,
+          clientSecret: `ek_cloudflare_worker_${input.channel}`,
+          correlationId: `correlation-cloudflare-worker-${input.channel}`,
+          expiresAt: "2026-07-22T08:01:00.000Z",
+          keySource: "facilitatorProvided",
+          meetingId: input.meetingId,
+          model: "gpt-realtime-2.1",
+        }),
+        contentType: "application/json",
+        status: 201,
+      });
+    },
+  );
+  await page.route(
+    "https://api.openai.com/v1/realtime/calls",
+    async (route) => {
+      await route.fulfill({
+        body: "v=0\r\ns=Cloudflare Worker BYOK synthetic answer\r\n",
+        contentType: "application/sdp",
+        status: 200,
+      });
+    },
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Product" }).click();
+  await page.getByLabel("Demo password").fill("counterpoint-product");
+  await page.getByRole("button", { name: "Continue to meetings" }).click();
+  await page
+    .getByRole("article")
+    .filter({ hasText: "Global AI Product Rollout" })
+    .getByRole("button", { name: "Open workspace" })
+    .click();
+
+  await expect(page.getByText("API key required")).toBeVisible();
+  await page
+    .getByLabel("Facilitator BYOK · tab only")
+    .fill("sk-synthetic-cloudflare-worker-never-exposed");
+  await page.getByRole("button", { name: "Set key" }).click();
+  await expect(page.getByText("Facilitator lease active")).toBeVisible();
+
+  const privateCard = page
+    .getByRole("article")
+    .filter({ hasText: "Private agent" });
+  const sharedCard = page
+    .getByRole("article")
+    .filter({ hasText: "Shared room agent" });
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await sharedCard.getByRole("button", { name: "Connect" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
+  await expect(sharedCard.getByText("Connected")).toBeVisible();
+  expect(issuedSecrets).toBe(2);
+  await page
+    .getByRole("region", { name: "Live channels, explicit boundaries" })
+    .screenshot({
+      animations: "disabled",
+      path: `${realtimeRecoveryScreenshotDirectory}/2026-07-22-worker-byok-both-connected.png`,
+    });
+
+  await privateCard.getByRole("button", { name: "Disconnect" }).click();
+  await sharedCard.getByRole("button", { name: "Disconnect" }).click();
+  await page.getByRole("button", { name: "Remove key" }).click();
+  await expect(page.getByText("API key required")).toBeVisible();
 });
 
 test("Worker SPA serves the hosted flagship through one external-style origin", async ({

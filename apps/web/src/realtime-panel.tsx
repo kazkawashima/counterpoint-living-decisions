@@ -89,9 +89,40 @@ const connectionStageMessage: Readonly<Record<RealtimeFailureStage, string>> = {
   media: "Microphone setup failed.",
   peer_negotiation: "Realtime peer negotiation failed.",
 };
+const managedFailureReasonMessage = {
+  OFFER_REJECTED:
+    "This browser produced an unsupported audio offer. Text remains available.",
+  PROVIDER_LOCATION_INVALID:
+    "Realtime provider returned an invalid call reference. Text remains available; retry.",
+  PROVIDER_REJECTED:
+    "Realtime provider rejected the call. Check the configured key or provider account, then retry.",
+  PROVIDER_SDP_INVALID:
+    "Realtime provider returned an invalid audio answer. Text remains available; retry.",
+  PROVIDER_UNAVAILABLE:
+    "Realtime provider could not be reached. Text remains available; retry.",
+} as const;
+
+function managedFailureDetail(error: ApiError): string | undefined {
+  if (
+    error.code !== "REALTIME_UNAVAILABLE" ||
+    typeof error.details !== "object" ||
+    error.details === null ||
+    !("reason" in error.details) ||
+    typeof error.details.reason !== "string" ||
+    !(error.details.reason in managedFailureReasonMessage)
+  ) {
+    return undefined;
+  }
+  return managedFailureReasonMessage[
+    error.details.reason as keyof typeof managedFailureReasonMessage
+  ];
+}
 
 function safeMessage(error: unknown): string {
   if (error instanceof RealtimeConnectionStageError) {
+    if (error.safeReason !== undefined) {
+      return managedFailureReasonMessage[error.safeReason];
+    }
     return connectionStageMessage[error.stage];
   }
   if (error instanceof ApiError && error.code === "API_KEY_REQUIRED") {
@@ -108,6 +139,12 @@ function safeMessage(error: unknown): string {
     return limit === "cost"
       ? "Daily judge cost limit reached. Meeting state and text remain available."
       : `Daily judge${limit === undefined ? "" : ` ${limit.replaceAll("_", " ")}`} limit reached. Meeting state and text remain available.`;
+  }
+  if (error instanceof ApiError) {
+    const managedDetail = managedFailureDetail(error);
+    if (managedDetail !== undefined) {
+      return managedDetail;
+    }
   }
   return error instanceof ApiError
     ? error.message
