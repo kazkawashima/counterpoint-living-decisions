@@ -13,6 +13,7 @@ import { uploadAndUsePrivateMarkdown } from "../helpers/private-source.js";
 const screenshotDirectory = evidenceDirectory("screenshots/shared-display");
 const clipDirectory = evidenceDirectory("clips/shared-display");
 const exactSnippet = "Regional launch requires a documented approval gate.";
+const FLAGSHIP_PURPOSE = "Global AI Product Rollout";
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();
@@ -240,4 +241,110 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
   );
   await displayContext.close();
   await saveVideo;
+});
+
+test("Decision lifecycle follows the shared Decision through review", async ({
+  baseURL,
+  browser,
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto(baseURL ?? "/");
+  await signIn(page, "Product", "counterpoint-product");
+  const meeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await meeting.getByRole("button", { name: "Open workspace" }).click();
+  await page.getByRole("button", { name: "Reset staged demo" }).click();
+  await page.getByRole("button", { name: "Confirm meeting reset" }).click();
+
+  await page.getByRole("button", { name: "Create shared display" }).click();
+  const activeDisplay = page.getByRole("group", {
+    name: "Read-only display active",
+  });
+  const displayHref = await activeDisplay
+    .getByRole("link", { name: "Open display" })
+    .getAttribute("href");
+  if (displayHref === null) {
+    throw new Error("Shared display link was not issued");
+  }
+  const displayContext = await browser.newContext({
+    viewport: { height: 720, width: 1280 },
+  });
+  const displayPage = await displayContext.newPage();
+  await displayPage.goto(displayHref);
+  const lifecycle = displayPage.locator(".shared-display-phase");
+  await expect(lifecycle).toContainText("Decision lifecycle");
+  await expect(lifecycle).toContainText("Building shared context");
+  await expect(displayPage.locator("body")).not.toContainText(
+    /Meeting phase|POSITION\s+\d+/iu,
+  );
+
+  const privateWorkspace = page.locator(".private-zone");
+  await privateWorkspace
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
+    .click();
+  await privateWorkspace
+    .getByRole("region", { name: "Review the exact payload" })
+    .getByRole("button", { name: "Approve exact excerpt" })
+    .click();
+  await expect(displayPage.locator(".display-evidence")).not.toContainText(
+    /evidence[_-][0-9a-z-]+/iu,
+  );
+  const decisionForge = page.getByRole("region", {
+    name: "Turn evidence into commitment",
+  });
+  await decisionForge
+    .getByRole("button", { name: "Generate Decision candidate" })
+    .click();
+  await decisionForge.getByRole("button", { name: "Confirm premise" }).click();
+  await decisionForge
+    .getByRole("button", { name: "Save Decision draft" })
+    .click();
+  await decisionForge
+    .getByRole("button", { name: "Validate and mark ready" })
+    .click();
+  await decisionForge.getByRole("button", { name: "Commit Decision" }).click();
+  const committedDecision = decisionForge.locator(".committed-decision");
+  await committedDecision
+    .getByRole("button", { name: "Start Decision monitor" })
+    .click();
+  await expect(lifecycle).toContainText("MONITORING", { timeout: 12_000 });
+  await displayPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${screenshotDirectory}/2026-07-21-shared-display-monitoring-desktop.png`,
+  });
+
+  await committedDecision
+    .getByRole("button", { name: "Inject staged regulatory event" })
+    .click();
+  await expect(lifecycle).toContainText("AT_RISK", { timeout: 12_000 });
+  await displayPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${screenshotDirectory}/2026-07-21-shared-display-at-risk-desktop.png`,
+  });
+
+  const review = page.getByRole("region", {
+    name: "Facilitator risk review",
+  });
+  await review
+    .getByLabel("Facilitator review reason")
+    .fill("The staged evidence requires a human Decision review.");
+  await review
+    .getByRole("button", { name: "Confirm impact and open review" })
+    .click();
+  await expect(lifecycle).toContainText("REVIEW_REQUIRED", {
+    timeout: 12_000,
+  });
+  await expect(displayPage.locator("body")).not.toContainText(
+    /Meeting phase|POSITION\s+\d+/iu,
+  );
+  await displayPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${screenshotDirectory}/2026-07-21-shared-display-review-required-desktop.png`,
+  });
+  await displayContext.close();
 });

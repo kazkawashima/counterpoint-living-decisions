@@ -103,8 +103,8 @@ function invalidationSourceLabel(
   invalidation: InvalidationEvaluation | undefined,
 ): string {
   return isStagedDemoRule(invalidation)
-    ? "Staged demo rule"
-    : `AI inferred · ${invalidation?.model ?? "provider"}`;
+    ? "Staged synthetic rule · grounded in shared Evidence"
+    : "OpenAI suggestion · grounded in shared Evidence";
 }
 
 function invalidationSuggestionLabel(
@@ -1614,6 +1614,9 @@ function FacilitatorDecisionPanel({
     candidate?.provenance.origin === "ai_assisted"
       ? candidate.provenance
       : undefined;
+  const premiseWasEdited =
+    premiseCandidate !== undefined &&
+    draft.premise.trim() !== premiseCandidate.statement.trim();
   const editable =
     phase === "candidate" ||
     phase === "manual-edit" ||
@@ -1712,27 +1715,32 @@ function FacilitatorDecisionPanel({
       {candidate !== undefined || phase === "manual-edit" ? (
         <div className="candidate-workbench">
           <div className="candidate-provenance">
-            <span
-              className={
-                aiProvenance === undefined ? "human-label" : "ai-label"
-              }
-            >
-              {aiProvenance === undefined
-                ? phase === "manual-edit"
-                  ? "Manual draft · Proposed · Not submitted"
-                  : "Human authored"
-                : "AI proposed"}
-            </span>
-            {aiProvenance === undefined ? null : (
-              <>
-                <span>{aiProvenance.model}</span>
+            <div className="candidate-provenance-primary">
+              <span
+                className={
+                  aiProvenance === undefined ? "human-label" : "ai-label"
+                }
+              >
+                {aiProvenance === undefined
+                  ? phase === "manual-edit"
+                    ? "Manual draft · Proposed · Not submitted"
+                    : "Human authored"
+                  : "OpenAI suggestion · grounded in shared Evidence"}
+              </span>
+              {aiProvenance === undefined ? null : (
                 <span>
                   Confidence {Math.round(aiProvenance.confidence * 100)}%
                 </span>
+              )}
+            </div>
+            {aiProvenance === undefined ? null : (
+              <details className="technical-provenance">
+                <summary>Technical provenance</summary>
+                <span>Model {aiProvenance.model}</span>
                 <span>
                   Source {aiProvenance.inputReferenceIds[0]?.slice(0, 14)}…
                 </span>
-              </>
+              </details>
             )}
           </div>
           {aiProvenance === undefined ? null : (
@@ -1761,23 +1769,31 @@ function FacilitatorDecisionPanel({
                 value={draft.outcome}
               />
             </label>
-            <label className="candidate-premise-field">
-              <span>
-                Candidate premise
-                <small>Inference · confirmation required</small>
-              </span>
-              <textarea
-                onChange={(event) =>
-                  setDraftField("premise", event.target.value)
-                }
-                readOnly={!editable}
-                rows={3}
-                value={draft.premise}
-              />
-              <span className="source-link">
-                ↳ Evidence {evidence.evidenceId.slice(0, 18)}…
-              </span>
-            </label>
+            <div className="candidate-premise-field">
+              <label>
+                <span>
+                  Candidate premise
+                  <small>Inference · confirmation required</small>
+                </span>
+                <textarea
+                  onChange={(event) =>
+                    setDraftField("premise", event.target.value)
+                  }
+                  readOnly={!editable}
+                  rows={3}
+                  value={draft.premise}
+                />
+              </label>
+              <div className="source-link">
+                <span className="source-link-primary">
+                  ↳ Grounded in approved shared Evidence
+                </span>
+                <details className="technical-provenance candidate-evidence-reference">
+                  <summary>Evidence reference</summary>
+                  <span>{evidence.evidenceId}</span>
+                </details>
+              </div>
+            </div>
             <div className="candidate-split">
               <label>
                 Retained dissent
@@ -1834,7 +1850,7 @@ function FacilitatorDecisionPanel({
             onClick={() => void disposePremise("confirmed")}
             type="button"
           >
-            Confirm edited premise
+            {premiseWasEdited ? "Confirm edited premise" : "Confirm premise"}
           </button>
           <button
             className="reject-premise"
@@ -1889,7 +1905,7 @@ function FacilitatorDecisionPanel({
           <div className="commit-lock" aria-hidden="true">
             ◇
           </div>
-          <div>
+          <div className="commit-gate-copy">
             <span>DECISION_READY</span>
             <strong>Commitment requires one explicit facilitator action</strong>
             <p>AI cannot press this control or create a committed revision.</p>
@@ -2087,14 +2103,15 @@ function FacilitatorDecisionPanel({
                 </strong>
                 <p>{invalidation.reason}</p>
                 <div className="risk-reference-chain">
-                  <span>
-                    Premise {invalidation.affectedPremiseIds[0]?.slice(0, 12)}…
-                  </span>
+                  <span>Confirmed premise</span>
                   <span aria-hidden="true">→</span>
-                  <span>
-                    Action {invalidation.affectedActionIds[0]?.slice(0, 12)}…
-                  </span>
+                  <span>Linked Action</span>
                 </div>
+                <details className="technical-provenance">
+                  <summary>Technical references</summary>
+                  <span>{invalidation.affectedPremiseIds[0]}</span>
+                  <span>{invalidation.affectedActionIds[0]}</span>
+                </details>
                 <small>
                   Revision {decision.activeRevision} remains immutable ·{" "}
                   {reviewReceipt === undefined
@@ -2148,28 +2165,40 @@ function FacilitatorDecisionPanel({
                   data-testid="review-affected-premise"
                 >
                   <span>Affected premise</span>
-                  <strong>{invalidation.affectedPremiseIds[0]}</strong>
+                  <strong>Confirmed launch premise</strong>
                   <p>{evidence.exactSnippet}</p>
+                  <details className="technical-provenance">
+                    <summary>Technical reference</summary>
+                    <span>{invalidation.affectedPremiseIds[0]}</span>
+                  </details>
                 </article>
                 <article
                   className="review-reference-card"
                   data-testid="review-evidence"
                 >
                   <span>Reviewed Evidence</span>
-                  <strong>{invalidation.evidenceReferenceIds[0]}</strong>
+                  <strong>Exact approved excerpt</strong>
                   <p>Exact shared excerpt retained with source provenance.</p>
+                  <details className="technical-provenance">
+                    <summary>Technical reference</summary>
+                    <span>{invalidation.evidenceReferenceIds[0]}</span>
+                  </details>
                 </article>
                 <article
                   className="review-reference-card"
                   data-testid="review-affected-action"
                 >
                   <span>Affected Action</span>
-                  <strong>{invalidation.affectedActionIds[0]}</strong>
+                  <strong>Linked launch Action</strong>
                   <p>
                     {reviewReceipt?.disposition === "confirm_invalidation"
                       ? "Held pending Decision revision"
                       : "Active until a facilitator confirms impact"}
                   </p>
+                  <details className="technical-provenance">
+                    <summary>Technical reference</summary>
+                    <span>{invalidation.affectedActionIds[0]}</span>
+                  </details>
                 </article>
               </div>
               <div className="review-model-reason">
@@ -2680,6 +2709,7 @@ function SharedDisplayScreen({
   }
 
   const decision = projection.shared.decisions.at(-1);
+  const decisionLifecycle = decision?.status ?? "Building shared context";
   return (
     <main className="shared-display-shell">
       <header className="shared-display-topbar">
@@ -2699,9 +2729,8 @@ function SharedDisplayScreen({
           <p>Shared, human-approved material only.</p>
         </div>
         <div className="shared-display-phase">
-          <span>Meeting phase</span>
-          <strong>{projection.meeting.phase}</strong>
-          <small>Position {projection.shared.position}</small>
+          <span>Decision lifecycle</span>
+          <strong>{decisionLifecycle}</strong>
         </div>
       </section>
       <section className="shared-display-grid">
@@ -3733,9 +3762,11 @@ function WorkspaceShell({
                   Range {evidence.sourceRange.start}–{evidence.sourceRange.end}
                 </span>
               </div>
-              <p className="evidence-id">
-                Shared evidence {evidence.evidenceId.slice(0, 18)}…
-              </p>
+              <p className="evidence-id">Approved shared Evidence</p>
+              <details className="technical-provenance evidence-reference">
+                <summary>Evidence reference</summary>
+                <span>{evidence.evidenceId}</span>
+              </details>
             </article>
           )}
           {meeting.role === "facilitator" && evidence !== undefined ? (

@@ -171,6 +171,18 @@ async function driveFlagshipToAtRisk(page: Page) {
       .getByRole("region", { name: "Review the exact payload" })
       .getByRole("button", { name: "Approve exact excerpt" }),
   );
+  const sharedEvidence = page.locator(".shared-evidence");
+  await expect(sharedEvidence.locator(".evidence-id")).toHaveText(
+    "Approved shared Evidence",
+  );
+  const sharedEvidenceReference = sharedEvidence.locator(
+    "details.evidence-reference",
+  );
+  await expect(sharedEvidenceReference).not.toHaveAttribute("open", "");
+  await sharedEvidenceReference.locator("summary").click();
+  await expect(sharedEvidenceReference.locator("span")).toHaveText(
+    /^evidence[_-][0-9a-z-]+$/iu,
+  );
   const decisionForge = page.getByRole("region", {
     name: "Turn evidence into commitment",
   });
@@ -180,10 +192,14 @@ async function driveFlagshipToAtRisk(page: Page) {
       name: "Generate Decision candidate",
     }),
   );
-  await expect(decisionForge.getByText("AI proposed")).toBeVisible();
+  await expect(
+    decisionForge.getByText("OpenAI suggestion · grounded in shared Evidence", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await activateByKeyboard(
     page,
-    decisionForge.getByRole("button", { name: "Confirm edited premise" }),
+    decisionForge.getByRole("button", { name: "Confirm premise" }),
   );
   await activateByKeyboard(
     page,
@@ -241,7 +257,9 @@ test("keeps AI provenance separate from candidate and committed prose", async ({
     /AI[-\u2010\u2011 ]proposed|pending facilitator confirmation/iu;
 
   await expect(
-    decisionForge.getByText("AI proposed", { exact: true }),
+    decisionForge.getByText("OpenAI suggestion · grounded in shared Evidence", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByLabel("Decision title")).toHaveValue(
     "Establish Regional Launch Approval Gate",
@@ -260,6 +278,130 @@ test("keeps AI provenance separate from candidate and committed prose", async ({
     "Regional launch proceeds only through a documented approval gate.",
   );
   await expect(committedDecision).not.toContainText(workflowStatusCopy);
+  await expect(decisionForge.locator(".risk-reference-chain")).toContainText(
+    "Confirmed premise",
+  );
+  await expect(decisionForge.locator(".risk-reference-chain")).toContainText(
+    "Linked Action",
+  );
+  await expect(
+    decisionForge.locator(".risk-reference-chain"),
+  ).not.toContainText(/premise-[0-9a-f-]+|action-[0-9a-f-]+/iu);
+});
+
+test("presentation labels separate authority, provenance, and commit copy", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await signIn(page, "Product", "counterpoint-product");
+  const meeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    page,
+    meeting.getByRole("button", { name: "Open workspace" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Reset staged demo" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Confirm meeting reset" }),
+  );
+
+  const privateWorkspace = page.locator(".private-zone");
+  await activateByKeyboard(
+    page,
+    privateWorkspace.getByRole("button", {
+      name: "Prepare grounded sharing preview",
+    }),
+  );
+  await activateByKeyboard(
+    page,
+    privateWorkspace
+      .getByRole("region", { name: "Review the exact payload" })
+      .getByRole("button", { name: "Approve exact excerpt" }),
+  );
+  const presentationSharedEvidence = page.locator(".shared-evidence");
+  await expect(presentationSharedEvidence.locator(".evidence-id")).toHaveText(
+    "Approved shared Evidence",
+  );
+  const presentationEvidenceReference = presentationSharedEvidence.locator(
+    "details.evidence-reference",
+  );
+  await expect(presentationEvidenceReference).not.toHaveAttribute("open", "");
+  await presentationEvidenceReference.locator("summary").click();
+  await expect(presentationEvidenceReference.locator("span")).toHaveText(
+    /^evidence[_-][0-9a-z-]+$/iu,
+  );
+
+  const decisionForge = page.getByRole("region", {
+    name: "Turn evidence into commitment",
+  });
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", {
+      name: "Generate Decision candidate",
+    }),
+  );
+  const provenance = decisionForge.locator(".candidate-provenance-primary");
+  await expect(provenance).toContainText(
+    "OpenAI suggestion · grounded in shared Evidence",
+  );
+  await expect(
+    decisionForge.getByText(/gpt-5\.6-sol|deterministic-shared-decision/iu),
+  ).not.toBeVisible();
+  await expect(decisionForge.locator(".source-link-primary")).toHaveText(
+    "↳ Grounded in approved shared Evidence",
+  );
+  const candidateEvidenceReference = decisionForge.locator(
+    "details.candidate-evidence-reference",
+  );
+  await expect(candidateEvidenceReference).not.toHaveAttribute("open", "");
+  await candidateEvidenceReference.locator("summary").click();
+  await expect(candidateEvidenceReference.locator("span")).toHaveText(
+    /^evidence[_-][0-9a-z-]+$/iu,
+  );
+
+  const premise = page.getByLabel("Candidate premise");
+  await expect(
+    decisionForge.getByRole("button", { name: "Confirm premise" }),
+  ).toBeVisible();
+  await premise.fill(
+    "Regional launch requires a documented approval gate confirmed by the facilitator.",
+  );
+  await expect(
+    decisionForge.getByRole("button", { name: "Confirm edited premise" }),
+  ).toBeVisible();
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Confirm edited premise" }),
+  );
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Save Decision draft" }),
+  );
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", { name: "Validate and mark ready" }),
+  );
+
+  const commitCopy = decisionForge.locator(".commit-gate-copy");
+  await expect(commitCopy).toBeVisible();
+  const layout = await commitCopy.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      display: style.display,
+      flexDirection: style.flexDirection,
+      rowGap: Number.parseFloat(style.rowGap),
+    };
+  });
+  expect(layout).toMatchObject({
+    display: "flex",
+    flexDirection: "column",
+  });
+  expect(layout.rowGap).toBeGreaterThan(0);
 });
 
 test("OpenAI failure preserves manual Decision, audit, and export paths", async ({
@@ -390,7 +532,7 @@ test("OpenAI failure preserves manual Decision, audit, and export paths", async 
     .getByRole("button", { name: "Create human-authored candidate" })
     .click();
   await expect(page.getByText("Human authored")).toBeVisible();
-  await page.getByRole("button", { name: "Confirm edited premise" }).click();
+  await page.getByRole("button", { name: "Confirm premise" }).click();
   await page.getByRole("button", { name: "Save Decision draft" }).click();
   await page.getByRole("button", { name: "Validate and mark ready" }).click();
   await page.getByRole("button", { name: "Commit Decision" }).click();
@@ -551,11 +693,16 @@ test("facilitator commits a grounded Decision that participants can revisit", as
       name: "Generate Decision candidate",
     }),
   );
-  await expect(facilitatorPage.getByText("AI proposed")).toBeVisible();
+  await expect(
+    facilitatorPage.getByText(
+      "OpenAI suggestion · grounded in shared Evidence",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(decisionForge).toBeFocused();
   await expect(
     facilitatorPage.getByText("deterministic-shared-decision"),
-  ).toBeVisible();
+  ).not.toBeVisible();
   await expect(facilitatorPage.getByLabel("Candidate premise")).toHaveValue(
     "Regional launch requires a documented approval gate.",
   );

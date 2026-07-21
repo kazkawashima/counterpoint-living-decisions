@@ -41,38 +41,46 @@ This tutorial remains the three-minute presentation path.
    proposes one grounded exact excerpt.
 6. Read **Outgoing preview** and confirm that it says **AI suggestion · owner
    only**. Choose **Approve exact excerpt** only after checking the range.
-7. In **Candidate workbench**, review the title, outcome, premise, retained
-   dissent, bounded Action, and monitor condition. Choose **Confirm edited
+7. Choose **Generate Decision candidate**.
+8. In **Candidate workbench**, review the title, outcome, premise, retained
+   dissent, bounded Action, and monitor condition. Choose **Confirm premise**;
+   if you change the premise first, the control becomes **Confirm edited
    premise**.
-8. Choose **Save Decision draft**, then **Validate and mark ready**.
-9. Choose **Commit Decision**. Stop briefly on **Human committed** and the
-   revision history.
-10. Choose **Start Decision monitor**. The resulting **Monitoring active**
+9. Choose **Save Decision draft**, then **Validate and mark ready**.
+10. Choose **Commit Decision**. Stop briefly on **Human committed** and the
+    revision history.
+11. Choose **Start Decision monitor**. The resulting **Monitoring active**
     state means the monitor registration exists; it is not a claim that time
     has passed in the real world.
-11. Choose **Inject staged regulatory event**. The screen explicitly labels
-    this as a synthetic demo story and describes the time jump.
-12. When `AT_RISK · AI suggestion` appears, read the affected premise and
+12. Choose **Inject staged regulatory event**. The screen explicitly labels
+    this as a staged synthetic event and shows its effective date. It does not
+    claim that real-world time advanced or that continuous monitoring occurred.
+13. When `AT_RISK · AI suggestion` appears, read the affected premise and
     Action. Enter a short facilitator reason, for example:
     `The staged regulatory event changes the approval-gate premise and requires human reconsideration.`
-13. Choose **Confirm impact and open review**. This is the human authority
+14. Choose **Confirm impact and open review**. This is the human authority
     boundary; AI does not move the Decision directly to the final review
     state.
-14. Stop on `REVIEW_REQUIRED`, the held Action, and the reconsideration task.
-15. Choose **Prepare Decision JSON export** to show that the durable history,
+15. Stop on `REVIEW_REQUIRED`, the held Action, and the reconsideration task.
+16. Choose **Prepare Decision JSON export** to show that the durable history,
     audit entries, revisions, and current state remain exportable.
+
+The three-minute presentation intentionally ends at `REVIEW_REQUIRED` plus
+export: an unresolved human review is the demonstrated outcome, not an
+unfinished error. The longer production reviewer walkthrough continues through
+a materially edited revision 3, export, and reload persistence.
 
 ## Three-minute presentation version
 
-| Time      | Screen beat                            | Narration cue                                                                                |
-| --------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 0:00–0:20 | Login → seeded Flagship                | “Descant keeps each person’s context private until permission is explicit.”                  |
-| 0:20–0:45 | Private note → grounded preview        | “The server-funded agent suggests an exact excerpt, but it cannot publish it.”               |
-| 0:45–1:10 | Outgoing preview → Approve             | “Only this range crosses the boundary, after human approval.”                                |
-| 1:10–1:45 | Candidate → confirm → ready → commit   | “GPT-5.6 proposes structure; the facilitator confirms the premise and commits the Decision.” |
-| 1:45–2:10 | Monitoring active → staged event       | “Later, a clearly staged regulatory change tests whether the Decision is still true.”        |
-| 2:10–2:40 | `AT_RISK` → reason → `REVIEW_REQUIRED` | “AI raises an advisory; only human review holds the Action and opens reconsideration.”       |
-| 2:40–3:00 | History/audit → JSON export            | “The result is a durable, inspectable record—not a chat transcript.”                         |
+| Time      | Screen beat                            | Narration cue                                                                               |
+| --------- | -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 0:00–0:20 | Login → seeded Flagship                | “Descant keeps each person’s context private until permission is explicit.”                 |
+| 0:20–0:45 | Private note → grounded preview        | “The server-funded agent suggests an exact excerpt, but it cannot publish it.”              |
+| 0:45–1:10 | Outgoing preview → Approve             | “Only this range crosses the boundary, after human approval.”                               |
+| 1:10–1:45 | Generate → confirm → ready → commit    | “OpenAI proposes structure; the facilitator confirms the premise and commits the Decision.” |
+| 1:45–2:10 | Monitoring active → staged event       | “Later, a clearly staged regulatory change tests whether the Decision is still true.”       |
+| 2:10–2:40 | `AT_RISK` → reason → `REVIEW_REQUIRED` | “AI raises an advisory; only human review holds the Action and opens reconsideration.”      |
+| 2:40–3:00 | History/audit → JSON export            | “The result is a durable, inspectable record—not a chat transcript.”                        |
 
 ## Boundary statements to say aloud
 

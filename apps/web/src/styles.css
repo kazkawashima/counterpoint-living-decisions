@@ -3088,10 +3088,18 @@ button:disabled {
 .candidate-provenance {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 0.35rem;
 }
 
-.candidate-provenance > span {
+.candidate-provenance-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.candidate-provenance-primary > span,
+.technical-provenance {
   padding: 0.3rem 0.45rem;
   border: 1px solid var(--line);
   color: var(--muted);
@@ -3100,13 +3108,13 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.candidate-provenance .ai-label {
+.candidate-provenance-primary .ai-label {
   border-color: rgba(197, 164, 255, 0.38);
   color: var(--private);
   background: rgba(197, 164, 255, 0.06);
 }
 
-.candidate-provenance .human-label {
+.candidate-provenance-primary .human-label {
   border-color: rgba(131, 230, 189, 0.38);
   color: var(--mint);
 }
@@ -3162,15 +3170,26 @@ button:disabled {
 }
 
 .candidate-premise-field {
+  display: grid;
   padding: 0.8rem;
+  gap: 0.5rem;
   border: 1px solid rgba(255, 193, 112, 0.25);
   background: rgba(255, 193, 112, 0.035);
 }
 
 .source-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--mint);
   font-family: ui-monospace, monospace;
   font-size: 0.54rem;
+}
+
+.evidence-reference {
+  width: fit-content;
+  margin-top: 0.65rem;
 }
 
 .candidate-split {
@@ -3210,6 +3229,12 @@ button:disabled {
   gap: 0.7rem;
   border: 1px solid rgba(131, 230, 189, 0.38);
   background: rgba(131, 230, 189, 0.05);
+}
+
+.commit-gate-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .confirmation-stripe {
@@ -3611,6 +3636,22 @@ button:disabled {
   padding: 0.35rem 0.5rem;
   border: 1px solid rgba(255, 193, 112, 0.35);
   color: #ffd39a;
+}
+
+.technical-provenance {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.5rem;
+}
+
+.technical-provenance summary {
+  cursor: pointer;
+}
+
+.technical-provenance span {
+  display: block;
+  margin-top: 0.3rem;
+  overflow-wrap: anywhere;
 }
 
 .committed-decision.review-required,
