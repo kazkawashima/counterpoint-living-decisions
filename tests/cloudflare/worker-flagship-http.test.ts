@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWorkerHandler, type Env } from "../../apps/worker/src/index.js";
 import { fingerprintJudgeStructuredInput } from "../../apps/worker/src/judge-structured-ai.js";
+import { eventsForActiveProjection } from "../../apps/worker/src/worker-flagship-http.js";
 import type {
   AssumptionInvalidationEvaluation,
   AssumptionInvalidationEvaluationInput,
@@ -72,6 +73,24 @@ function judgeWorkerEnv(overrides: Partial<Env> = {}): Env {
     ...overrides,
   };
 }
+
+it("replays only events after the latest completed demo reset", () => {
+  const active = {
+    eventType: "UtteranceCaptured",
+    id: "active",
+    position: 5,
+  };
+
+  expect(
+    eventsForActiveProjection([
+      { eventType: "DecisionCommitted", id: "historical", position: 1 },
+      { eventType: "DemoResetCompleted", id: "reset-old", position: 2 },
+      { eventType: "EvidenceShared", id: "superseded", position: 3 },
+      { eventType: "DemoResetCompleted", id: "reset-latest", position: 4 },
+      active,
+    ]),
+  ).toEqual([{ ...active, position: 1 }]);
+});
 
 async function login(
   handler: ReturnType<typeof createWorkerHandler>,

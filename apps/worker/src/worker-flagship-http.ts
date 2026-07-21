@@ -654,13 +654,19 @@ function privateDisclosureCandidates(
   return [...candidates.values()];
 }
 
-function eventsAfterLatestDemoReset(
-  events: readonly DomainEvent[],
-): readonly DomainEvent[] {
+export function eventsForActiveProjection<
+  TEvent extends { readonly eventType: string; readonly position: number },
+>(events: readonly TEvent[]): readonly TEvent[] {
   const resetIndex = events.findLastIndex(
     (event) => event.eventType === "DemoResetCompleted",
   );
-  return resetIndex < 0 ? events : events.slice(resetIndex + 1);
+  if (resetIndex < 0) {
+    return events;
+  }
+  return events.slice(resetIndex + 1).map((event, index) => ({
+    ...event,
+    position: index + 1,
+  }));
 }
 
 function decisionView(
@@ -923,7 +929,10 @@ async function assignedMeeting(
     ...event,
     position: meetingPosition(position),
   }));
-  const projection = replayMeeting(domainMeetingId(meetingId), events);
+  const projection = replayMeeting(
+    domainMeetingId(meetingId),
+    eventsForActiveProjection(events),
+  );
   return {
     meetingId,
     participantId: assignment.participantId,
@@ -1036,10 +1045,10 @@ async function roleProjection(
     ...event,
     position: meetingPosition(position),
   }));
-  const activeEvents = eventsAfterLatestDemoReset(events);
+  const activeEvents = eventsForActiveProjection(events);
   const projection = replayMeeting(
     domainMeetingId(authorization.meetingId),
-    events,
+    activeEvents,
   );
   const privateWorkspace = projection.privateWorkspaces.find(
     ({ ownerParticipantId }) =>
@@ -1201,7 +1210,10 @@ async function sharedDisplayProjection(
     ...event,
     position: meetingPosition(position),
   }));
-  const projection = replayMeeting(domainMeetingId(meetingScope), events);
+  const projection = replayMeeting(
+    domainMeetingId(meetingScope),
+    eventsForActiveProjection(events),
+  );
   return SharedDisplayProjectionResponseSchema.parse({
     correlationId,
     expiresAt,
@@ -1839,10 +1851,12 @@ export async function handleWorkerFlagshipHttp(input: {
     const records = await dependencies.events.load(meetingId);
     const projection = replayMeeting(
       domainMeetingId(meetingId),
-      records.map(({ event, position }) => ({
-        ...event,
-        position: meetingPosition(position),
-      })),
+      eventsForActiveProjection(
+        records.map(({ event, position }) => ({
+          ...event,
+          position: meetingPosition(position),
+        })),
+      ),
     );
     const decision = projection.shared.decisions.find(
       ({ id }) => String(id) === String(parsed.data.decisionId),
@@ -2926,7 +2940,10 @@ export async function handleWorkerFlagshipHttp(input: {
       ...event,
       position: meetingPosition(position),
     }));
-    const projection = replayMeeting(domainMeetingId(meetingId), events);
+    const projection = replayMeeting(
+      domainMeetingId(meetingId),
+      eventsForActiveProjection(events),
+    );
     return apiJsonResponse(
       ListSharedExternalEventsResponseSchema.parse({
         correlationId,
