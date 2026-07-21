@@ -51,6 +51,9 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   assumption invalidation evaluation, human premise confirmation, Decision
   commit, staged event, `AT_RISK`, human review, `REVIEW_REQUIRED`, and JSON
   export.
+- After the canonical Production D1 binding was restored, the owner again
+  confirmed the private `judge` login from a clean browser. The credential
+  itself remains outside the repository and this record.
 - The first post-deploy smoke was retried after Worker propagation; the
   follow-up full Flagship smoke passed through monitoring, staged event,
   invalidation review, and reset. The transient first attempt was not used as

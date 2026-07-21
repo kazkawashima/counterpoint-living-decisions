@@ -1294,6 +1294,9 @@ judge-enabled follow-up are recorded in the section below.
   `attempted=0 settled=0 released=0 failed=0`. It performed only the
   content-free stale-row SELECT path and did not read judge/HMAC Secrets,
   call a provider, or mutate Production D1.
+- The owner confirmed the private `judge` login again from a clean browser
+  after the canonical Production D1 correction. No credential value was
+  recorded.
 - This closes the ordinary-user manual continuity repair, but does not close
   the full hosted C5 matrix, independent cost-limit proof, timed human
   rehearsal, or owner-controlled public visibility switch.
