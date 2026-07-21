@@ -233,7 +233,9 @@ function parseTurnInput(
   return { utteranceId: value.utteranceId };
 }
 
-function parseStartCallInput(value: unknown): StartCallInput | undefined {
+export function parseJudgeRealtimeStartCallInput(
+  value: unknown,
+): StartCallInput | undefined {
   if (
     !isRecord(value) ||
     !exactKeys(value, [
@@ -248,7 +250,8 @@ function parseStartCallInput(value: unknown): StartCallInput | undefined {
     !nonEmptyString(value.safetyIdentifier) ||
     value.safetyIdentifier.length > 512 ||
     /\s/u.test(value.safetyIdentifier) ||
-    !nonEmptyString(value.sdpOffer) ||
+    (typeof value.sdpOffer !== "string" ||
+      value.sdpOffer.trim().length === 0) ||
     new TextEncoder().encode(value.sdpOffer).byteLength >
       MAX_OPENAI_REALTIME_SDP_BYTES
   ) {
@@ -1022,7 +1025,7 @@ export class JudgeRealtimeCallController extends DurableObject<JudgeRealtimeBind
       }
       return jsonResponse(result, result.kind === "pending" ? 202 : 200);
     }
-    const parsed = parseStartCallInput(body);
+    const parsed = parseJudgeRealtimeStartCallInput(body);
     if (parsed === undefined) {
       return jsonResponse({ code: "INVALID_REQUEST" }, 400);
     }

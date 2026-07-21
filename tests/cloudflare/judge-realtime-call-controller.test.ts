@@ -13,6 +13,7 @@ import {
   JUDGE_REALTIME_RESERVED_USAGE,
   JudgeRealtimeCallLifecycle,
   isExactJudgeRealtimeReservation,
+  parseJudgeRealtimeStartCallInput,
   type JudgeRealtimeCallStorage,
 } from "../../apps/worker/src/judge-realtime-call-controller.js";
 import { judgeRealtimeCallControllerFor } from "../../apps/worker/src/index.js";
@@ -358,6 +359,38 @@ async function beginAndStopSpeech(
   await fixture.sidebandObserver?.onProviderEvent(speechStarted(sequence));
   await fixture.sidebandObserver?.onProviderEvent(speechStopped(sequence));
 }
+
+describe("managed Realtime start input parsing", () => {
+  it("accepts a browser audio SDP ending in CRLF without normalization", () => {
+    const browserSdp = [
+      "v=0",
+      "o=- 123 456 IN IP4 0.0.0.0",
+      "s=-",
+      "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+      "a=mid:0",
+      "",
+    ].join("\r\n");
+
+    expect(
+      parseJudgeRealtimeStartCallInput({
+        ...input,
+        sdpOffer: browserSdp,
+      }),
+    ).toEqual({
+      ...input,
+      sdpOffer: browserSdp,
+    });
+  });
+
+  it("rejects a whitespace-only SDP", () => {
+    expect(
+      parseJudgeRealtimeStartCallInput({
+        ...input,
+        sdpOffer: " \r\n\t",
+      }),
+    ).toBeUndefined();
+  });
+});
 
 describe("JudgeRealtimeCallLifecycle", () => {
   it("durably owns the provider call ID and alarm before returning browser SDP", async () => {
