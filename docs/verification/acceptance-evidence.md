@@ -54,6 +54,12 @@ This refreshes the manual-fallback and ordinary/judge/display browser-boundary
 evidence; it still does not close hosted C5, independent cost-limit proof, or
 the first-time timed human rehearsal.
 
+Implementation boundary recheck: the focused managed-AI suite passed `80/80`
+across three Cloudflare integration files and three Worker unit files. It
+proves local/contract replay, conflict, concurrency, ownership, termination,
+reservation, and pre-provider limit behavior. It is not evidence of hosted C5
+coverage or independent real-provider cost exhaustion.
+
 ## Current non-acceptance release gates
 
 - Hosted C5 matrix, independent cost-limit evidence, and the first-time timed

@@ -1322,3 +1322,15 @@ judge-enabled follow-up are recorded in the section below.
   the test. This is a fresh hosted boundary signal, not a claim that the full
   C5 matrix, independent USD 25 cost-limit exhaustion, or timed human
   rehearsal is complete.
+
+## 2026-07-21 managed-AI boundary suite recheck
+
+- The focused managed-AI boundary suite passed `80/80`: three Cloudflare
+  integration files and three Worker unit files. It covers exact replay,
+  changed-request conflicts, concurrent start winners, meeting/owner/session
+  substitution, termination races, reservation settlement, and
+  `USAGE_LIMIT_REACHED` before provider work.
+- This closes the implementation/contract evidence for the checked goal items
+  around pre-billable limits and managed-route idempotency. It does not claim
+  the hosted C5 matrix or independent real-provider USD 25 exhaustion proof;
+  those remain release gates.

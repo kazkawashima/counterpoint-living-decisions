@@ -27,6 +27,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - Worker側には judge allowlist、別HMACによるIP擬似化、D1予約台帳、opaque call
   handle、rolling 24時間 USD 25 hard cap、`USAGE_LIMIT_REACHED` の基盤がある。
 - providerのUSD 50 alertは二次警告であり、アプリ側のUSD 25制限の代替ではない。
+- 2026-07-21、managed Realtime/structured AIの再送・並行開始・meeting越境・
+  session/owner差替え・終了競合・二重課金防止の対象スイートを再実行し、Cloudflare
+  3ファイルとunit 3ファイル、合計80テストが成功した。これは実装/契約境界の証拠であり、
+  hosted C5再実行や実プロバイダーの独立cost実測とは分けて扱う。
 - C5の hosted Worker security matrix 再実行、独立したcost-limit証明、3分の人間
   リハーサル、最終公開切替は未完了。production D1/R2/DO、judge Secret、専用
   `judge` identity、exact allowlist付きWorkerは明示承認のもとで有効化済み。
@@ -176,12 +180,12 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       満たさない限り利用できない。
 - [x] judgeはserver-fundedでBYOK不要、普通のユーザーはjudge keyを選択・継承・利用
       できず、browser response/network/logにprovider credentialやprovider call IDが出ない。
-- [ ] meeting、account、IP pseudonym、concurrency、Realtime seconds、generation、
+- [x] meeting、account、IP pseudonym、concurrency、Realtime seconds、generation、
       tokens、rolling 24時間costの全制限をbillable workの前に確認する。
-- [ ] rolling 24時間 USD 25をアプリ側hard capとして強制し、USD 50 provider alertは
+- [x] rolling 24時間 USD 25をアプリ側hard capとして強制し、USD 50 provider alertは
       二次警告として扱う。どの制限到達時も新規provider requestを出さず、明示的な
       `USAGE_LIMIT_REACHED` と手動継続を返す。
-- [ ] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、
+- [x] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、
       meeting越境、session/owner差替え、終了競合をテストし、二重課金しない。
 
 ### 公開前の証明
