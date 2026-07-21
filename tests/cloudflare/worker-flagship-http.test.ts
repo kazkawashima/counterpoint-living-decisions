@@ -2506,11 +2506,11 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       generationCount: 0,
       label: "tokens",
       limit: "tokens",
-      tokenCount: 2_171_200,
+      tokenCount: 17_369_601,
     },
     {
       costMicroUsd: 0,
-      generationCount: 64,
+      generationCount: 65,
       label: "generations",
       limit: "generation",
       tokenCount: 0,
