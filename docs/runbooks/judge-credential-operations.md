@@ -23,7 +23,10 @@ as the production judge password.
    synthetic judge account. Do not use an ordinary participant account.
 2. Confirm the production Worker config has all feature gates explicitly
    enabled only in the approved production target, while preview remains
-   disabled.
+   disabled. The repository deploy renderer requires
+   `CLOUDFLARE_ENABLE_JUDGE_MODE=production` and a private
+   `CLOUDFLARE_JUDGE_USER_ID`; ordinary public demo users must not be used for
+   the production allowlist.
 3. Register `OPENAI_API_KEY_JUDGE` and `JUDGE_IP_HMAC_SECRET` as separate
    Cloudflare Worker Secrets. Do not put either value in `vars`, `.env`,
    `.dev.vars`, GitHub files, D1, R2, Durable Object state, browser payloads,

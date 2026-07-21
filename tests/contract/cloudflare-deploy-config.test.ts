@@ -12,6 +12,7 @@ interface RenderedEnvironment {
     readonly DEMO_STORY_MODE: string;
     readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
     readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
+    readonly JUDGE_USER_ID?: string;
     readonly OPENAI_MODE: string;
   };
 }
@@ -34,6 +35,7 @@ interface RenderedConfig {
     readonly DEMO_STORY_MODE: string;
     readonly JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: string;
     readonly JUDGE_STRUCTURED_AI_ROUTE_ENABLED: string;
+    readonly JUDGE_USER_ID?: string;
     readonly OPENAI_MODE: string;
     readonly RUNTIME_MODE: string;
   };
@@ -182,6 +184,46 @@ describe("Cloudflare remote deploy configuration", () => {
 
     expect(rendered.d1_databases[0]?.database_id).toBe(cloudflareDatabaseId);
   });
+
+  it("enables both production judge routes only with explicit opt-in", () => {
+    const rendered = renderCloudflareDeployConfiguration({
+      baseConfig,
+      databaseId,
+      enableJudgeMode: true,
+      judgeUserId: "judge-production",
+      target: "production",
+    }) as unknown as RenderedConfig;
+
+    expect(rendered.vars).toMatchObject({
+      JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "enabled",
+      JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "enabled",
+      JUDGE_USER_ID: "judge-production",
+      OPENAI_MODE: "disabled",
+      RUNTIME_MODE: "production",
+    });
+    expect(JSON.stringify(rendered)).not.toContain("OPENAI_API_KEY_JUDGE");
+    expect(JSON.stringify(rendered)).not.toContain("JUDGE_IP_HMAC_SECRET");
+  });
+
+  it.each([
+    ["preview target", { target: "preview", enableJudgeMode: true }],
+    [
+      "missing judge user",
+      { enableJudgeMode: true, judgeUserId: undefined, target: "production" },
+    ],
+  ])(
+    "rejects judge opt-in without its production boundary: %s",
+    (_label, override) => {
+      expect(() => {
+        void renderCloudflareDeployConfiguration({
+          baseConfig,
+          databaseId,
+          judgeUserId: "judge-production",
+          ...override,
+        });
+      }).toThrow();
+    },
+  );
 
   it.each([
     ["unknown target", { target: "staging" }],

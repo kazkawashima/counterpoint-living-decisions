@@ -51,7 +51,12 @@ function resourceName(value, fallback, label) {
   return selected;
 }
 
-function safeWorkerVars(vars, runtimeMode) {
+function safeWorkerVars(
+  vars,
+  runtimeMode,
+  enableJudgeMode = false,
+  judgeUserId,
+) {
   const {
     DEMO_STORY_MODE: _demoStoryMode,
     JUDGE_IP_HMAC_SECRET: _judgeIpHmacSecret,
@@ -64,16 +69,19 @@ function safeWorkerVars(vars, runtimeMode) {
   return {
     ...safeVars,
     DEMO_STORY_MODE: runtimeMode === "preview" ? "enabled" : "disabled",
-    JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
-    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: "disabled",
+    JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: enableJudgeMode
+      ? "enabled"
+      : "disabled",
+    JUDGE_STRUCTURED_AI_ROUTE_ENABLED: enableJudgeMode ? "enabled" : "disabled",
     OPENAI_MODE: "disabled",
+    ...(enableJudgeMode ? { JUDGE_USER_ID: judgeUserId } : {}),
     ...(runtimeMode === undefined ? {} : { RUNTIME_MODE: runtimeMode }),
   };
 }
 
 function secureEnvironments(environments) {
   for (const environment of Object.values(environments ?? {})) {
-    environment.vars = safeWorkerVars(environment.vars);
+    environment.vars = safeWorkerVars(environment.vars, undefined);
     secureEnvironments(environment.env);
   }
 }
@@ -92,6 +100,13 @@ export function renderCloudflareDeployConfiguration(input) {
     defaults.workerName,
     "Worker name",
   );
+  const enableJudgeMode = input.enableJudgeMode === true;
+  if (enableJudgeMode && target !== "production") {
+    throw new Error("Judge mode can only be enabled for production");
+  }
+  const judgeUserId = enableJudgeMode
+    ? requiredNonEmpty(input.judgeUserId, "JUDGE_USER_ID")
+    : undefined;
   const r2BucketName = resourceName(
     input.r2BucketName,
     defaults.r2BucketName,
@@ -110,7 +125,7 @@ export function renderCloudflareDeployConfiguration(input) {
   r2.bucket_name = r2BucketName;
   r2.preview_bucket_name = r2BucketName;
   r2.remote = true;
-  base.vars = safeWorkerVars(base.vars, target);
+  base.vars = safeWorkerVars(base.vars, target, enableJudgeMode, judgeUserId);
   secureEnvironments(base.env);
   return base;
 }
@@ -134,6 +149,8 @@ export async function writeCloudflareDeployConfiguration(input) {
     r2BucketName: input.r2BucketName,
     target: input.target,
     workerName: input.workerName,
+    enableJudgeMode: input.enableJudgeMode,
+    judgeUserId: input.judgeUserId,
   });
   config.main = resolve(input.root, config.main);
   config.assets.directory = resolve(input.root, config.assets.directory);
@@ -169,6 +186,8 @@ if (invokedAsScript) {
     root: repositoryRoot,
     target,
     workerName: process.env.CLOUDFLARE_WORKER_NAME,
+    enableJudgeMode: process.env.CLOUDFLARE_ENABLE_JUDGE_MODE === "production",
+    judgeUserId: process.env.CLOUDFLARE_JUDGE_USER_ID,
   });
   console.log(JSON.stringify(summary));
 }
