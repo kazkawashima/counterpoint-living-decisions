@@ -170,6 +170,63 @@ export async function meetingCoordinatorContract(
       },
     }),
   ).resolves.toMatchObject({ status: 201 });
+
+  const byokLease = {
+    apiKey: "sk-synthetic-coordinator-byok-canary",
+    heartbeatAt: new Date().toISOString(),
+    meetingId: "meeting-coordination-contract",
+    ownerParticipantId: "participant-byok-owner",
+    ownerSessionId: "session-byok-owner",
+  };
+  await expect(request("/byok/configure", byokLease)).resolves.toEqual({
+    body: { kind: "configured" },
+    status: 201,
+  });
+  await expect(
+    request("/byok/configure", {
+      ...byokLease,
+      ownerSessionId: "session-byok-attacker",
+    }),
+  ).resolves.toEqual({
+    body: { kind: "owner_mismatch" },
+    status: 409,
+  });
+  await expect(
+    request("/byok/find", { meetingId: byokLease.meetingId }),
+  ).resolves.toEqual({
+    body: { kind: "found", lease: byokLease },
+    status: 200,
+  });
+  await expect(
+    request("/byok/heartbeat", {
+      heartbeatAt: new Date().toISOString(),
+      meetingId: byokLease.meetingId,
+      ownerParticipantId: byokLease.ownerParticipantId,
+      ownerSessionId: "session-byok-attacker",
+    }),
+  ).resolves.toEqual({
+    body: { kind: "owner_mismatch" },
+    status: 409,
+  });
+  await expect(
+    request("/sessions/revoke", { sessionId: byokLease.ownerSessionId }),
+  ).resolves.toMatchObject({ status: 200 });
+  await expect(
+    request("/byok/find", { meetingId: byokLease.meetingId }),
+  ).resolves.toEqual({ body: { kind: "missing" }, status: 404 });
+
+  const expiredLease = {
+    ...byokLease,
+    heartbeatAt: new Date(Date.now() - 5 * 60 * 1_000).toISOString(),
+    ownerSessionId: "session-byok-expired",
+  };
+  await expect(request("/byok/configure", expiredLease)).resolves.toEqual({
+    body: { kind: "configured" },
+    status: 201,
+  });
+  await expect(
+    request("/byok/find", { meetingId: expiredLease.meetingId }),
+  ).resolves.toEqual({ body: { kind: "missing" }, status: 404 });
   await expect(
     request("/publications", {
       correlationId: "correlation-private-b",

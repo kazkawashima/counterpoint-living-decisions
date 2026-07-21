@@ -1,5 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 
+import { MEETING_API_KEY_LEASE_TTL_MS } from "@counterpoint/application";
+import type { MeetingApiKeyLease } from "@counterpoint/ports";
+
 const JSON_HEADERS = {
   "cache-control": "no-store",
   "content-type": "application/json; charset=utf-8",
@@ -65,6 +68,75 @@ function position(value: unknown): value is number {
 function timestampMs(value: string): number | undefined {
   const milliseconds = Date.parse(value);
   return Number.isFinite(milliseconds) ? milliseconds : undefined;
+}
+
+function parseByokLease(input: unknown): MeetingApiKeyLease | undefined {
+  if (
+    !isRecord(input) ||
+    !exactKeys(input, [
+      "apiKey",
+      "heartbeatAt",
+      "meetingId",
+      "ownerParticipantId",
+      "ownerSessionId",
+    ]) ||
+    !nonEmptyString(input.apiKey) ||
+    input.apiKey.trim() !== input.apiKey ||
+    !nonEmptyString(input.heartbeatAt) ||
+    timestampMs(input.heartbeatAt) === undefined ||
+    !nonEmptyString(input.meetingId) ||
+    !nonEmptyString(input.ownerParticipantId) ||
+    !nonEmptyString(input.ownerSessionId)
+  ) {
+    return undefined;
+  }
+  return {
+    apiKey: input.apiKey,
+    heartbeatAt: input.heartbeatAt,
+    meetingId: input.meetingId,
+    ownerParticipantId: input.ownerParticipantId,
+    ownerSessionId: input.ownerSessionId,
+  };
+}
+
+function parseByokOwner(input: unknown):
+  | {
+      readonly meetingId: string;
+      readonly ownerParticipantId: string;
+      readonly ownerSessionId: string;
+    }
+  | undefined {
+  if (
+    !isRecord(input) ||
+    !exactKeys(input, [
+      "meetingId",
+      "ownerParticipantId",
+      "ownerSessionId",
+    ]) ||
+    !nonEmptyString(input.meetingId) ||
+    !nonEmptyString(input.ownerParticipantId) ||
+    !nonEmptyString(input.ownerSessionId)
+  ) {
+    return undefined;
+  }
+  return {
+    meetingId: input.meetingId,
+    ownerParticipantId: input.ownerParticipantId,
+    ownerSessionId: input.ownerSessionId,
+  };
+}
+
+function sameByokOwner(
+  lease: MeetingApiKeyLease,
+  owner: {
+    readonly ownerParticipantId: string;
+    readonly ownerSessionId: string;
+  },
+): boolean {
+  return (
+    lease.ownerParticipantId === owner.ownerParticipantId &&
+    lease.ownerSessionId === owner.ownerSessionId
+  );
 }
 
 function parseTicketClaims(input: unknown): TicketClaims | undefined {
@@ -183,6 +255,8 @@ function sameValue(left: unknown, right: unknown): boolean {
 }
 
 export class MeetingCoordinator extends DurableObject<WorkerBindings> {
+  #byokExpiryTimer: ReturnType<typeof setTimeout> | undefined;
+  #byokLease: MeetingApiKeyLease | undefined;
   readonly #publications: Publication[] = [];
   readonly #revokedSessions = new Set<string>();
   readonly #tickets = new Map<string, TicketClaims>();
@@ -223,6 +297,18 @@ export class MeetingCoordinator extends DurableObject<WorkerBindings> {
     if (url.pathname === "/sessions/revoke") {
       return this.#revokeSession(body);
     }
+    if (url.pathname === "/byok/configure") {
+      return this.#configureByok(body);
+    }
+    if (url.pathname === "/byok/find") {
+      return this.#findByok(body);
+    }
+    if (url.pathname === "/byok/heartbeat") {
+      return this.#heartbeatByok(body);
+    }
+    if (url.pathname === "/byok/clear") {
+      return this.#clearByokOwner(body);
+    }
     return jsonResponse({ code: "NOT_FOUND" }, 404);
   }
 
@@ -256,6 +342,130 @@ export class MeetingCoordinator extends DurableObject<WorkerBindings> {
       return jsonResponse({ kind: "unavailable" }, 404);
     }
     return jsonResponse({ claims, kind: "consumed" });
+  }
+
+  #activeByokLease(): MeetingApiKeyLease | undefined {
+    const lease = this.#byokLease;
+    if (lease === undefined) {
+      return undefined;
+    }
+    const heartbeatAt = timestampMs(lease.heartbeatAt);
+    if (
+      heartbeatAt === undefined ||
+      Date.now() >= heartbeatAt + MEETING_API_KEY_LEASE_TTL_MS
+    ) {
+      this.#removeByokLease();
+      return undefined;
+    }
+    return lease;
+  }
+
+  #clearByokOwner(input: unknown): Response {
+    const owner = parseByokOwner(input);
+    if (owner === undefined || !this.#bindMeeting(owner.meetingId)) {
+      return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+    }
+    const lease = this.#activeByokLease();
+    if (lease === undefined) {
+      return jsonResponse({ kind: "missing" }, 404);
+    }
+    if (!sameByokOwner(lease, owner)) {
+      return jsonResponse({ kind: "owner_mismatch" }, 409);
+    }
+    this.#removeByokLease();
+    return jsonResponse({ kind: "applied" });
+  }
+
+  #configureByok(input: unknown): Response {
+    const lease = parseByokLease(input);
+    if (lease === undefined) {
+      return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+    }
+    if (!this.#bindMeeting(lease.meetingId)) {
+      return jsonResponse({ code: "MEETING_SCOPE_CONFLICT" }, 409);
+    }
+    const current = this.#activeByokLease();
+    if (current !== undefined && !sameByokOwner(current, lease)) {
+      return jsonResponse({ kind: "owner_mismatch" }, 409);
+    }
+    this.#byokLease = lease;
+    this.#scheduleByokExpiry(lease);
+    return jsonResponse({ kind: "configured" }, 201);
+  }
+
+  #findByok(input: unknown): Response {
+    if (
+      !isRecord(input) ||
+      !exactKeys(input, ["meetingId"]) ||
+      !nonEmptyString(input.meetingId) ||
+      !this.#bindMeeting(input.meetingId)
+    ) {
+      return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+    }
+    const lease = this.#activeByokLease();
+    return lease === undefined
+      ? jsonResponse({ kind: "missing" }, 404)
+      : jsonResponse({ kind: "found", lease });
+  }
+
+  #heartbeatByok(input: unknown): Response {
+    if (
+      !isRecord(input) ||
+      !exactKeys(input, [
+        "heartbeatAt",
+        "meetingId",
+        "ownerParticipantId",
+        "ownerSessionId",
+      ]) ||
+      !nonEmptyString(input.heartbeatAt) ||
+      timestampMs(input.heartbeatAt) === undefined
+    ) {
+      return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+    }
+    const owner = parseByokOwner({
+      meetingId: input.meetingId,
+      ownerParticipantId: input.ownerParticipantId,
+      ownerSessionId: input.ownerSessionId,
+    });
+    if (owner === undefined || !this.#bindMeeting(owner.meetingId)) {
+      return jsonResponse({ code: "INVALID_REQUEST" }, 400);
+    }
+    const lease = this.#activeByokLease();
+    if (lease === undefined) {
+      return jsonResponse({ kind: "missing" }, 404);
+    }
+    if (!sameByokOwner(lease, owner)) {
+      return jsonResponse({ kind: "owner_mismatch" }, 409);
+    }
+    const renewed = { ...lease, heartbeatAt: input.heartbeatAt };
+    this.#byokLease = renewed;
+    this.#scheduleByokExpiry(renewed);
+    return jsonResponse({ kind: "applied" });
+  }
+
+  #removeByokLease(): void {
+    if (this.#byokExpiryTimer !== undefined) {
+      clearTimeout(this.#byokExpiryTimer);
+      this.#byokExpiryTimer = undefined;
+    }
+    this.#byokLease = undefined;
+  }
+
+  #scheduleByokExpiry(lease: MeetingApiKeyLease): void {
+    if (this.#byokExpiryTimer !== undefined) {
+      clearTimeout(this.#byokExpiryTimer);
+    }
+    const heartbeatAt = timestampMs(lease.heartbeatAt) ?? Date.now();
+    const delay = Math.max(
+      0,
+      heartbeatAt + MEETING_API_KEY_LEASE_TTL_MS - Date.now(),
+    );
+    this.#byokExpiryTimer = setTimeout(() => {
+      if (this.#byokLease === lease) {
+        this.#byokLease = undefined;
+        this.#byokExpiryTimer = undefined;
+      }
+    }, delay);
   }
 
   #issueTicket(input: unknown): Response {
@@ -372,6 +582,9 @@ export class MeetingCoordinator extends DurableObject<WorkerBindings> {
       return jsonResponse({ code: "INVALID_REQUEST" }, 400);
     }
     this.#revokedSessions.add(input.sessionId);
+    if (this.#byokLease?.ownerSessionId === input.sessionId) {
+      this.#removeByokLease();
+    }
     let discardedTickets = 0;
     for (const [digest, claims] of this.#tickets) {
       if (claims.sessionId === input.sessionId) {
