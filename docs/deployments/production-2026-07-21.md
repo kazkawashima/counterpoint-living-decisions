@@ -9,18 +9,25 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Deployed implementation commit:
-  `f1d46ed068bffc8cddc36f0d3ce4917f53c0ed35`
+  `1f0a8521fd2de8bd92ddf41be675892415079804`
 - Rendered configuration SHA-256:
   `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`
 - Deployment status SHA-256:
-  `f7e14f3787f985979f192d1c015e32e93ba34c784b0033f7d98686c2529c2152`
+  `fcb28c040cbffe26e3260811c2824c980b1d488d6cd0b3360a9dd5f0bdd61250`
 - D1 binding: production database with forward-only migrations applied
 - R2 binding: `counterpoint-artifacts-production`
 - Durable Object bindings: `MEETINGS` (`MeetingCoordinator`) and
   `JUDGE_REALTIME_CALLS` (`JudgeRealtimeCallController`)
 - Production safety flags: judge structured and managed Realtime routes
   enabled only for the exact `judge` allowlist; `OPENAI_MODE=disabled` and
-  `DEMO_STORY_MODE=disabled`.
+  `DEMO_STORY_MODE=disabled`. New judge work is blocked only by the rolling
+  24-hour `$25` server-funded cost ceiling; the one-active-call guard remains
+  as a lifecycle safety limit.
+- The exact allowlisted judge may optionally enter a personal OpenAI API key
+  in the browser tab. It is sent over the authenticated HTTPS client-secret
+  request only, is not persisted, logged, returned, or placed in D1/R2/DO
+  state, and is never accepted for ordinary accounts. Removing it returns to
+  server-funded judge-managed access.
 - Worker Secrets: `OPENAI_API_KEY_JUDGE` and `JUDGE_IP_HMAC_SECRET` are
   registered as separate Cloudflare Worker Secrets. Values are not recorded.
 - Judge account: dedicated synthetic `judge` identity provisioned in
@@ -29,7 +36,7 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 
 ## Verification
 
-- Build, secret scan, security matrix `302/302`, and Cloudflare pool `142/142`
+- Build, secret scan, security matrix `302/302`, and Cloudflare pool `140/140`
   passed at the deployment boundary.
 - Target dry-run, forward D1 migration, strict Worker deploy,
   health/readiness/SPA/auth smoke, and Flagship smoke passed.
@@ -62,6 +69,12 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   completion evidence.
 - The provider route was exercised only through the guarded judge path; no
   BYOK credential was entered or exposed in the browser flow.
+
+- The `1f0a852` deployment was rechecked at the canonical origin: `/health`
+  returned `status=ok`, `/ready` returned `status=ready` with database,
+  artifact storage, Realtime, and OpenAI dependencies available. Contract
+  coverage passed `51/51`, focused Worker/unit coverage passed `18/18`, and
+  the browser BYOK transition passed `1/1` with a synthetic non-secret key.
 - A separate production browser context logged in as the synthetic `safety`
   participant and received `403 JUDGE_MODE_FORBIDDEN` from the judge usage
   route. Ordinary participant access therefore does not inherit the judge
