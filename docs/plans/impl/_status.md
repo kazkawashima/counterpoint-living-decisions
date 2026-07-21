@@ -1110,6 +1110,20 @@ The canonical implementation-facing artifacts are:
   alone does not enable judge routes. Hosted C5, derived cost-limit proof,
   production deployment, and final visibility switch remain separate gates.
 
+## 2026-07-21 latest Preview deployment
+
+- The verified commit `9a3c47fc687cc17187520fe9c56916ffcb072678` was explicitly
+  deployed to `counterpoint-living-decisions-preview` at
+  `https://counterpoint-living-decisions-preview.gs2safari.workers.dev`.
+- The rendered Preview config hash is
+  `ad45501da2047c8026513d9fe2e3cf11a8c806bd3c5eb8c186d21d3563d1bfa3`.
+  Security matrix `300/300`, Cloudflare pool `142/142`, target dry-run,
+  forward D1 migration, strict Worker deploy, health/readiness/auth smoke, and
+  provider-free Flagship smoke all passed. The smoke reported one synthetic
+  invalidation evaluation and reset the Flagship afterward.
+- Preview remains AI/provider-disabled by design. No production Worker,
+  production Secret, or production judge route was touched.
+
 ## 2026-07-21 current-tree security verification
 
 - On implementation commit `16701db`, `npm run security:verify` passed the
