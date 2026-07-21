@@ -7,6 +7,7 @@ import type {
 
 import { DEFAULT_OPENAI_REALTIME_MODEL } from "./realtime-client-secrets.js";
 import { GPT_REALTIME_WHISPER_MODEL } from "./realtime-usage.js";
+import { openAiRuntimeFetch, type OpenAiFetch } from "./runtime-fetch.js";
 
 export const OPENAI_REALTIME_CALLS_URL =
   "https://api.openai.com/v1/realtime/calls";
@@ -19,14 +20,9 @@ const REALTIME_CALL_ID_PATTERN = /^rtc_[A-Za-z0-9_-]+$/u;
 const REALTIME_CALL_LOCATION_PATTERN =
   /^\/v1\/realtime\/calls\/(rtc_[A-Za-z0-9_-]+)$/u;
 
-type FetchLike = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
-
 export interface OpenAiManagedRealtimeCallConnectorOptions {
   readonly apiKey: string;
-  readonly fetch?: FetchLike;
+  readonly fetch?: OpenAiFetch;
 }
 
 export type OpenAiManagedRealtimeFailureReason =
@@ -156,7 +152,7 @@ async function readBoundedSdp(response: Response): Promise<string> {
 
 export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallConnector {
   readonly #apiKey: string;
-  readonly #fetch: FetchLike;
+  readonly #fetch: OpenAiFetch;
 
   constructor(options: OpenAiManagedRealtimeCallConnectorOptions) {
     if (
@@ -168,7 +164,7 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       );
     }
     this.#apiKey = options.apiKey;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? openAiRuntimeFetch;
   }
 
   async connect(
@@ -272,7 +268,7 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
 
 export class OpenAiManagedRealtimeCallTerminator implements ManagedRealtimeCallTerminator {
   readonly #apiKey: string;
-  readonly #fetch: FetchLike;
+  readonly #fetch: OpenAiFetch;
 
   constructor(options: OpenAiManagedRealtimeCallConnectorOptions) {
     if (
@@ -284,7 +280,7 @@ export class OpenAiManagedRealtimeCallTerminator implements ManagedRealtimeCallT
       );
     }
     this.#apiKey = options.apiKey;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? openAiRuntimeFetch;
   }
 
   async hangup(callId: string): Promise<void> {

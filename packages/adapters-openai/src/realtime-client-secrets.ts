@@ -5,6 +5,8 @@ import type {
 } from "@counterpoint/ports";
 import { z } from "zod";
 
+import { openAiRuntimeFetch, type OpenAiFetch } from "./runtime-fetch.js";
+
 export const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1";
 export const OPENAI_REALTIME_CLIENT_SECRET_TTL_SECONDS = 30;
 export const OPENAI_REALTIME_CLIENT_SECRETS_URL =
@@ -19,13 +21,8 @@ const OpenAiClientSecretResponseSchema = z
   })
   .passthrough();
 
-type FetchLike = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
-
 export interface OpenAiRealtimeClientSecretIssuerOptions {
-  readonly fetch?: FetchLike;
+  readonly fetch?: OpenAiFetch;
   readonly model?: string;
   readonly timeoutMs?: number;
 }
@@ -59,12 +56,12 @@ function instructionsFor(channel: "private" | "shared"): string {
 }
 
 export class OpenAiRealtimeClientSecretIssuer implements RealtimeSecretIssuer {
-  readonly #fetch: FetchLike;
+  readonly #fetch: OpenAiFetch;
   readonly #model: string;
   readonly #timeoutMs: number;
 
   constructor(options: OpenAiRealtimeClientSecretIssuerOptions = {}) {
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? openAiRuntimeFetch;
     this.#model = options.model ?? DEFAULT_OPENAI_REALTIME_MODEL;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }

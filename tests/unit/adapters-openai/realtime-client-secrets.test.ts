@@ -19,6 +19,32 @@ const request = {
 };
 
 describe("OpenAiRealtimeClientSecretIssuer", () => {
+  it("invokes the runtime default fetch with the global receiver", async () => {
+    const originalFetch = globalThis.fetch;
+    const runtimeFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Illegal invocation");
+      }
+      return Promise.resolve(
+        Response.json({
+          expires_at: 1_784_432_860,
+          value: "ek_runtime_bound_client_secret",
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", runtimeFetch);
+    try {
+      const issuer = new OpenAiRealtimeClientSecretIssuer();
+
+      await expect(issuer.issue(request)).resolves.toMatchObject({
+        value: "ek_runtime_bound_client_secret",
+      });
+      expect(runtimeFetch).toHaveBeenCalledOnce();
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
   it("mints a short-lived channel secret without sending meeting metadata", async () => {
     const fetch = vi.fn<
       (input: string | URL | Request, init?: RequestInit) => Promise<Response>

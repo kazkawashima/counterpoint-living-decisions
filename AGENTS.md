@@ -107,6 +107,11 @@ configuration.
   gate is the composed browser path through the active Worker version, for both
   judge-managed access and ordinary meeting-scoped BYOK, with safe stage and
   retry behavior verified for failures.
+- Adapters shared by Node and Cloudflare Workers must not capture Worker Web API
+  methods such as `globalThis.fetch` and later invoke them as an object field.
+  Call them through a wrapper that preserves the runtime global receiver, and
+  keep a receiver-sensitive default-path unit test. Injected-fetch tests alone
+  do not exercise this production runtime boundary.
 - This invariant exists because production commit `ff46f37` was first deployed
   without the two judge-mode render inputs. That deployment preserved the
   secret names but rendered both judge routes disabled and omitted

@@ -5,6 +5,7 @@ import type {
 } from "@counterpoint/ports";
 
 import { GPT_REALTIME_WHISPER_MODEL } from "./realtime-usage.js";
+import { openAiRuntimeFetch } from "./runtime-fetch.js";
 
 export const OPENAI_REALTIME_SIDEBAND_URL =
   "https://api.openai.com/v1/realtime";
@@ -178,7 +179,7 @@ export class OpenAiRealtimeSidebandConnector implements ManagedRealtimeSidebandC
     }
     this.#apiKey = options.apiKey;
     this.#dispatch = options.dispatch ?? ((work) => void work);
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? openAiRuntimeFetch;
   }
 
   async connect(

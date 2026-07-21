@@ -164,6 +164,14 @@ alone is no longer an acceptable agent-availability check.
   outbound proxy; Wrangler applies that proxy to its own Cloudflare API client,
   but it does not establish that the child workerd runtime can proxy Worker
   `fetch()` traffic.
+- After the first recovery deployment, a production ordinary-user check proved
+  BYOK configure `201` and Realtime access `200`, but every client-secret issue
+  request returned `503`. The same key, model, request body, and both tested
+  safety-identifier formats succeeded through the Node adapter. A receiver-
+  sensitive unit test then reproduced the production-only failure: the adapter
+  had captured `globalThis.fetch` and invoked it later as `this.#fetch(...)`,
+  changing the native Web API receiver and producing an `Illegal invocation`
+  before a provider response existed.
 
 `CLOUDFLARE_DEPLOY_URL` is not part of Realtime credential resolution. It is an
 operator input for guarded deployment and remote smoke targeting, so an empty
@@ -176,9 +184,11 @@ The two runtime implementations had drifted. Shared application use cases for
 BYOK existed, but the Worker entrypoint still used an unavailable lease store
 and had no public BYOK handlers. Separately, the managed-call adapter did not
 carry a closed, allowlisted failure classification through its Durable Object
-and public HTTP boundaries. Deployment checks emphasized secret presence and
-route flags instead of composing the browser, Worker, Durable Object, and
-provider path.
+and public HTTP boundaries. All OpenAI Realtime adapters also captured the
+runtime's native `fetch` function unbound. Injected-fetch unit tests and Node's
+permissive global fetch both hid the receiver error that the production Worker
+enforced. Deployment checks emphasized secret presence and route flags instead
+of composing the browser, Worker, Durable Object, and provider path.
 
 ### Remediation
 
@@ -197,6 +207,11 @@ provider path.
   test for ordinary BYOK connecting both agents. Add a secret-safe live workerd
   smoke that attempts two private/shared cycles and prints only allowlisted
   diagnostics.
+- Route client-secret issuance, managed call creation/hangup, and sideband
+  upgrade through one runtime-fetch wrapper that calls
+  `globalThis.fetch(input, init)` directly. Preserve injected fetches for tests,
+  and add a RED/GREEN case whose fake native fetch rejects any receiver other
+  than `globalThis`.
 
 ### Release gate
 
