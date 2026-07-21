@@ -38,6 +38,10 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   export.
 - The provider route was exercised only through the guarded judge path; no
   BYOK credential was entered or exposed in the browser flow.
+- A separate production browser context logged in as the synthetic `safety`
+  participant and received `403 JUDGE_MODE_FORBIDDEN` from the judge usage
+  route. Ordinary participant access therefore does not inherit the judge
+  capability.
 
 The hosted C5 security-matrix rerun, independent cost-limit evidence, timed
 three-minute human rehearsal, and final repository visibility switch remain

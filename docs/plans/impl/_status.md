@@ -1242,6 +1242,9 @@ demonstrably viewable.
   human premise confirmation, draft/ready/commit, monitor registration,
   staged synthetic regulatory event, AI `AT_RISK` evaluation, human review,
   `REVIEW_REQUIRED`, and Decision JSON export. No BYOK credential was used.
+- A separate production browser context logged in as synthetic `safety` and
+  received `403 JUDGE_MODE_FORBIDDEN` from the judge usage route, confirming
+  that ordinary participant access does not inherit the managed capability.
 - This closes the production judge enablement and deployment-record slice, but
   does not close hosted C5, independent cost-limit evidence, the timed human
   rehearsal, or the owner-controlled public visibility switch.
