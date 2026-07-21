@@ -108,24 +108,30 @@ Security rules:
   authenticated session/user, current meeting assignment, participant, and
   channel are owned server-side; every call operation re-authenticates and
   re-resolves those scopes before the controller is addressed.
-- The enforced judge spend lock is the rolling USD 25 product ceiling. One
-  active managed call is retained as a lifecycle safety guard; account, IP,
-  meeting, Realtime-second, generation, and token counters remain observable
-  protocol dimensions but do not independently lock judge work.
+- The enforced judge spend lock is the rolling USD 25 product ceiling.
+  Account, IP, meeting, concurrency, Realtime-second, generation, and token
+  counters remain unbounded observable protocol dimensions and do not
+  independently reject a new start at the D1 admission boundary.
 - The application-side currency boundary is USD 25 per rolling 24-hour period.
   It is enforced before new billable work.
 - The provider's USD 50 budget alert is a secondary warning and MUST NOT be
   treated as enforcement of the USD 25 product boundary.
-- Secondary limits are derived from measured flagship usage so their combined
-  worst case remains within the currency boundary.
-- Hitting any limit fails closed with an explicit cap error and no new OpenAI
-  request.
-- Server-funded direct judge Realtime client-secret issuance remains disabled.
-  Judge WebRTC will start through the server-owned call controller once it
-  can bound both duration and in-call spend, own the provider call ID, and
-  account for the reserved call. Ordinary facilitator-provided BYOK remains a
-  separate mode. Optional judge-provided BYOK is a separate request-scoped mode
-  described below.
+- A server-funded start whose reservation would cross the currency boundary
+  fails closed with an explicit cost-cap error and no new OpenAI request.
+- Server-funded direct judge Realtime client-secret issuance remains disabled;
+  judge WebRTC starts through the server-owned call controller. A managed call
+  reserves USD 12 before provider work, so private and shared calls may coexist
+  while their combined reservation remains under USD 25.
+- The deployed controller still terminates at 30 seconds and before a fourth
+  response to keep actual work inside that USD 12 reservation. These are not
+  rolling admission counters, but they are still non-currency runtime limits.
+  The user-decided cost-only contract is therefore not complete until those
+  fixed envelopes are replaced by termination based on measured reserved-cost
+  consumption without permitting the USD 25 ceiling to be exceeded.
+- Authentication, ownership, idempotency, settlement, and lifecycle cleanup
+  remain integrity controls rather than usage quotas. Ordinary
+  facilitator-provided BYOK remains a separate mode. Optional judge-provided
+  BYOK is the request-scoped mode described below.
 
 ### Optional judge-provided BYOK
 

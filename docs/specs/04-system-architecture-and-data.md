@@ -2,7 +2,7 @@
 
 ## Architecture style
 
-Counterpoint uses **edge-native runtime adapters around a shared domain core**.
+Descant uses **edge-native runtime adapters around a shared domain core**.
 The same domain and application behavior runs through a local Node adapter and
 a hosted Cloudflare adapter.
 

@@ -1,4 +1,4 @@
-# Counterpoint specification index
+# Descant specification index
 
 This directory is the implementation-facing specification derived from every
 document under [`docs/topics/`](../topics/README.md). The Japanese topic files
@@ -17,9 +17,11 @@ Use the following precedence when source documents differ:
 5. Strategy, archive, and branch-local material in topics `01`–`05`, `20`,
    and `21`.
 
-This resolves the largest apparent conflict in the source set: Counterpoint +
-Living Decisions is confirmed by topic `14`, even though earlier branch
-documents still label the product as provisional.
+This resolves the largest apparent conflict in the source set: the current
+public product is Descant — Living Decisions, renamed from the historical
+Counterpoint working title confirmed by topic `14`. Earlier branch documents
+and internal identifiers may retain Counterpoint as history rather than as the
+current public name.
 
 ## Specification set
 
@@ -49,5 +51,6 @@ facts that must be re-verified are separated into
 - **MAY**: optional after all MUST gates pass.
 - **OUT**: explicitly outside the hackathon MVP.
 
-Implementation has not started. The ordered work is under
-[`docs/plans/`](../plans/README.md).
+Implementation progress and release gates are tracked under
+[`docs/plans/`](../plans/README.md), with the current verified position in
+[`docs/plans/impl/_status.md`](../plans/impl/_status.md).

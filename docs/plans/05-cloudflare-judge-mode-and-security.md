@@ -52,18 +52,18 @@ C2 runtime notes:
   Worker route when the shared HTTP runtime is wired. C2 does not expose the
   coordinator's internal routes or a public WebSocket endpoint.
 - The hosted read path is now wired for the first visible product slice:
-  synthetic D1 identities and a Work & Productivity flagship meeting are
+  synthetic D1 identities and the `Global AI Product Rollout` flagship meeting are
   seeded, and Worker login, assigned meetings, and role projection reuse the
   application session and authorization boundaries. Full hosted mutation and
   realtime parity remains in the later C3/C4 work.
 - A Worker-specific Playwright project now runs against Wrangler on
   `0.0.0.0`, not the Node API webServer. It proves the external-style browser
-  path can load the SPA, authenticate Product, open the Work & Productivity
-  meeting, render the workspace, and keep API requests on the same host.
+  path can load the SPA, authenticate Product, open the flagship meeting,
+  render the workspace, and keep API requests on the same host.
 
 ### C3 — Judge-managed key path
 
-- [ ] Register `OPENAI_API_KEY_JUDGE` via secret workflow without echoing value.
+- [x] Register `OPENAI_API_KEY_JUDGE` via secret workflow without echoing value.
 - [x] Allow only the judge user capability.
 - [x] Keep standard key out of browser, DO storage, D1, R2, logs, and events.
 - [x] Keep server-funded direct judge client-secret issuance fail-closed until
@@ -120,13 +120,24 @@ defaults.
       work.
 - [x] Enforce the USD 25 rolling-24-hour currency boundary before billable work.
 - [x] Treat the USD 50 provider alert as secondary warning only.
-- [ ] Derive secondary production limits from measured flagship usage.
+- [x] Remove account/IP/meeting/concurrency/time/token/generation as independent
+      production start-admission locks while retaining content-free telemetry.
+- [ ] Replace the controller's fixed 30-second and three-response envelope with
+      cost-metered termination that cannot exceed the USD 12 call reservation.
 - [x] Check limits before billable work.
 - [x] Fail closed with `USAGE_LIMIT_REACHED`.
 - [x] Keep manual degraded mode available.
 - [x] Add operator visibility without private content.
 
 C4 foundation notes:
+
+- Current admission policy is cost-only: the D1 limiter rejects a new start
+  only when its reservation would cross the rolling USD 25 ceiling. The
+  controller still has fixed 30-second and three-response termination bounds,
+  so the broader user requirement of no non-currency runtime limit remains
+  open. Removing those constants without cost-metered in-call termination
+  would make the hard currency ceiling unverifiable and is not an acceptable
+  shortcut.
 
 - Migration 0006 stores integer micro-USD reservations and content-free
   account, keyed-HMAC IP, meeting, operation, model, pricing-version, token,

@@ -1453,3 +1453,33 @@ judge-enabled follow-up are recorded in the section below.
   health/readiness/SPA/auth smoke, and the full provider-free Flagship smoke.
   The deployment record is stored at
   `.wrangler/deploy/records/production-e496f8fcbee67616915bef3b58eb783d711fa44f.json`.
+
+## 2026-07-21 canonical process alignment
+
+- Native superpowers discovery was repaired from the absent cache target
+  `2611465e/skills` to the installed `d6169bef/skills` package. The
+  `using-superpowers` and `verification-before-completion` entrypoints resolve
+  through `/home/lion/.agents/skills/superpowers` again.
+- The implementation-facing canonical specs now use the current public name
+  `Descant — Living Decisions` and explicitly classify Counterpoint as a
+  historical working name or internal identifier. The stale claim that
+  implementation had not started was replaced by a link to this current
+  status.
+- The judge security contract now distinguishes the deployed cost-only start
+  admission from the still-bounded in-call controller. Rolling 24-hour USD 25
+  is the only D1 admission lock, a managed call reserves USD 12, and
+  private/shared calls may coexist below the cap. Code inspection found that
+  `JUDGE_REALTIME_MAX_DURATION_SECONDS=30` and the three-response command bound
+  still terminate a live call; full cost-only runtime behavior is therefore an
+  open implementation item rather than a completed claim.
+- Plan 05 now exposes the fixed in-call envelope as an open implementation
+  item. Plan 06 records the closed naming, messaging, private
+  credential-handoff, and pushed-implementation items without closing the final
+  reel, three-minute rehearsal, hosted C5, repository visibility, release tag,
+  or submission.
+- The next implementation slice is to replace the fixed 30-second and
+  three-response envelope with measured cost-reservation termination while
+  preserving the USD 25 hard ceiling. After that, the next hosted check remains
+  the private-judge Connect and revision 3 walkthrough. Later release slices
+  remain the timed rehearsal, deferred hosted C5, and explicit
+  public/tag/submission fixation.

@@ -26,8 +26,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   preview は手動テキスト経路を含む安全な degraded mode として扱う。
 - Worker側には judge allowlist、別HMACによるIP擬似化、D1予約台帳、opaque call
   handle、rolling 24時間 USD 25 hard cap、`USAGE_LIMIT_REACHED` の基盤がある。
-  現行judgeの予算ロックはこの総額だけで、account/IP/meeting/generation/token/
-  Realtime秒・同時実行数の二次ロックは解除している。
+  start admissionではこの総額だけをロックし、account/IP/meeting/generation/token/
+  Realtime秒・同時実行数のrolling二次ロックは解除している。ただしmanaged call
+  controllerにはUSD 12予約を守る旧来の30秒・3 response envelopeが残るため、実通話を
+  完全なcost-only制御へ移す作業は未完了である。
 - providerのUSD 50 alertは二次警告であり、アプリ側のUSD 25制限の代替ではない。
 - 2026-07-21、managed Realtime/structured AIの再送・並行開始・meeting越境・
   session/owner差替え・終了競合・二重課金防止の対象スイートを再実行し、Cloudflare
@@ -113,8 +115,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   確認した。実judge状態でのrevision 3確定だけをhosted最終確認として残す。
 - 同reviewで、managed Realtimeの非retryableな`USAGE_LIMIT_REACHED`を自動再試行し、
   後続のidempotency conflictで原因を隠すP0を確認した。browser API errorの
-  `retryable`/detailsを保持し、generation上限は1回でtext fallbackへ移り、3-generation
-  reservationと元の理由を表示するよう修正した。unit 14/14とbrowser E2E 1/1が成功した。
+  `retryable`/detailsを保持し、非retryableなcap応答は1回でtext fallbackへ移り、
+  reservationと元の理由を表示するよう修正した。generation上限は回帰fixtureとして
+  保持するがproductionでは非適用で、現行のusage lockはUSD 25 cost capだけである。
+  unit 14/14とbrowser E2E 1/1が成功した。
 
 ## 完了条件 A — 名称変更
 
@@ -202,11 +206,13 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       自分のキーをこのタブへ入力でき、明示的なHTTPS requestでWorkerが短命client secret
       発行にだけ使う。普通のユーザーはjudge keyを選択・継承・利用できず、server-funded
       credentialやprovider call IDはbrowser response/logへ出ない。
-- [x] rolling 24時間 USD 25だけをアプリ側hard capとして強制し、USD 50 provider alertは
+- [ ] rolling 24時間 USD 25だけをアプリ側hard capとして強制し、USD 50 provider alertは
       二次警告として扱う。account/IP pseudonym、meeting、concurrency、Realtime seconds、
       generation、tokensの二次ロックはjudgeでは適用しない。
       上限到達時は新規server-funded provider requestを出さず、明示的な
-      `USAGE_LIMIT_REACHED` と手動継続を返す。
+      `USAGE_LIMIT_REACHED` と手動継続を返す。start admissionの二次ロック解除は完了したが、
+      controller内の30秒・3 response envelopeを、USD 12予約残高に基づくcost-metered
+      terminationへ置き換える作業が残る。
 - [x] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、
       meeting越境、session/owner差替え、終了競合をテストし、二重課金しない。
 - [x] managed Realtime startが非retryableなusage limitを返した場合は自動再試行せず、

@@ -2,7 +2,7 @@
 
 ## Product contract
 
-**Name:** Counterpoint — Living Decisions for Agent-Native Teams
+**Name:** Descant — Living Decisions
 
 **Category descriptor:** The commitment layer for agent-native teams.
 
@@ -11,7 +11,7 @@ resident agent may span categories, but that does not change this submission.
 
 **One-sentence contract:**
 
-> Counterpoint connects participant-owned private context to shared decision
+> Descant connects participant-owned private context to shared decision
 > state only through explicit permission, turns deliberation into an auditable
 > Commitment, and makes that Decision reviewable when a dependent assumption
 > no longer holds.
@@ -158,7 +158,7 @@ Preferred:
 
 - “Independent minds. Shared commitment.”
 - “When everyone has an agent, the room needs a protocol.”
-- “Meeting AI records the room. Counterpoint changes what the room can decide.”
+- “Meeting AI records the room. Descant changes what the room can decide.”
 - “Decisions should know when they are no longer true.”
 
 Avoid presenting the MVP as an OS, a meeting recorder, an AI executive, or a

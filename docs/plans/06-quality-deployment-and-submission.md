@@ -70,7 +70,9 @@ lightweight verification evidence in the meantime.
 
 ### Q5 — Reel production
 
-- [ ] Close UD-05; apply the approved UD-06 demo-story treatment.
+- [x] Close UD-05 and record the approved UD-06 staged-story treatment in the
+      submission documents.
+- [ ] Apply the approved UD-06 treatment in the final reel.
 - [ ] Lock a sub-three-minute storyboard after ER-01 verifies the exact limit.
 - [ ] Use one flagship: problem → disclosure → commitment → time jump/event →
       review → implementation evidence.
@@ -85,18 +87,20 @@ lightweight verification evidence in the meantime.
 - [ ] Use the decided Work & Productivity category from UD-01.
 - [x] Complete the remaining license portion of UD-02 after ER-11; Apache-2.0
       is selected. Make the repository public only at the separate final gate.
-- [ ] Finalize UD-04 after ER-10 and UD-07 after ER-07.
+- [x] Finalize UD-04 as `Descant — Living Decisions` and UD-07 as the private
+      Testing Instructions credential path.
 - [ ] Complete ER-01, ER-02, ER-07, ER-08, ER-10, and ER-11.
 - [ ] Prepare English title, description, category, repository, demo URL,
       testing instructions, video, and Session ID.
 - [ ] Verify repository and hosted access from logged-out/incognito paths.
-- [ ] Verify Testing Instructions visibility before placing any credential.
+- [x] Verify Testing Instructions visibility before placing any credential;
+      the owner confirmed the private handoff boundary.
 - [ ] Confirm judge credential works and is financially bounded.
 - [ ] Save Draft, review preview, then final submit.
 
 ### Q7 — Release fixation and judging operations
 
-- [ ] Ensure the demonstrated commit is pushed.
+- [x] Ensure the demonstrated production implementation commit is pushed.
 - [ ] Create and push the submission tag.
 - [ ] Record tag, deployment version, video URL, and submission timestamp.
 - [ ] Keep health/usage checks and credential valid through the verified judging
