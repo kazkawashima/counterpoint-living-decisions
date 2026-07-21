@@ -24,6 +24,8 @@ This slice covers:
 - The presentation and reviewer walkthrough instructions.
 - Small verified presentation defects: commit-gate spacing, inaccurate time-jump
   wording, the unconditional `edited` label, and raw internal provenance noise.
+- The walkthrough addendum showing that the projector's unimplemented Meeting
+  phase remains `Preparing` while the independent Decision lifecycle advances.
 - A maintained browser-test inventory for all controls reachable from the
   Flagship workspace, including alternate, cancellation, retry, and reset
   branches.
@@ -145,6 +147,24 @@ The inventory is limited to the Flagship workspace so it remains maintainable
 under the submission deadline. A separate later audit can extend the same
 pattern to all product screens.
 
+### 7. Project the implemented Decision lifecycle, not a false Meeting phase
+
+Meeting phase and Decision lifecycle are separate canonical concepts. The
+current event model does not implement intermediate Meeting phase transitions,
+so deriving `deliberating` or `deciding` from Decision events would invent
+unsupported semantics and make post-meeting monitoring mutate meeting history.
+
+The shared projector therefore removes the prominent `Meeting phase` tile and
+shows the latest shared `Decision lifecycle` status instead. Before a Decision
+exists, it uses the truthful presentation state `Building shared context`.
+The existing Meeting phase remains in protocol data for compatibility and a
+future independently designed Meeting lifecycle; this slice does not fake or
+backfill it.
+
+The projector also removes raw `POSITION N`. That value is a visibility-scoped
+event/synchronization cursor, not meeting progress or Decision state. It remains
+in the DTO for synchronization and diagnostics but is not audience-facing.
+
 ## Error and safety boundaries
 
 - Projection and Realtime failures never erase or reset meeting state.
@@ -186,5 +206,8 @@ evidence is:
   endpoint accurately.
 - The commit gate is visually separated and all changed controls have accurate
   accessible names.
+- The shared projector follows the actual Decision status through monitoring,
+  risk, and review, never presents a permanently stale Meeting phase, and does
+  not expose the raw event cursor as presentation content.
 - Every enabled Flagship workspace button is exercised by at least one browser
   scenario with a post-click assertion.

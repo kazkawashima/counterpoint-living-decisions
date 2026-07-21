@@ -20,7 +20,7 @@
 - Modify: `tests/e2e/realtime-channels.spec.ts`
 - Modify: `tests/cloudflare/worker-managed-realtime-http.test.ts`
 
-- [ ] **Step 1: Write failing unit tests for staged connection errors**
+- [x] **Step 1: Write failing unit tests for staged connection errors**
 
 Add assertions that media/offer creation, managed-call creation, SDP answer
 application, and peer transition errors retain one of these public stages:
@@ -35,7 +35,7 @@ expect(failure).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Run the focused unit test and verify RED**
+- [x] **Step 2: Run the focused unit test and verify RED**
 
 Run:
 
@@ -46,7 +46,7 @@ npx vitest run tests/unit/web/realtime-openai.test.ts
 Expected: FAIL because the current generic
 `OpenAiRealtimeConnectionError` has no stable stage or public code.
 
-- [ ] **Step 3: Add the minimal staged error type and preserve it through the controller**
+- [x] **Step 3: Add the minimal staged error type and preserve it through the controller**
 
 Implement a typed error whose message is safe for the browser:
 
@@ -69,7 +69,7 @@ export class RealtimeConnectionStageError extends Error {
 Wrap only the boundary where a failure occurs; do not include SDP, token, API
 key, or provider response data in the message.
 
-- [ ] **Step 4: Write failing browser assertions for actionable Connect failure**
+- [x] **Step 4: Write failing browser assertions for actionable Connect failure**
 
 Extend the Realtime browser scenario so a failed managed-call start shows:
 
@@ -86,7 +86,7 @@ await expect(
 
 Assert exactly one start request occurs after one click.
 
-- [ ] **Step 5: Run the focused browser test and verify RED**
+- [x] **Step 5: Run the focused browser test and verify RED**
 
 Run:
 
@@ -97,7 +97,7 @@ npx playwright test tests/e2e/realtime-channels.spec.ts --grep "server-owned acc
 Expected: FAIL because the current banner collapses the failure to the provider
 message without identifying the connection stage.
 
-- [ ] **Step 6: Render staged errors and retain deliberate retry**
+- [x] **Step 6: Render staged errors and retain deliberate retry**
 
 Map safe stages in `RealtimePanel`:
 
@@ -113,7 +113,7 @@ const connectionStageMessage = {
 Keep manual text available and use the existing `Try again` control. Do not
 start a second attempt automatically for a non-retryable API error.
 
-- [ ] **Step 7: Add Worker integration assertions for the unmocked application route**
+- [x] **Step 7: Add Worker integration assertions for the unmocked application route**
 
 In the Worker test, call the actual
 `POST /api/v1/meetings/:id/realtime/calls` handler with injected controlled
@@ -121,7 +121,7 @@ connector dependencies. Assert a successful response has the real schema and a
 connector failure has the stable application error envelope. This test must
 not intercept or replace the application route.
 
-- [ ] **Step 8: Run Realtime unit, browser, and Worker tests and verify GREEN**
+- [x] **Step 8: Run Realtime unit, browser, and Worker tests and verify GREEN**
 
 Run:
 
@@ -144,7 +144,7 @@ Expected: all focused checks pass with zero failures.
 - Modify: `tests/unit/web/api.test.ts`
 - Modify: `tests/e2e/realtime-channels.spec.ts`
 
-- [ ] **Step 1: Write failing tests for Cloudflare problem normalization**
+- [x] **Step 1: Write failing tests for Cloudflare problem normalization**
 
 Add an API test using the review's 1102 body:
 
@@ -164,7 +164,7 @@ Expect `getRoleProjection()` to reject with code
 `CLOUDFLARE_WORKER_RESOURCE_LIMIT`, `retryable:false`, and a safe durable-state
 message rather than `INVALID_RESPONSE` or `REQUEST_FAILED`.
 
-- [ ] **Step 2: Run the API test and verify RED**
+- [x] **Step 2: Run the API test and verify RED**
 
 Run:
 
@@ -174,7 +174,7 @@ npx vitest run tests/unit/web/api.test.ts
 
 Expected: FAIL because only the internal `ErrorEnvelopeSchema` is recognized.
 
-- [ ] **Step 3: Normalize Cloudflare problem responses**
+- [x] **Step 3: Normalize Cloudflare problem responses**
 
 Add a narrow Zod schema and translate only error 1102:
 
@@ -191,7 +191,7 @@ The returned browser message is
 `Server capacity was exceeded. Your meeting state is safe; retry when ready.`
 Do not surface `detail` verbatim.
 
-- [ ] **Step 4: Write failing pure retry-policy tests**
+- [x] **Step 4: Write failing pure retry-policy tests**
 
 Define the wished-for API:
 
@@ -202,7 +202,7 @@ expect(nextProjectionDelay(4, true)).toBe(30_000);
 expect(nextProjectionDelay(0, false)).toBeUndefined();
 ```
 
-- [ ] **Step 5: Run the retry-policy test and verify RED**
+- [x] **Step 5: Run the retry-policy test and verify RED**
 
 Run:
 
@@ -212,7 +212,7 @@ npx vitest run tests/unit/web/projection-recovery.test.ts
 
 Expected: FAIL because the helper does not exist.
 
-- [ ] **Step 6: Implement bounded retry scheduling**
+- [x] **Step 6: Implement bounded retry scheduling**
 
 Export a pure helper with delays `2s, 4s, 8s, 16s, 30s`. Replace the fixed
 `setInterval(1_000)` with one completion-scheduled `setTimeout`, reset the
@@ -220,7 +220,7 @@ failure count on success, and stop automatic retries when the error explicitly
 has `retryable:false`. Render one `Retry meeting state` control that starts a
 new immediate read.
 
-- [ ] **Step 7: Write and run browser coverage for no hot loop**
+- [x] **Step 7: Write and run browser coverage for no hot loop**
 
 Use Playwright's clock or request counting to return one 1102 response and
 assert no second request occurs within one second, the durable-state message is
@@ -245,7 +245,7 @@ Expected after implementation: PASS.
 - Modify: `apps/web/src/app.tsx`
 - Modify: `tests/e2e/decision-commit.spec.ts`
 
-- [ ] **Step 1: Write failing normalization tests**
+- [x] **Step 1: Write failing normalization tests**
 
 Cover the observed text exactly:
 
@@ -264,7 +264,7 @@ expect(
 
 Also assert ordinary prose containing the letters `AI` is unchanged.
 
-- [ ] **Step 2: Run the new unit test and verify RED**
+- [x] **Step 2: Run the new unit test and verify RED**
 
 Run:
 
@@ -274,7 +274,7 @@ npx vitest run tests/unit/adapters-openai/decision-copy.test.ts
 
 Expected: FAIL because the normalizer does not exist.
 
-- [ ] **Step 3: Add minimal normalization and tighten the model instruction**
+- [x] **Step 3: Add minimal normalization and tighten the model instruction**
 
 Strip only known leading status wrappers, restore sentence capitalization, and
 fall back to the original field if stripping would make it empty. Add this
@@ -286,13 +286,13 @@ instruction:
 
 Normalize the parsed model output before returning it to the browser.
 
-- [ ] **Step 4: Add a failing browser assertion for committed prose**
+- [x] **Step 4: Add a failing browser assertion for committed prose**
 
 Feed the observed model output through the existing Decision E2E and assert the
 candidate retains an `AI proposed` badge while the committed title/outcome do
 not match `/AI[- ]proposed|pending facilitator confirmation/iu`.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run:
 
@@ -312,7 +312,7 @@ Expected: all pass.
 - Modify: `apps/web/src/app.tsx`
 - Modify: `tests/e2e/decision-commit.spec.ts`
 
-- [ ] **Step 1: Write failing tests for resolution initialization and comparison**
+- [x] **Step 1: Write failing tests for resolution initialization and comparison**
 
 Define and test pure helpers:
 
@@ -329,7 +329,7 @@ expect(
 Assert Flagship defaults are materially different from the active revision even
 when the page is opened after a reload.
 
-- [ ] **Step 2: Run the unit test and verify RED**
+- [x] **Step 2: Run the unit test and verify RED**
 
 Run:
 
@@ -339,7 +339,7 @@ npx vitest run tests/unit/web/decision-resolution.test.ts
 
 Expected: FAIL because the helpers do not exist.
 
-- [ ] **Step 3: Implement pure draft construction and no-op validation**
+- [x] **Step 3: Implement pure draft construction and no-op validation**
 
 Move resolution draft construction out of the one-time `useState` initializer.
 Track whether the user has edited resolution fields. When the reviewed Decision
@@ -351,7 +351,7 @@ or monitor condition. Show
 `Change the title, outcome, or monitor condition before committing a new revision.`
 and do not issue a request for a no-op.
 
-- [ ] **Step 4: Add reload and no-op browser regressions**
+- [x] **Step 4: Add reload and no-op browser regressions**
 
 In a real server-backed Decision E2E:
 
@@ -363,7 +363,7 @@ In a real server-backed Decision E2E:
    message appears.
 6. Change the outcome and assert revision 3 commits and persists after reload.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run:
 
@@ -383,8 +383,10 @@ Expected: all pass.
 - Modify: `docs/presentation/flagship-production-tutorial.md`
 - Modify: `docs/verification/production-reviewer-walkthrough.md`
 - Modify: `tests/e2e/decision-commit.spec.ts`
+- Modify: `tests/e2e/shared-display.spec.ts`
+- Modify: `docs/media/shared-display/notes.md`
 
-- [ ] **Step 1: Add failing browser assertions for the reviewed UI defects**
+- [x] **Step 1: Add failing browser assertions for the reviewed UI defects**
 
 Assert:
 
@@ -401,7 +403,7 @@ await expect(
 After editing the premise, assert the accessible name changes to
 `Confirm edited premise`.
 
-- [ ] **Step 2: Run the focused browser test and verify RED**
+- [x] **Step 2: Run the focused browser test and verify RED**
 
 Run:
 
@@ -411,14 +413,14 @@ npx playwright test tests/e2e/decision-commit.spec.ts --grep "presentation label
 
 Expected: FAIL on the current unconditional label and inline commit-gate text.
 
-- [ ] **Step 3: Implement accurate labels and layout**
+- [x] **Step 3: Implement accurate labels and layout**
 
 Track whether the premise statement differs from the original candidate.
 Render raw model and reference identifiers only in an optional provenance
 detail, while the primary row says `OpenAI suggestion · grounded in shared Evidence`.
 Add a `.commit-gate-copy` class using column flex layout and a visible gap.
 
-- [ ] **Step 4: Correct both walkthroughs**
+- [x] **Step 4: Correct both walkthroughs**
 
 Insert `Generate Decision candidate` after excerpt approval in both documents.
 Change the time-jump claim to `shows a staged synthetic event and its effective date`.
@@ -426,13 +428,29 @@ State that the three-minute path intentionally stops at `REVIEW_REQUIRED` plus
 export, while the reviewer path continues through a materially edited revision
 3 and reload.
 
-- [ ] **Step 5: Run formatting and browser checks**
+- [x] **Step 5: Write a failing projector lifecycle regression**
+
+Keep a shared-display page open while the facilitator advances the Decision.
+Assert that the projector's prominent lifecycle value changes through
+`MONITORING`, `AT_RISK`, and `REVIEW_REQUIRED`; assert it never renders
+`Meeting phase · Preparing` or `/POSITION\s+\d+/u`. Run the focused display test
+and verify RED against the current stale Meeting phase tile.
+
+- [x] **Step 6: Project the real Decision lifecycle and hide the sync cursor**
+
+Replace the projector's Meeting phase tile with `Decision lifecycle` and the
+latest shared Decision status. Before a Decision exists, render
+`Building shared context`. Remove the raw position cursor from the audience UI
+without removing it from the API DTO. Do not infer Meeting phase from Decision
+events. Refresh the synthetic shared-display screenshot notes.
+
+- [x] **Step 7: Run formatting and browser checks**
 
 Run:
 
 ```bash
 npx prettier --check apps/web/src/app.tsx apps/web/src/styles.css docs/presentation/flagship-production-tutorial.md docs/verification/production-reviewer-walkthrough.md
-npx playwright test tests/e2e/decision-commit.spec.ts --grep "presentation labels"
+npx playwright test tests/e2e/decision-commit.spec.ts tests/e2e/shared-display.spec.ts --grep "presentation labels|Decision lifecycle"
 ```
 
 Expected: all pass.
