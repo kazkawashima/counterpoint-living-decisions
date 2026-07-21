@@ -1273,6 +1273,23 @@ performs the final logged-out/public safety check.
   are in `docs/presentation/flagship-production-tutorial.md`. It contains no
   credential and explicitly labels the event injection as a staged demo story.
 
-The same implementation is deployed to both hosted preview and production at
-commit `84a4230c8ec48f70e05437886728a61d49caf309`; the credential-free
-production deployment record is aligned with that commit.
+The projector deployment was first aligned at commit
+`84a4230c8ec48f70e05437886728a61d49caf309`; the current production record and
+judge-enabled follow-up are recorded in the section below.
+
+## 2026-07-21 production manual fallback boundary
+
+- Production commit `0d4f0e38c6a59d546c44ebb5db50f4ab6b004a71` is deployed with
+  the explicitly rendered judge configuration (`JUDGE_USER_ID=judge`). The
+  production deployment reran security matrix `300/300`, Cloudflare pool
+  `142/142`, health/readiness/auth smoke, and Flagship smoke successfully.
+- The UI now treats `JUDGE_MODE_FORBIDDEN` the same as an unavailable AI
+  suggestion for recovery purposes. Ordinary users can continue with the
+  exact manual excerpt and manual Decision path; the browser never receives a
+  judge credential. The external Production E2E passed `2/2` for this path and
+  for the ordinary/judge/display projection boundary.
+- The production manual-fallback screenshot and provenance are recorded in
+  `docs/media/screenshots/decision-review/` and `docs/media/ASSET_MANIFEST.json`.
+- This closes the ordinary-user manual continuity repair, but does not close
+  the full hosted C5 matrix, independent cost-limit proof, timed human
+  rehearsal, or owner-controlled public visibility switch.

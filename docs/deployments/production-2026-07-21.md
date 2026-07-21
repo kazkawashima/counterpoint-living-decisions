@@ -9,9 +9,9 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Deployed implementation commit:
-  `84a4230c8ec48f70e05437886728a61d49caf309`
+  `0d4f0e38c6a59d546c44ebb5db50f4ab6b004a71`
 - Rendered configuration SHA-256:
-  `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`
+  `3e95494e58a84a7eb03e84b19022ab6f2d8ba1d564e124ee582b2e0d5ee256d4`
 - D1 binding: production database with forward-only migrations applied
 - R2 binding: `counterpoint-artifacts-production`
 - Durable Object bindings: `MEETINGS` (`MeetingCoordinator`) and
@@ -34,7 +34,12 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - The latest deployment also includes the projector-oriented shared-display
   layout and presentation tutorial. Preview and production both passed the
   remote health/readiness/root/auth smoke and the Flagship smoke at commit
-  `84a4230c8ec48f70e05437886728a61d49caf309`.
+  `0d4f0e38c6a59d546c44ebb5db50f4ab6b004a71`.
+- After the production judge configuration was explicitly rendered with
+  `JUDGE_USER_ID=judge`, the external browser boundary passed: ordinary
+  access receives the guarded judge response and still reaches the manual
+  excerpt fallback; display projection remains read-only and revoked tokens
+  remain unusable. No provider call was required for this check.
 - A clean production browser confirmed judge login and server-funded
   structured-AI behavior: private excerpt suggestion, Decision candidate,
   assumption invalidation evaluation, human premise confirmation, Decision
