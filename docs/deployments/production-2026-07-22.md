@@ -9,13 +9,13 @@ judge credentials, provider payloads, SDP, and private source content.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Final deployed commit:
-  `36e1a83d2732b9a9fa18471af7aca5a4f85f903e`
-- 100%-served Worker version: `27`
-  (`336797f2-eb71-42be-a6a4-a1b830568960`)
+  `ba9de26eb6b825b22fb0265ca5e736362eaf1eee`
+- 100%-served Worker version: `28`
+  (`f6142697-979f-4354-be5d-6e9b739b34fc`)
 - Rendered configuration SHA-256:
   `3fd52990eb6ee0e392375a2715b8e9c96367c790ab8a47ff48654852ed78998e`
 - Deployment status SHA-256:
-  `e6315ece50f866906ecb6913dfc4823ecf6f992fe502346abe4afb3db7039ffc`
+  `a2c8e2b90044739f48ba0fda92f2ed79f9e8044a9227ab874f805335009dad72`
 - D1: production binding with forward-only migrations applied
 - R2: production artifact bucket binding
 - Durable Objects: meeting coordination and judge Realtime call control
@@ -35,6 +35,11 @@ judge credentials, provider payloads, SDP, and private source content.
   invoke the runtime native fetch through a global-receiver-preserving wrapper.
   A receiver-sensitive RED/GREEN test reproduces and prevents the production
   `Illegal invocation` failure hidden by Node and injected-fetch tests.
+- Judge-managed Realtime now sends the provider a raw 64-character lowercase
+  SHA-256 digest as its pseudonymous safety identifier. The former `sha256:`
+  prefix produced 71 characters and was rejected by OpenAI with status 400.
+  The Worker/DO boundary and adapter now reject identifiers over the provider's
+  64-character maximum before provider work.
 - Projection reads are single-flight, use bounded backoff, stop on Cloudflare
   1102 until an explicit retry, and preserve the latest durable projection.
 - AI provenance remains visible without becoming substantive committed
@@ -60,7 +65,7 @@ judge credentials, provider payloads, SDP, and private source content.
 - Repository and generated-output secret scan passed without printing secret
   values.
 - Security matrix passed `337/337`.
-- Cloudflare test pool passed `148/148`.
+- Cloudflare test pool passed `149/149`.
 - Target configuration dry-run passed.
 - Forward D1 migrations and strict Worker deployment passed.
 - Remote root, health, and readiness returned `200`; an unauthenticated API
