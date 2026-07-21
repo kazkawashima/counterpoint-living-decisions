@@ -9,6 +9,7 @@ import type {
 import { emptyOpenAiRealtimeUsageState } from "@counterpoint/adapters-openai";
 import {
   JUDGE_REALTIME_MAX_DURATION_SECONDS,
+  JUDGE_REALTIME_RESERVED_COST_USD,
   JUDGE_REALTIME_RESERVED_USAGE,
   JudgeRealtimeCallLifecycle,
   isExactJudgeRealtimeReservation,
@@ -1155,7 +1156,7 @@ describe("judge Realtime reservation gate", () => {
     model: "gpt-realtime-2.1",
     operation: "judge_realtime",
     pricing_version: "gpt-realtime-2.1+gpt-realtime-whisper-2026-07-19",
-    reserved_cost_micro_usd: 25_000_000,
+    reserved_cost_micro_usd: JUDGE_REALTIME_RESERVED_COST_USD * 1_000_000,
     reserved_generation_count: reservedUsage.generationCount,
     reserved_input_tokens: reservedUsage.estimatedInputTokens,
     reserved_output_tokens: reservedUsage.estimatedOutputTokens,
@@ -1168,7 +1169,8 @@ describe("judge Realtime reservation gate", () => {
     expect(
       isExactJudgeRealtimeReservation({
         ...exactReservation,
-        reserved_cost_micro_usd: 24_999_999,
+        reserved_cost_micro_usd:
+          JUDGE_REALTIME_RESERVED_COST_USD * 1_000_000 - 1,
       }),
     ).toBe(false);
     expect(

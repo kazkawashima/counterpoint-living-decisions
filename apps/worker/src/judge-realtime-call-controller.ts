@@ -26,6 +26,7 @@ import type {
   UsageRequest,
 } from "@counterpoint/ports";
 import {
+  JUDGE_REALTIME_RESERVED_COST_USD,
   JUDGE_REALTIME_MAX_DURATION_SECONDS,
   JUDGE_REALTIME_RESERVED_USAGE,
   JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
@@ -34,6 +35,7 @@ import {
 import { JUDGE_GLOBAL_USAGE_LIMITS } from "./judge-structured-ai.js";
 
 export {
+  JUDGE_REALTIME_RESERVED_COST_USD,
   JUDGE_REALTIME_MAX_DURATION_SECONDS,
   JUDGE_REALTIME_RESERVED_USAGE,
   JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
@@ -78,7 +80,8 @@ export function isExactJudgeRealtimeReservation(
     row.operation === "judge_realtime" &&
     row.model === DEFAULT_OPENAI_REALTIME_MODEL &&
     row.pricing_version === JUDGE_REALTIME_PRICING_VERSION &&
-    row.reserved_cost_micro_usd === JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD &&
+    row.reserved_cost_micro_usd ===
+      JUDGE_REALTIME_RESERVED_COST_USD * 1_000_000 &&
     row.reserved_input_tokens ===
       JUDGE_REALTIME_RESERVED_USAGE.estimatedInputTokens &&
     row.reserved_output_tokens ===

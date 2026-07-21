@@ -582,8 +582,8 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
         concurrency: { limit: 1, remaining: 0, used: 1 },
         costMicroUsd: {
           limit: 25_000_000,
-          remaining: 0,
-          used: 25_000_000,
+          remaining: 12_000_000,
+          used: JUDGE_REALTIME_RESERVED_USAGE.estimatedCostUsd * 1_000_000,
         },
         generation: { limit: 64, remaining: 61, used: 3 },
         ip: { limit: 100, remaining: 99, used: 1 },
