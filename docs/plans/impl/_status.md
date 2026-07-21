@@ -1290,6 +1290,10 @@ judge-enabled follow-up are recorded in the section below.
   for the ordinary/judge/display projection boundary.
 - The production manual-fallback screenshot and provenance are recorded in
   `docs/media/screenshots/decision-review/` and `docs/media/ASSET_MANIFEST.json`.
+- Production judge reconciliation dry-run completed with
+  `attempted=0 settled=0 released=0 failed=0`. It performed only the
+  content-free stale-row SELECT path and did not read judge/HMAC Secrets,
+  call a provider, or mutate Production D1.
 - This closes the ordinary-user manual continuity repair, but does not close
   the full hosted C5 matrix, independent cost-limit proof, timed human
   rehearsal, or owner-controlled public visibility switch.

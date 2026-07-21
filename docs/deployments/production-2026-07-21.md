@@ -40,6 +40,9 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   access receives the guarded judge response and still reaches the manual
   excerpt fallback; display projection remains read-only and revoked tokens
   remain unusable. No provider call was required for this check.
+- A production judge reconciliation dry-run returned
+  `attempted=0 settled=0 released=0 failed=0`; it performed only a
+  content-free stale-row SELECT and made no provider call or D1 mutation.
 - A clean production browser confirmed judge login and server-funded
   structured-AI behavior: private excerpt suggestion, Decision candidate,
   assumption invalidation evaluation, human premise confirmation, Decision
