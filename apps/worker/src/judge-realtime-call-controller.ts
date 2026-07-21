@@ -130,6 +130,7 @@ export type StoredCallState =
       readonly terminateAtEpochMs: number;
     }
   | {
+      readonly providerCallAccepted?: boolean;
       readonly reservationId: string;
       readonly reservedUsage: UsageRequest;
       readonly sidebandUsage: OpenAiRealtimeUsageState;
@@ -172,7 +173,7 @@ export interface JudgeRealtimeCallLifecycleDependencies {
   readonly sideband: ManagedRealtimeSidebandConnector;
   readonly storage: JudgeRealtimeCallStorage;
   readonly terminator: ManagedRealtimeCallTerminator;
-  readonly usage: Pick<UsageLimiter, "finalize">;
+  readonly usage: Pick<UsageLimiter, "finalize" | "release">;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -292,7 +293,7 @@ export class JudgeRealtimeCallLifecycle {
   #turn: ManagedRealtimeTurn | undefined;
   readonly #storage: JudgeRealtimeCallStorage;
   readonly #terminator: ManagedRealtimeCallTerminator;
-  readonly #usage: Pick<UsageLimiter, "finalize">;
+  readonly #usage: Pick<UsageLimiter, "finalize" | "release">;
 
   constructor(dependencies: JudgeRealtimeCallLifecycleDependencies) {
     this.#clock = dependencies.clock;
@@ -341,7 +342,7 @@ export class JudgeRealtimeCallLifecycle {
     }
     if (this.#startCancelled) {
       await this.#usage
-        .finalize(input.reservationId, JUDGE_REALTIME_RESERVED_USAGE)
+        .release(input.reservationId)
         .catch(() => undefined);
       return { kind: "unavailable" };
     }
@@ -463,6 +464,7 @@ export class JudgeRealtimeCallLifecycle {
         } else {
           await this.#storage
             .put({
+              providerCallAccepted: false,
               reservationId: input.reservationId,
               reservedUsage: JUDGE_REALTIME_RESERVED_USAGE,
               sidebandUsage: {
@@ -615,6 +617,7 @@ export class JudgeRealtimeCallLifecycle {
         StoredCallState,
         { readonly status: "hangup_confirmed" }
       > = {
+        providerCallAccepted: false,
         reservationId: state.reservationId,
         reservedUsage: state.reservedUsage,
         sidebandUsage: state.sidebandUsage,
@@ -639,7 +642,22 @@ export class JudgeRealtimeCallLifecycle {
       state = confirmedState;
       this.#sidebandConnection?.close();
     }
-    await this.#usage.finalize(state.reservationId, state.reservedUsage);
+    if (state.providerCallAccepted === false) {
+      await this.#usage.release(state.reservationId);
+    } else {
+      const actualUsage = state.sidebandUsage.trustworthy
+        ? {
+            estimatedCostUsd:
+              state.sidebandUsage.totals.costMicroUsd / 1_000_000,
+            estimatedInputTokens: state.sidebandUsage.totals.inputTokens,
+            estimatedOutputTokens: state.sidebandUsage.totals.outputTokens,
+            generationCount: state.sidebandUsage.totals.generationCount,
+            realtimeSeconds:
+              state.sidebandUsage.totals.transcriptionSeconds,
+          }
+        : state.reservedUsage;
+      await this.#usage.finalize(state.reservationId, actualUsage);
+    }
     await this.#storage.put({
       settledAtEpochMs: this.#clock(),
       status: "settled",
@@ -885,6 +903,7 @@ export class JudgeRealtimeCallController extends DurableObject<JudgeRealtimeBind
             StoredCallState,
             { readonly status: "hangup_confirmed" }
           > = {
+            providerCallAccepted: true,
             reservationId: current.reservationId,
             reservedUsage: current.reservedUsage,
             sidebandUsage: current.sidebandUsage,

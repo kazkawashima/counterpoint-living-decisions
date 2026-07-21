@@ -20,6 +20,20 @@ import { judgeRealtimeCallControllerFor } from "../../apps/worker/src/index.js";
 import { describe, expect, it, vi } from "vitest";
 
 const reservedUsage: UsageRequest = JUDGE_REALTIME_RESERVED_USAGE;
+const zeroUsage: UsageRequest = {
+  estimatedCostUsd: 0,
+  estimatedInputTokens: 0,
+  estimatedOutputTokens: 0,
+  generationCount: 0,
+  realtimeSeconds: 0,
+};
+const oneResponseUsage: UsageRequest = {
+  estimatedCostUsd: 0.007206,
+  estimatedInputTokens: 132,
+  estimatedOutputTokens: 121,
+  generationCount: 1,
+  realtimeSeconds: 0,
+};
 const input = {
   channel: "private" as const,
   reservationId: "reservation-judge-realtime",
@@ -107,6 +121,7 @@ class MemoryStorage implements JudgeRealtimeCallStorage {
       return Promise.resolve(undefined);
     }
     const next = {
+      providerCallAccepted: true,
       reservationId: this.state.reservationId,
       reservedUsage: this.state.reservedUsage,
       sidebandUsage: this.state.sidebandUsage,
@@ -290,6 +305,7 @@ function lifecycle(
       reservationId: string,
       actual: UsageRequest,
     ) => Promise<void>;
+    readonly release?: (reservationId: string) => Promise<void>;
   } = {},
 ) {
   const storage = options.storage ?? new MemoryStorage();
@@ -309,6 +325,7 @@ function lifecycle(
     hangup,
   };
   const finalize = options.finalize ?? vi.fn(() => Promise.resolve());
+  const release = options.release ?? vi.fn(() => Promise.resolve());
   let sidebandObserver: ManagedRealtimeSidebandObserver | undefined;
   const sidebandCancelResponse = vi.fn();
   const sidebandClose = vi.fn();
@@ -335,8 +352,9 @@ function lifecycle(
       sideband,
       storage,
       terminator,
-      usage: { finalize },
+      usage: { finalize, release },
     }),
+    release,
     get sidebandObserver() {
       return sidebandObserver;
     },
@@ -393,6 +411,38 @@ describe("managed Realtime start input parsing", () => {
 });
 
 describe("JudgeRealtimeCallLifecycle", () => {
+  it("releases the reservation when the provider rejects before accepting a call", async () => {
+    const connector: ManagedRealtimeCallConnector = {
+      connect: () => Promise.reject(new Error("provider rejected request")),
+    };
+    const fixture = lifecycle({ connector });
+
+    await expect(fixture.instance.start(input)).resolves.toEqual({
+      kind: "unavailable",
+    });
+
+    expect(fixture.release).toHaveBeenCalledWith(input.reservationId);
+    expect(fixture.finalize).not.toHaveBeenCalled();
+  });
+
+  it("finalizes trusted observed usage instead of the reserved envelope", async () => {
+    const fixture = lifecycle();
+    await fixture.instance.start(input);
+    await beginAndStopSpeech(fixture, 1);
+    await fixture.sidebandObserver?.onProviderEvent({ type: "response.created" });
+    await fixture.sidebandObserver?.onProviderEvent(responseDone());
+
+    await fixture.instance.terminate();
+
+    expect(fixture.finalize).toHaveBeenCalledWith(input.reservationId, {
+      estimatedCostUsd: 0.007206,
+      estimatedInputTokens: 132,
+      estimatedOutputTokens: 121,
+      generationCount: 1,
+      realtimeSeconds: 0,
+    });
+  });
+
   it("durably owns the provider call ID and alarm before returning browser SDP", async () => {
     const fixture = lifecycle({ now: 50_000 });
 
@@ -424,7 +474,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     );
   });
 
-  it("hangs up and conservatively settles the reservation at the alarm boundary", async () => {
+  it("hangs up and settles observed usage at the alarm boundary", async () => {
     const hangup = vi.fn(() => Promise.resolve());
     const fixture = lifecycle({
       now: 60_000,
@@ -437,7 +487,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(hangup).toHaveBeenCalledWith("rtc_server-owned-call");
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      zeroUsage,
     );
     expect(fixture.storage.state).toEqual({
       settledAtEpochMs: 60_000,
@@ -462,6 +512,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
 
     await expect(first.instance.terminate()).rejects.toThrow("D1 unavailable");
     expect(storage.state).toEqual({
+      providerCallAccepted: true,
       reservationId: input.reservationId,
       reservedUsage,
       sidebandUsage: emptyOpenAiRealtimeUsageState(),
@@ -479,7 +530,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(hangup).toHaveBeenCalledOnce();
     expect(successfulFinalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      zeroUsage,
     );
   });
 
@@ -500,7 +551,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(hangup).toHaveBeenCalledWith("rtc_accepted-before-invalid-sdp");
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      zeroUsage,
     );
   });
 
@@ -517,7 +568,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(fixture.hangup).toHaveBeenCalledWith("rtc_server-owned-call");
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      zeroUsage,
     );
     expect(fixture.storage.state).toEqual({
       settledAtEpochMs: 1_000,
@@ -756,7 +807,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(fixture.hangup).toHaveBeenCalledOnce();
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      zeroUsage,
     );
   });
 
@@ -794,7 +845,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(fixture.hangup).toHaveBeenCalledOnce();
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      oneResponseUsage,
     );
   });
 
@@ -818,7 +869,13 @@ describe("JudgeRealtimeCallLifecycle", () => {
     expect(fixture.hangup).toHaveBeenCalledOnce();
     expect(fixture.finalize).toHaveBeenCalledWith(
       input.reservationId,
-      reservedUsage,
+      {
+        estimatedCostUsd: 0.02247,
+        estimatedInputTokens: 396,
+        estimatedOutputTokens: 363,
+        generationCount: 3,
+        realtimeSeconds: 3,
+      },
     );
   });
 
@@ -1034,7 +1091,7 @@ describe("JudgeRealtimeCallLifecycle", () => {
     });
   });
 
-  it("settles without provider work when its initial durable claim fails", async () => {
+  it("releases without provider work when its initial durable claim fails", async () => {
     const storage = new MemoryStorage();
     storage.failPuts = 1;
     const hangup = vi.fn(() => Promise.resolve());
@@ -1048,17 +1105,15 @@ describe("JudgeRealtimeCallLifecycle", () => {
     });
 
     expect(hangup).not.toHaveBeenCalled();
-    expect(fixture.finalize).toHaveBeenCalledWith(
-      input.reservationId,
-      reservedUsage,
-    );
+    expect(fixture.release).toHaveBeenCalledWith(input.reservationId);
+    expect(fixture.finalize).not.toHaveBeenCalled();
     expect(storage.state).toEqual({
       settledAtEpochMs: 1_000,
       status: "settled",
     });
   });
 
-  it("charges an unknown provider outcome without attempting an unknown call ID", async () => {
+  it("releases an unaccepted provider outcome without attempting an unknown call ID", async () => {
     const connector: ManagedRealtimeCallConnector = {
       connect: () => Promise.reject(new Error("transport unavailable")),
     };
@@ -1070,10 +1125,8 @@ describe("JudgeRealtimeCallLifecycle", () => {
     });
 
     expect(hangup).not.toHaveBeenCalled();
-    expect(fixture.finalize).toHaveBeenCalledWith(
-      input.reservationId,
-      reservedUsage,
-    );
+    expect(fixture.release).toHaveBeenCalledWith(input.reservationId);
+    expect(fixture.finalize).not.toHaveBeenCalled();
     expect(fixture.storage.state).toEqual({
       settledAtEpochMs: 1_000,
       status: "settled",
@@ -1159,7 +1212,8 @@ describe("JudgeRealtimeCallLifecycle", () => {
 
     await expect(pendingStart).resolves.toEqual({ kind: "unavailable" });
     expect(fixture.hangup).toHaveBeenCalledWith("rtc_accepted-after-cancel");
-    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.release).toHaveBeenCalledWith(input.reservationId);
+    expect(fixture.finalize).not.toHaveBeenCalled();
     expect(fixture.storage.state).toEqual({
       settledAtEpochMs: 1_000,
       status: "settled",
@@ -1179,7 +1233,8 @@ describe("JudgeRealtimeCallLifecycle", () => {
     await expect(pendingStart).resolves.toEqual({ kind: "unavailable" });
     await termination;
     expect(connect).not.toHaveBeenCalled();
-    expect(fixture.finalize).toHaveBeenCalledOnce();
+    expect(fixture.release).toHaveBeenCalledWith(input.reservationId);
+    expect(fixture.finalize).not.toHaveBeenCalled();
     expect(fixture.storage.state).toBeUndefined();
   });
 });
