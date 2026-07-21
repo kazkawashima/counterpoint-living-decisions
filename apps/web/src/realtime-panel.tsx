@@ -37,9 +37,11 @@ import {
   connectManagedOpenAiRealtime,
   connectOpenAiRealtime,
   createOpenAiRealtimeController,
+  RealtimeConnectionStageError,
   type OpenAiRealtimeChannel,
   type OpenAiRealtimeController,
   type OpenAiRealtimeState,
+  type RealtimeFailureStage,
 } from "./realtime-openai.js";
 
 interface RealtimePanelProps {
@@ -77,8 +79,17 @@ interface PendingVoiceTurn {
 
 const MAX_VOICE_HOLD_MS = 8_000;
 const TRANSCRIPT_WAIT_MS = 5_000;
+const connectionStageMessage: Readonly<Record<RealtimeFailureStage, string>> = {
+  access: "Realtime access check failed.",
+  call_creation: "Realtime call creation failed.",
+  media: "Microphone setup failed.",
+  peer_negotiation: "Realtime peer negotiation failed.",
+};
 
 function safeMessage(error: unknown): string {
+  if (error instanceof RealtimeConnectionStageError) {
+    return connectionStageMessage[error.stage];
+  }
   if (error instanceof ApiError && error.code === "API_KEY_REQUIRED") {
     return "API key required. Meeting state is preserved; add BYOK or continue in text.";
   }
@@ -97,6 +108,17 @@ function safeMessage(error: unknown): string {
   return error instanceof ApiError
     ? error.message
     : "Live channels are unavailable. The text workspace remains active.";
+}
+
+function connectionFailureMessage(
+  error: unknown,
+  fallbackStage: RealtimeFailureStage,
+): string {
+  const stage =
+    error instanceof RealtimeConnectionStageError ? error.stage : fallbackStage;
+  const stageMessage = connectionStageMessage[stage];
+  const detail = safeMessage(error);
+  return detail === stageMessage ? stageMessage : `${stageMessage} ${detail}`;
 }
 
 function useControllerState(
@@ -356,6 +378,7 @@ export function RealtimePanel({
       selectedChannel: OpenAiRealtimeChannel,
       idempotencyKey: string,
     ) => {
+      let failureStage: RealtimeFailureStage = "access";
       try {
         const access = await getRealtimeAccess(session, meetingId);
         setRealtimeAccess(access.mode);
@@ -366,6 +389,7 @@ export function RealtimePanel({
           setJudgeUsageState("hidden");
         }
         if (access.mode === "facilitatorProvided") {
+          failureStage = "call_creation";
           const issued = await issueRealtimeClientSecret(
             session,
             meetingId,
@@ -380,6 +404,7 @@ export function RealtimePanel({
         if (access.mode === "judgeManaged") {
           const judgeByokKey = loadStoredMeetingByok(meetingId);
           if (judgeByokKey !== undefined) {
+            failureStage = "call_creation";
             const issued = await issueRealtimeClientSecret(
               session,
               meetingId,
@@ -392,6 +417,7 @@ export function RealtimePanel({
                 transcriptHandlers.current[selectedChannel]?.(transcript),
             });
           }
+          failureStage = "call_creation";
           return await connectManagedOpenAiRealtime({
             awaitTranscript: async ({ managedCallId, utteranceId }) => {
               for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -456,7 +482,7 @@ export function RealtimePanel({
           "Realtime access is unavailable for this meeting",
         );
       } catch (cause) {
-        setError(safeMessage(cause));
+        setError(connectionFailureMessage(cause, failureStage));
         throw cause;
       }
     };

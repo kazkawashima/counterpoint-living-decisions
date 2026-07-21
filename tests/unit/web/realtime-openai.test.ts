@@ -25,7 +25,7 @@ class FakeDataChannel implements RealtimeDataChannel {
     this.closed = true;
   }
 
-  getReadyState(): "closed" | "open" {
+  getReadyState(): "closed" | "closing" | "connecting" | "open" {
     return this.closed ? "closed" : "open";
   }
 
@@ -239,6 +239,335 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(peer.channels[0]?.channel.closed).toBe(true);
   });
 
+  it.each([400, 401, 403, 404])(
+    "marks provider status %i as a permanent call-creation failure",
+    async (status) => {
+      const failure = await connectOpenAiRealtime({
+        clientSecret: "ek_ephemeral_only",
+        fetch: () =>
+          Promise.resolve({
+            ok: false,
+            status,
+            text: () => Promise.resolve("private provider response"),
+          }),
+        peerFactory: () => new FakePeer(),
+      }).catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        code: "REALTIME_CONNECT_FAILED",
+        message: "Realtime call creation failed.",
+        retryable: false,
+        stage: "call_creation",
+      });
+      expect(String(failure)).not.toContain("private provider response");
+    },
+  );
+
+  it.each([408, 425, 429, 500, 503, 599])(
+    "marks provider status %i as a retryable call-creation failure",
+    async (status) => {
+      const failure = await connectOpenAiRealtime({
+        clientSecret: "ek_ephemeral_only",
+        fetch: () =>
+          Promise.resolve({
+            ok: false,
+            status,
+            text: () => Promise.resolve("private provider response"),
+          }),
+        peerFactory: () => new FakePeer(),
+      }).catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        code: "REALTIME_CONNECT_FAILED",
+        message: "Realtime call creation failed.",
+        retryable: true,
+        stage: "call_creation",
+      });
+      expect(String(failure)).not.toContain("private provider response");
+    },
+  );
+
+  it("redacts direct peer factory failures behind peer negotiation", async () => {
+    const failure = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      peerFactory: () => {
+        throw new Error("private peer factory device identifier");
+      },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("device identifier");
+  });
+
+  it("redacts direct audio sender construction failures behind peer negotiation", async () => {
+    const peer = new FakePeer();
+    vi.spyOn(peer, "createAudioSender").mockImplementation(() => {
+      throw new Error("private sender construction detail");
+    });
+
+    const failure = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      peerFactory: () => peer,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("construction detail");
+    expect(peer.closed).toBe(true);
+  });
+
+  it("redacts direct data-channel construction failures behind peer negotiation", async () => {
+    const peer = new FakePeer();
+    vi.spyOn(peer, "createDataChannel").mockImplementation(() => {
+      throw new Error("private data-channel construction detail");
+    });
+
+    const failure = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      peerFactory: () => peer,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("construction detail");
+    expect(peer.closed).toBe(true);
+  });
+
+  it("preserves a classified direct failure when channel and peer cleanup throw", async () => {
+    const peer = new FakePeer();
+    const channel = new FakeDataChannel();
+    const closeChannel = vi.spyOn(channel, "close").mockImplementation(() => {
+      throw new Error("private data-channel cleanup detail");
+    });
+    const closePeer = vi.spyOn(peer, "close").mockImplementation(() => {
+      throw new Error("private peer cleanup detail");
+    });
+    vi.spyOn(peer, "createDataChannel").mockReturnValue(channel);
+    vi.spyOn(peer, "createOffer").mockRejectedValue(
+      new Error("private offer detail"),
+    );
+
+    const failure = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      peerFactory: () => peer,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toMatch(/cleanup detail|offer detail/u);
+    expect(closeChannel).toHaveBeenCalledOnce();
+    expect(closePeer).toHaveBeenCalledOnce();
+  });
+
+  it("preserves direct media failure when attempted-track cleanup throws without closing", async () => {
+    const peer = new FakePeer();
+    const channel = new FakeDataChannel();
+    const track = new FakeAudioTrack();
+    const removeMessage = vi.fn(() => {
+      throw new Error("private message-listener cleanup detail");
+    });
+    const removeOpen = vi.fn(() => {
+      throw new Error("private open-listener cleanup detail");
+    });
+    const stopTrack = vi.spyOn(track, "stop").mockImplementation(() => {
+      throw new Error("private track cleanup detail");
+    });
+    const closeChannel = vi.spyOn(channel, "close").mockImplementation(() => {
+      throw new Error("private channel cleanup detail");
+    });
+    const closePeer = vi.spyOn(peer, "close").mockImplementation(() => {
+      throw new Error("private peer cleanup detail");
+    });
+    const replaceTrack = vi.fn((nextTrack: RealtimeAudioTrack | null) =>
+      nextTrack === null
+        ? Promise.resolve()
+        : Promise.reject(new Error("private sender attachment detail")),
+    );
+    vi.spyOn(peer, "createAudioSender").mockReturnValue({ replaceTrack });
+    vi.spyOn(peer, "createDataChannel").mockReturnValue(channel);
+    vi.spyOn(channel, "getReadyState").mockReturnValue("connecting");
+    vi.spyOn(channel, "setMessageListener").mockReturnValue(removeMessage);
+    vi.spyOn(channel, "setOpenListener").mockReturnValue(removeOpen);
+
+    const connection = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      mediaFactory: () =>
+        Promise.resolve({
+          getAudioTracks: () => [track],
+        }),
+      peerFactory: () => peer,
+    });
+    const failure = await connection
+      .startPushToTalk()
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      stage: "media",
+    });
+    expect(String(failure)).not.toContain("cleanup detail");
+    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(replaceTrack).toHaveBeenLastCalledWith(null);
+    expect(removeMessage).not.toHaveBeenCalled();
+    expect(removeOpen).not.toHaveBeenCalled();
+    expect(closeChannel).not.toHaveBeenCalled();
+    expect(closePeer).not.toHaveBeenCalled();
+  });
+
+  it("redacts direct microphone failures behind the public media stage", async () => {
+    const peer = new FakePeer();
+    const connection = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      mediaFactory: () =>
+        Promise.reject(new Error("private microphone hardware identifier")),
+      peerFactory: () => peer,
+    });
+
+    const failure = await connection
+      .startPushToTalk()
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      retryable: true,
+      stage: "media",
+    });
+    expect(String(failure)).not.toContain("hardware identifier");
+  });
+
+  it("preserves a media failure through the controller push-to-talk boundary", async () => {
+    const peer = new FakePeer();
+    const track = new FakeAudioTrack();
+    let mediaAttempts = 0;
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect: () =>
+        connectOpenAiRealtime({
+          clientSecret: "ek_ephemeral_only",
+          fetch: successfulFetch(),
+          mediaFactory: () => {
+            mediaAttempts += 1;
+            return mediaAttempts === 1
+              ? Promise.reject(
+                  new Error("private microphone hardware identifier"),
+                )
+              : Promise.resolve({ getAudioTracks: () => [track] });
+          },
+          peerFactory: () => peer,
+        }),
+    });
+    await controller.connect();
+
+    const failure = await controller
+      .startPushToTalk()
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      retryable: true,
+      stage: "media",
+    });
+    expect(String(failure)).not.toContain("hardware identifier");
+    expect(controller.getState()).toMatchObject({
+      microphone: "off",
+      status: "connected",
+    });
+    expect(peer.closed).toBe(false);
+
+    await controller.startPushToTalk();
+    expect(controller.getState()).toMatchObject({
+      microphone: "live",
+      status: "connected",
+    });
+    expect(track.enabled).toBe(true);
+    await controller.stopPushToTalk();
+    expect(track.stopped).toBe(true);
+    expect(peer.replacedTracks).toEqual([track, null]);
+  });
+
+  it("keeps a direct controller connected after attachment failure and retries voice", async () => {
+    const peer = new FakePeer();
+    const failedTrack = new FakeAudioTrack();
+    const retryTrack = new FakeAudioTrack();
+    let attachmentAttempts = 0;
+    const replaceTrack = vi.fn((track: RealtimeAudioTrack | null) => {
+      peer.replacedTracks.push(track);
+      if (track !== null) {
+        attachmentAttempts += 1;
+        if (attachmentAttempts === 1) {
+          return Promise.reject(new Error("private sender attachment detail"));
+        }
+      }
+      return Promise.resolve();
+    });
+    vi.spyOn(peer, "createAudioSender").mockReturnValue({ replaceTrack });
+    let mediaAttempts = 0;
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect: () =>
+        connectOpenAiRealtime({
+          clientSecret: "ek_ephemeral_only",
+          fetch: successfulFetch(),
+          mediaFactory: () => {
+            mediaAttempts += 1;
+            return Promise.resolve({
+              getAudioTracks: () => [
+                mediaAttempts === 1 ? failedTrack : retryTrack,
+              ],
+            });
+          },
+          peerFactory: () => peer,
+        }),
+    });
+    await controller.connect();
+
+    await expect(controller.startPushToTalk()).rejects.toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      stage: "media",
+    });
+    expect(controller.getState()).toMatchObject({
+      microphone: "off",
+      status: "connected",
+    });
+    expect(failedTrack.stopped).toBe(true);
+    expect(peer.closed).toBe(false);
+
+    await controller.startPushToTalk();
+    expect(controller.getState()).toMatchObject({
+      microphone: "live",
+      status: "connected",
+    });
+    await controller.stopPushToTalk();
+    expect(retryTrack.stopped).toBe(true);
+    expect(peer.replacedTracks).toEqual([failedTrack, null, retryTrack, null]);
+    controller.close();
+  });
+
   it("uses a media-only peer for server-managed judge calls", async () => {
     const peer = new FakePeer();
     const createDataChannel = vi
@@ -308,6 +637,64 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(terminateCall).toHaveBeenCalledWith("managed-call-synthetic");
   });
 
+  it("redacts managed peer factory failures behind peer negotiation", async () => {
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "must-not-be-created",
+          sdpAnswer: "must-not-be-returned",
+        }),
+      idempotencyKey: "managed-peer-factory-failure",
+      peerFactory: () => {
+        throw new Error("private managed peer factory identifier");
+      },
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("factory identifier");
+  });
+
+  it("redacts managed audio sender construction failures behind peer negotiation", async () => {
+    const peer = new FakePeer();
+    vi.spyOn(peer, "createAudioSender").mockImplementation(() => {
+      throw new Error("private managed sender construction detail");
+    });
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "must-not-be-created",
+          sdpAnswer: "must-not-be-returned",
+        }),
+      idempotencyKey: "managed-sender-construction-failure",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("construction detail");
+    expect(peer.closed).toBe(true);
+  });
+
   it("preserves a permanent managed-call denial for the UI", async () => {
     const peer = new FakePeer();
     const denial = Object.assign(new Error("Synthetic judge limit reached"), {
@@ -328,6 +715,481 @@ describe("OpenAI Realtime browser lifecycle", () => {
 
     expect(failure).toBe(denial);
     expect(peer.closed).toBe(true);
+  });
+
+  it("identifies managed-call creation failures without exposing provider details", async () => {
+    const peer = new FakePeer();
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.reject(
+          new Error("provider response sk-private account-203.0.113.7"),
+        ),
+      idempotencyKey: "managed-call-creation-failure",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime call creation failed.",
+      retryable: true,
+      stage: "call_creation",
+    });
+    expect(String(failure)).not.toMatch(/sk-private|203\.0\.113\.7/u);
+    expect(peer.closed).toBe(true);
+  });
+
+  it("identifies offer creation as a peer-negotiation failure", async () => {
+    const peer = new FakePeer();
+    vi.spyOn(peer, "createOffer").mockRejectedValue(
+      new Error("provider offer detail must stay private"),
+    );
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "must-not-be-created",
+          sdpAnswer: "must-not-be-returned",
+        }),
+      idempotencyKey: "managed-offer-failure",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("provider offer detail");
+    expect(peer.closed).toBe(true);
+  });
+
+  it("identifies local SDP application as a peer-negotiation failure", async () => {
+    const peer = new FakePeer();
+    vi.spyOn(peer, "setLocalDescription").mockRejectedValue(
+      new Error("private local SDP must stay private"),
+    );
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "must-not-be-created",
+          sdpAnswer: "must-not-be-returned",
+        }),
+      idempotencyKey: "managed-local-description-failure",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("private local SDP");
+    expect(peer.closed).toBe(true);
+  });
+
+  it("identifies SDP answer application as a peer-negotiation failure", async () => {
+    const peer = new FakePeer();
+    vi.spyOn(peer, "setRemoteDescription").mockRejectedValue(
+      new Error("private SDP answer must stay private"),
+    );
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "managed-answer-failure",
+          sdpAnswer: "private-answer-sdp",
+        }),
+      idempotencyKey: "managed-answer-application-failure",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      retryable: true,
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("private SDP answer");
+    expect(peer.closed).toBe(true);
+  });
+
+  it("preserves a managed peer failure when termination and peer cleanup throw", async () => {
+    const peer = new FakePeer();
+    const closePeer = vi.spyOn(peer, "close").mockImplementation(() => {
+      throw new Error("private managed peer cleanup detail");
+    });
+    vi.spyOn(peer, "setRemoteDescription").mockRejectedValue(
+      new Error("private managed SDP detail"),
+    );
+    const terminateCall = vi.fn(() => {
+      throw new Error("private managed termination cleanup detail");
+    });
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "managed-throwing-cleanup",
+          sdpAnswer: "private-answer-sdp",
+        }),
+      idempotencyKey: "managed-throwing-cleanup",
+      peerFactory: () => peer,
+      terminateCall,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime peer negotiation failed.",
+      stage: "peer_negotiation",
+    });
+    expect(String(failure)).not.toContain("cleanup detail");
+    expect(terminateCall).toHaveBeenCalledOnce();
+    expect(closePeer).toHaveBeenCalledOnce();
+  });
+
+  it("identifies microphone acquisition as a media failure", async () => {
+    const peer = new FakePeer();
+    const connection = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "managed-media-failure",
+          sdpAnswer: "synthetic-answer-sdp",
+        }),
+      idempotencyKey: "managed-media-acquisition-failure",
+      mediaFactory: () =>
+        Promise.reject(new Error("microphone device account detail")),
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    });
+
+    const failure = await connection
+      .startPushToTalk("utterance-media-failure")
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      retryable: true,
+      stage: "media",
+    });
+    expect(String(failure)).not.toContain("account detail");
+    expect(peer.closed).toBe(false);
+  });
+
+  it("keeps a managed peer connected for a later voice retry after media denial", async () => {
+    const peer = new FakePeer();
+    const track = new FakeAudioTrack();
+    let mediaAttempts = 0;
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect: (_channel, idempotencyKey) =>
+        connectManagedOpenAiRealtime({
+          awaitTranscript: () =>
+            Promise.resolve({ transcript: "Synthetic retry transcript." }),
+          beginTurn: () => Promise.resolve(),
+          channel: "private",
+          createCall: () =>
+            Promise.resolve({
+              managedCallId: "managed-controller-media-retry",
+              sdpAnswer: "synthetic-answer-sdp",
+            }),
+          idempotencyKey,
+          mediaFactory: () => {
+            mediaAttempts += 1;
+            return mediaAttempts === 1
+              ? Promise.reject(new Error("private managed microphone detail"))
+              : Promise.resolve({ getAudioTracks: () => [track] });
+          },
+          peerFactory: () => peer,
+          terminateCall: () => Promise.resolve(),
+        }),
+    });
+    await controller.connect();
+
+    await expect(
+      controller.startPushToTalk("utterance-managed-media-denial"),
+    ).rejects.toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      stage: "media",
+    });
+    expect(controller.getState()).toMatchObject({
+      microphone: "off",
+      status: "connected",
+    });
+    expect(peer.closed).toBe(false);
+
+    await controller.startPushToTalk("utterance-managed-media-retry");
+    expect(controller.getState().microphone).toBe("live");
+    await controller.stopPushToTalk();
+    expect(track.stopped).toBe(true);
+    expect(peer.replacedTracks).toEqual([track, null]);
+  });
+
+  it("opens a managed turn only after media is ready so denial can retry", async () => {
+    const peer = new FakePeer();
+    const retryTrack = new FakeAudioTrack();
+    let mediaAttempts = 0;
+    let activeServerUtterance: string | undefined;
+    const openedUtterances: string[] = [];
+    const beginTurn = vi.fn(
+      (input: {
+        readonly managedCallId: string;
+        readonly utteranceId: string;
+      }) => {
+        if (
+          activeServerUtterance !== undefined &&
+          activeServerUtterance !== input.utteranceId
+        ) {
+          return Promise.reject(new Error("unfinished server turn"));
+        }
+        activeServerUtterance = input.utteranceId;
+        openedUtterances.push(input.utteranceId);
+        return Promise.resolve();
+      },
+    );
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect: (_channel, idempotencyKey) =>
+        connectManagedOpenAiRealtime({
+          awaitTranscript: ({ utteranceId }) => {
+            if (activeServerUtterance === utteranceId) {
+              activeServerUtterance = undefined;
+            }
+            return Promise.resolve({
+              transcript: "Synthetic retry transcript.",
+            });
+          },
+          beginTurn,
+          channel: "private",
+          createCall: () =>
+            Promise.resolve({
+              managedCallId: "managed-controller-media-ordering",
+              sdpAnswer: "synthetic-answer-sdp",
+            }),
+          idempotencyKey,
+          mediaFactory: () => {
+            mediaAttempts += 1;
+            return mediaAttempts === 1
+              ? Promise.reject(new Error("private microphone detail"))
+              : Promise.resolve({ getAudioTracks: () => [retryTrack] });
+          },
+          peerFactory: () => peer,
+          terminateCall: () => Promise.resolve(),
+        }),
+    });
+    await controller.connect();
+
+    await expect(
+      controller.startPushToTalk("utterance-media-denial"),
+    ).rejects.toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      stage: "media",
+    });
+    expect(beginTurn).not.toHaveBeenCalled();
+    expect(openedUtterances).toEqual([]);
+    expect(activeServerUtterance).toBeUndefined();
+    expect(controller.getState()).toMatchObject({
+      microphone: "off",
+      status: "connected",
+    });
+
+    await controller.startPushToTalk("utterance-media-retry");
+    expect(openedUtterances).toEqual(["utterance-media-retry"]);
+    expect(activeServerUtterance).toBe("utterance-media-retry");
+    expect(controller.getState().microphone).toBe("live");
+    await controller.stopPushToTalk();
+    expect(activeServerUtterance).toBeUndefined();
+    expect(retryTrack.stopped).toBe(true);
+    controller.close();
+  });
+
+  it("keeps a managed controller connected after attachment failure and retries voice", async () => {
+    const peer = new FakePeer();
+    const failedTrack = new FakeAudioTrack();
+    const retryTrack = new FakeAudioTrack();
+    let attachmentAttempts = 0;
+    const replaceTrack = vi.fn((track: RealtimeAudioTrack | null) => {
+      peer.replacedTracks.push(track);
+      if (track !== null) {
+        attachmentAttempts += 1;
+        if (attachmentAttempts === 1) {
+          return Promise.reject(new Error("private sender attachment detail"));
+        }
+      }
+      return Promise.resolve();
+    });
+    vi.spyOn(peer, "createAudioSender").mockReturnValue({ replaceTrack });
+    let mediaAttempts = 0;
+    const terminateCall = vi.fn(() => Promise.resolve());
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect: (_channel, idempotencyKey) =>
+        connectManagedOpenAiRealtime({
+          awaitTranscript: () =>
+            Promise.resolve({ transcript: "Synthetic retry transcript." }),
+          beginTurn: () => Promise.resolve(),
+          channel: "private",
+          createCall: () =>
+            Promise.resolve({
+              managedCallId: "managed-controller-attachment-retry",
+              sdpAnswer: "synthetic-answer-sdp",
+            }),
+          idempotencyKey,
+          mediaFactory: () => {
+            mediaAttempts += 1;
+            return Promise.resolve({
+              getAudioTracks: () => [
+                mediaAttempts === 1 ? failedTrack : retryTrack,
+              ],
+            });
+          },
+          peerFactory: () => peer,
+          terminateCall,
+        }),
+    });
+    await controller.connect();
+
+    await expect(
+      controller.startPushToTalk("utterance-attachment-failure"),
+    ).rejects.toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      stage: "media",
+    });
+    expect(controller.getState()).toMatchObject({
+      microphone: "off",
+      status: "connected",
+    });
+    expect(failedTrack.stopped).toBe(true);
+    expect(peer.closed).toBe(false);
+    expect(terminateCall).not.toHaveBeenCalled();
+
+    await controller.startPushToTalk("utterance-attachment-retry");
+    expect(controller.getState()).toMatchObject({
+      microphone: "live",
+      status: "connected",
+    });
+    await controller.stopPushToTalk();
+    expect(retryTrack.stopped).toBe(true);
+    expect(peer.replacedTracks).toEqual([failedTrack, null, retryTrack, null]);
+    controller.close();
+  });
+
+  it("preserves managed media classification when attachment cleanup throws", async () => {
+    const peer = new FakePeer();
+    const track = new FakeAudioTrack();
+    const stopTrack = vi.spyOn(track, "stop").mockImplementation(() => {
+      throw new Error("private managed track cleanup detail");
+    });
+    const closePeer = vi.spyOn(peer, "close").mockImplementation(() => {
+      throw new Error("private managed peer cleanup detail");
+    });
+    const replaceTrack = vi.fn((nextTrack: RealtimeAudioTrack | null) =>
+      nextTrack === null
+        ? Promise.resolve()
+        : Promise.reject(new Error("private managed attachment detail")),
+    );
+    vi.spyOn(peer, "createAudioSender").mockReturnValue({ replaceTrack });
+    const terminateCall = vi.fn(() => {
+      throw new Error("private managed termination cleanup detail");
+    });
+    const connection = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "managed-attachment-cleanup",
+          sdpAnswer: "synthetic-answer-sdp",
+        }),
+      idempotencyKey: "managed-attachment-cleanup",
+      mediaFactory: () =>
+        Promise.resolve({
+          getAudioTracks: () => [track],
+        }),
+      peerFactory: () => peer,
+      terminateCall,
+    });
+
+    const failure = await connection
+      .startPushToTalk("utterance-managed-attachment-cleanup")
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      stage: "media",
+    });
+    expect(String(failure)).not.toContain("cleanup detail");
+    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(replaceTrack).toHaveBeenLastCalledWith(null);
+    expect(terminateCall).not.toHaveBeenCalled();
+    expect(closePeer).not.toHaveBeenCalled();
+  });
+
+  it("identifies a missing microphone track as a media failure", async () => {
+    const peer = new FakePeer();
+    const connection = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () =>
+        Promise.resolve({
+          managedCallId: "managed-missing-track",
+          sdpAnswer: "synthetic-answer-sdp",
+        }),
+      idempotencyKey: "managed-missing-track-failure",
+      mediaFactory: () =>
+        Promise.resolve({
+          getAudioTracks: () => [],
+        }),
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    });
+
+    const failure = await connection
+      .startPushToTalk("utterance-missing-track")
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      retryable: true,
+      stage: "media",
+    });
+    expect(peer.closed).toBe(false);
   });
 
   it("publishes a connecting-to-connected state sequence", async () => {
@@ -478,6 +1340,65 @@ describe("OpenAI Realtime browser lifecycle", () => {
     controller.close();
   });
 
+  it("retries a transient provider status and connects on the next attempt", async () => {
+    let attempts = 0;
+    const fetch = vi.fn<RealtimeFetch>(() => {
+      attempts += 1;
+      return Promise.resolve(
+        attempts === 1
+          ? {
+              ok: false,
+              status: 503,
+              text: () => Promise.resolve("private provider response"),
+            }
+          : {
+              ok: true,
+              status: 200,
+              text: () => Promise.resolve("synthetic-answer-sdp"),
+            },
+      );
+    });
+    const { controller, issueSecret } = setupController({ fetch });
+
+    await controller.connect();
+    expect(controller.getState()).toMatchObject({
+      reconnectAttempt: 1,
+      status: "reconnecting",
+    });
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(controller.getState()).toMatchObject({
+      reconnectAttempt: 0,
+      status: "connected",
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(issueSecret).toHaveBeenCalledTimes(2);
+    controller.close();
+  });
+
+  it("does not retry a permanent provider 4xx status", async () => {
+    const fetch = vi.fn<RealtimeFetch>(() =>
+      Promise.resolve({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve("private provider response"),
+      }),
+    );
+    const { controller, issueSecret } = setupController({ fetch });
+
+    await controller.connect();
+    expect(controller.getState()).toMatchObject({
+      reconnectAttempt: 0,
+      status: "degraded",
+      textFallbackAvailable: true,
+    });
+    await vi.runAllTimersAsync();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(issueSecret).toHaveBeenCalledTimes(1);
+    controller.close();
+  });
+
   it("does not retry a permanent managed-call denial", async () => {
     const denial = Object.assign(new Error("Synthetic judge limit reached"), {
       code: "USAGE_LIMIT_REACHED",
@@ -609,7 +1530,12 @@ describe("OpenAI Realtime browser lifecycle", () => {
       peerFactory: () => peer,
     }).catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(OpenAiRealtimeConnectionError);
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Realtime call creation failed.",
+      retryable: true,
+      stage: "call_creation",
+    });
     expect(String(failure)).not.toContain(secret);
 
     const { controller } = setupController({ fetch, secret });

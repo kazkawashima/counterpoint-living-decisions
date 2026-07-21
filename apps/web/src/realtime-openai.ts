@@ -5,6 +5,8 @@ const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
 const DEFAULT_RETRY_DELAYS_MS = [250, 500, 1_000] as const;
 
 export type OpenAiRealtimeChannel = "private" | "shared";
+export type RealtimeFailureStage =
+  "access" | "call_creation" | "media" | "peer_negotiation";
 export type OpenAiRealtimeStatus =
   "off" | "connecting" | "connected" | "reconnecting" | "degraded";
 
@@ -170,6 +172,19 @@ export class OpenAiRealtimeConnectionError extends Error {
   }
 }
 
+export class RealtimeConnectionStageError extends Error {
+  readonly code = "REALTIME_CONNECT_FAILED";
+
+  constructor(
+    readonly stage: RealtimeFailureStage,
+    message: string,
+    readonly retryable = true,
+  ) {
+    super(message);
+    this.name = "RealtimeConnectionStageError";
+  }
+}
+
 function isPermanentConnectionFailure(
   error: unknown,
 ): error is Error & { readonly code: string; readonly retryable: false } {
@@ -179,6 +194,15 @@ function isPermanentConnectionFailure(
     typeof error.code === "string" &&
     "retryable" in error &&
     error.retryable === false
+  );
+}
+
+function isRetryableRealtimeCallStatus(status: number): boolean {
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    (status >= 500 && status <= 599)
   );
 }
 
@@ -275,15 +299,34 @@ const systemTimer: RealtimeTimer = {
   setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
 };
 
+function runBestEffortCleanup(cleanup: () => void): void {
+  try {
+    cleanup();
+  } catch {
+    // Cleanup must never replace the original classified failure.
+  }
+}
+
+async function runBestEffortAsyncCleanup(
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  try {
+    await cleanup();
+  } catch {
+    // Async cleanup must never replace the original classified failure.
+  }
+}
+
 function closePeerResources(
   peer: RealtimePeerConnection,
   dataChannel: RealtimeDataChannel,
 ): void {
-  try {
-    dataChannel.close();
-  } finally {
-    peer.close();
-  }
+  runBestEffortCleanup(() => dataChannel.close());
+  runBestEffortCleanup(() => peer.close());
+}
+
+function closePeerAfterSetupFailure(peer: RealtimePeerConnection): void {
+  runBestEffortCleanup(() => peer.close());
 }
 
 function transcriptFromServerEvent(
@@ -344,9 +387,35 @@ function transcriptFromServerEvent(
 export async function connectOpenAiRealtime(
   input: ConnectOpenAiRealtimeInput,
 ): Promise<OpenAiRealtimeConnection> {
-  const peer = (input.peerFactory ?? createBrowserPeerConnection)();
-  const audioSender = peer.createAudioSender();
-  const dataChannel = peer.createDataChannel("oai-events");
+  let peer: RealtimePeerConnection;
+  try {
+    peer = (input.peerFactory ?? createBrowserPeerConnection)();
+  } catch {
+    throw new RealtimeConnectionStageError(
+      "peer_negotiation",
+      "Realtime peer negotiation failed.",
+    );
+  }
+  let audioSender: RealtimeAudioSender;
+  try {
+    audioSender = peer.createAudioSender();
+  } catch {
+    closePeerAfterSetupFailure(peer);
+    throw new RealtimeConnectionStageError(
+      "peer_negotiation",
+      "Realtime peer negotiation failed.",
+    );
+  }
+  let dataChannel: RealtimeDataChannel;
+  try {
+    dataChannel = peer.createDataChannel("oai-events");
+  } catch {
+    closePeerAfterSetupFailure(peer);
+    throw new RealtimeConnectionStageError(
+      "peer_negotiation",
+      "Realtime peer negotiation failed.",
+    );
+  }
   const fetch = input.fetch ?? browserFetch;
   const mediaFactory = input.mediaFactory ?? browserMediaFactory;
   const deliveredTranscriptItems = new Set<string>();
@@ -381,35 +450,91 @@ export async function connectOpenAiRealtime(
       return;
     }
     closed = true;
-    activeTrack?.stop();
+    const track = activeTrack;
     activeTrack = undefined;
-    removeMessageListener?.();
-    removeOpenListener?.();
+    const removeMessage = removeMessageListener;
+    removeMessageListener = undefined;
+    const removeOpen = removeOpenListener;
+    removeOpenListener = undefined;
+    if (track !== undefined) {
+      runBestEffortCleanup(() => track.stop());
+    }
+    if (removeMessage !== undefined) {
+      runBestEffortCleanup(removeMessage);
+    }
+    if (removeOpen !== undefined) {
+      runBestEffortCleanup(removeOpen);
+    }
     closePeerResources(peer, dataChannel);
   };
 
   try {
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    const response = await fetch(OPENAI_REALTIME_CALLS_URL, {
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${input.clientSecret}`,
-        "Content-Type": "application/sdp",
-      },
-      method: "POST",
-    });
+    let offer: RealtimeSessionDescription;
+    try {
+      offer = await peer.createOffer();
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
+    }
+    try {
+      await peer.setLocalDescription(offer);
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
+    }
+    let response: RealtimeSdpResponse;
+    try {
+      response = await fetch(OPENAI_REALTIME_CALLS_URL, {
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${input.clientSecret}`,
+          "Content-Type": "application/sdp",
+        },
+        method: "POST",
+      });
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "call_creation",
+        "Realtime call creation failed.",
+      );
+    }
     if (!response.ok) {
-      throw new OpenAiRealtimeConnectionError();
+      throw new RealtimeConnectionStageError(
+        "call_creation",
+        "Realtime call creation failed.",
+        isRetryableRealtimeCallStatus(response.status),
+      );
     }
-    const answerSdp = await response.text();
+    let answerSdp: string;
+    try {
+      answerSdp = await response.text();
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "call_creation",
+        "Realtime call creation failed.",
+      );
+    }
     if (answerSdp.length === 0) {
-      throw new OpenAiRealtimeConnectionError();
+      throw new RealtimeConnectionStageError(
+        "call_creation",
+        "Realtime call creation failed.",
+      );
     }
-    await peer.setRemoteDescription({
-      sdp: answerSdp,
-      type: "answer",
-    });
+    try {
+      await peer.setRemoteDescription({
+        sdp: answerSdp,
+        type: "answer",
+      });
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
+    }
     removeMessageListener = dataChannel.setMessageListener((serialized) => {
       const completed = transcriptFromServerEvent(serialized);
       if (
@@ -450,11 +575,24 @@ export async function connectOpenAiRealtime(
         if (activeTrack !== undefined) {
           return;
         }
-        const stream = await mediaFactory();
+        let stream: RealtimeMediaStream;
+        try {
+          stream = await mediaFactory();
+        } catch {
+          throw new RealtimeConnectionStageError(
+            "media",
+            "Microphone setup failed.",
+          );
+        }
         const track = stream.getAudioTracks()[0];
         if (track === undefined || closed) {
-          track?.stop();
-          throw new OpenAiRealtimeConnectionError();
+          if (track !== undefined) {
+            runBestEffortCleanup(() => track.stop());
+          }
+          throw new RealtimeConnectionStageError(
+            "media",
+            "Microphone setup failed.",
+          );
         }
         track.enabled = false;
         try {
@@ -466,10 +604,12 @@ export async function connectOpenAiRealtime(
           activeTrack = track;
           track.enabled = true;
         } catch {
-          track.stop();
-          await audioSender.replaceTrack(null).catch(() => undefined);
-          close();
-          throw new OpenAiRealtimeConnectionError();
+          runBestEffortCleanup(() => track.stop());
+          await runBestEffortAsyncCleanup(() => audioSender.replaceTrack(null));
+          throw new RealtimeConnectionStageError(
+            "media",
+            "Microphone setup failed.",
+          );
         }
       },
       stopPushToTalk: async () => {
@@ -483,14 +623,17 @@ export async function connectOpenAiRealtime(
           sendEvent({ type: "input_audio_buffer.commit" });
           sendEvent({ type: "response.create" });
         } finally {
-          await audioSender.replaceTrack(null).catch(() => undefined);
-          track.stop();
+          await runBestEffortAsyncCleanup(() => audioSender.replaceTrack(null));
+          runBestEffortCleanup(() => track.stop());
         }
       },
     };
   } catch (cause) {
     close();
-    if (isPermanentConnectionFailure(cause)) {
+    if (
+      cause instanceof RealtimeConnectionStageError ||
+      isPermanentConnectionFailure(cause)
+    ) {
       throw cause;
     }
     throw new OpenAiRealtimeConnectionError();
@@ -500,8 +643,25 @@ export async function connectOpenAiRealtime(
 export async function connectManagedOpenAiRealtime(
   input: ConnectManagedOpenAiRealtimeInput,
 ): Promise<OpenAiRealtimeConnection> {
-  const peer = (input.peerFactory ?? createBrowserPeerConnection)();
-  const audioSender = peer.createAudioSender();
+  let peer: RealtimePeerConnection;
+  try {
+    peer = (input.peerFactory ?? createBrowserPeerConnection)();
+  } catch {
+    throw new RealtimeConnectionStageError(
+      "peer_negotiation",
+      "Realtime peer negotiation failed.",
+    );
+  }
+  let audioSender: RealtimeAudioSender;
+  try {
+    audioSender = peer.createAudioSender();
+  } catch {
+    closePeerAfterSetupFailure(peer);
+    throw new RealtimeConnectionStageError(
+      "peer_negotiation",
+      "Realtime peer negotiation failed.",
+    );
+  }
   const mediaFactory = input.mediaFactory ?? browserMediaFactory;
   let activeTrack: RealtimeAudioTrack | undefined;
   let activeUtteranceId: string | undefined;
@@ -514,38 +674,80 @@ export async function connectManagedOpenAiRealtime(
     if (managedCallId === undefined || !callCreated || terminationRequested) {
       return;
     }
+    const callId = managedCallId;
     terminationRequested = true;
-    void input.terminateCall(managedCallId).catch(() => undefined);
+    runBestEffortCleanup(() => {
+      void input.terminateCall(callId).catch(() => undefined);
+    });
   };
   const close = (): void => {
     if (closed) {
       return;
     }
     closed = true;
-    activeTrack?.stop();
+    const track = activeTrack;
     activeTrack = undefined;
     activeUtteranceId = undefined;
+    if (track !== undefined) {
+      runBestEffortCleanup(() => track.stop());
+    }
     terminate();
-    peer.close();
+    runBestEffortCleanup(() => peer.close());
   };
 
   try {
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    const answer = await input.createCall({
-      channel: input.channel,
-      idempotencyKey: input.idempotencyKey,
-      sdpOffer: offer.sdp,
-    });
+    let offer: RealtimeSessionDescription;
+    try {
+      offer = await peer.createOffer();
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
+    }
+    try {
+      await peer.setLocalDescription(offer);
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
+    }
+    let answer: Awaited<ReturnType<typeof input.createCall>>;
+    try {
+      answer = await input.createCall({
+        channel: input.channel,
+        idempotencyKey: input.idempotencyKey,
+        sdpOffer: offer.sdp,
+      });
+    } catch (cause) {
+      if (isPermanentConnectionFailure(cause)) {
+        throw cause;
+      }
+      throw new RealtimeConnectionStageError(
+        "call_creation",
+        "Realtime call creation failed.",
+      );
+    }
     managedCallId = answer.managedCallId;
     callCreated = true;
     if (answer.sdpAnswer.trim().length === 0) {
-      throw new OpenAiRealtimeConnectionError();
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
     }
-    await peer.setRemoteDescription({
-      sdp: answer.sdpAnswer,
-      type: "answer",
-    });
+    try {
+      await peer.setRemoteDescription({
+        sdp: answer.sdpAnswer,
+        type: "answer",
+      });
+    } catch {
+      throw new RealtimeConnectionStageError(
+        "peer_negotiation",
+        "Realtime peer negotiation failed.",
+      );
+    }
     return {
       close,
       peer,
@@ -564,11 +766,6 @@ export async function connectManagedOpenAiRealtime(
           }
           throw new OpenAiRealtimeConnectionError();
         }
-        try {
-          await input.beginTurn({ managedCallId, utteranceId });
-        } catch {
-          throw new OpenAiRealtimeConnectionError();
-        }
         if (closed) {
           throw new OpenAiRealtimeConnectionError();
         }
@@ -579,14 +776,20 @@ export async function connectManagedOpenAiRealtime(
         try {
           stream = await mediaFactory();
         } catch {
-          close();
-          throw new OpenAiRealtimeConnectionError();
+          throw new RealtimeConnectionStageError(
+            "media",
+            "Microphone setup failed.",
+          );
         }
         const track = stream.getAudioTracks()[0];
         if (track === undefined || closed) {
-          track?.stop();
-          close();
-          throw new OpenAiRealtimeConnectionError();
+          if (track !== undefined) {
+            runBestEffortCleanup(() => track.stop());
+          }
+          throw new RealtimeConnectionStageError(
+            "media",
+            "Microphone setup failed.",
+          );
         }
         track.enabled = false;
         try {
@@ -594,15 +797,27 @@ export async function connectManagedOpenAiRealtime(
           if (closed) {
             throw new OpenAiRealtimeConnectionError();
           }
-          activeTrack = track;
-          activeUtteranceId = utteranceId;
-          track.enabled = true;
         } catch {
-          track.stop();
-          await audioSender.replaceTrack(null).catch(() => undefined);
-          close();
+          runBestEffortCleanup(() => track.stop());
+          await runBestEffortAsyncCleanup(() => audioSender.replaceTrack(null));
+          throw new RealtimeConnectionStageError(
+            "media",
+            "Microphone setup failed.",
+          );
+        }
+        try {
+          await input.beginTurn({ managedCallId, utteranceId });
+          if (closed) {
+            throw new OpenAiRealtimeConnectionError();
+          }
+        } catch {
+          await runBestEffortAsyncCleanup(() => audioSender.replaceTrack(null));
+          runBestEffortCleanup(() => track.stop());
           throw new OpenAiRealtimeConnectionError();
         }
+        activeTrack = track;
+        activeUtteranceId = utteranceId;
+        track.enabled = true;
       },
       stopPushToTalk: async () => {
         const track = activeTrack;
@@ -617,8 +832,8 @@ export async function connectManagedOpenAiRealtime(
         track.enabled = false;
         activeTrack = undefined;
         activeUtteranceId = undefined;
-        await audioSender.replaceTrack(null).catch(() => undefined);
-        track.stop();
+        await runBestEffortAsyncCleanup(() => audioSender.replaceTrack(null));
+        runBestEffortCleanup(() => track.stop());
         try {
           const completed = await input.awaitTranscript({
             managedCallId,
@@ -632,7 +847,10 @@ export async function connectManagedOpenAiRealtime(
     };
   } catch (cause) {
     close();
-    if (isPermanentConnectionFailure(cause)) {
+    if (
+      cause instanceof RealtimeConnectionStageError ||
+      isPermanentConnectionFailure(cause)
+    ) {
       throw cause;
     }
     throw new OpenAiRealtimeConnectionError();
@@ -768,8 +986,11 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
       }
       this.#setMicrophone("live");
       this.#scheduleIdleClose();
-    } catch {
+    } catch (cause) {
       this.#setMicrophone("off");
+      if (cause instanceof RealtimeConnectionStageError) {
+        throw cause;
+      }
       throw new OpenAiRealtimeConnectionError();
     }
   };

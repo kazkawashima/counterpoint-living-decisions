@@ -682,11 +682,21 @@ test("server-owned access switches the browser to a credential-free managed call
     page
       .getByRole("alert")
       .getByText(
-        "Daily judge cost limit reached. Meeting state and text remain available.",
+        "Realtime call creation failed. Daily judge cost limit reached. Meeting state and text remain available.",
       ),
   ).toBeVisible();
+  await expect(speech.getByLabel("Equivalent text command")).toBeEnabled();
+  await expect(
+    privateCard.getByRole("button", { name: "Try again" }),
+  ).toHaveCount(1);
   await page.waitForTimeout(1_200);
   expect(managedStartRequests).toBe(startsBeforeDenial + 1);
+  denyManagedStart = false;
+  await privateCard.getByRole("button", { name: "Try again" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
+  expect(managedStartRequests).toBe(startsBeforeDenial + 2);
+  await privateCard.getByRole("button", { name: "Disconnect" }).click();
+  await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
   await page.getByLabel("Optional judge BYOK · tab only").fill(standardApiKey);
   await activateByKeyboard(
     page,
@@ -695,7 +705,7 @@ test("server-owned access switches the browser to a credential-free managed call
   await expect(
     page.getByText("Your API key active · this tab only"),
   ).toBeVisible();
-  await privateCard.getByRole("button", { name: "Try again" }).click();
+  await privateCard.getByRole("button", { name: "Connect" }).click();
   await expect(privateCard.getByText("Connected")).toBeVisible();
   expect(clientSecretRequests).toBe(1);
   expect(directProviderRequests).toBe(1);

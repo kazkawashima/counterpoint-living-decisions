@@ -12,7 +12,11 @@ import {
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
 import type { ParticipantAssignment } from "@counterpoint/ports";
-import { RealtimeAccessResponseSchema } from "@counterpoint/protocol";
+import {
+  CreateManagedRealtimeCallResponseSchema,
+  ErrorEnvelopeSchema,
+  RealtimeAccessResponseSchema,
+} from "@counterpoint/protocol";
 
 import {
   JUDGE_REALTIME_RESERVED_USAGE,
@@ -92,7 +96,9 @@ function getRequest(
   );
 }
 
-function fakeControllerNamespace(): FakeControllerNamespace {
+function fakeControllerNamespace(
+  options: { readonly failStart?: boolean } = {},
+): FakeControllerNamespace {
   return {
     get(reservationId) {
       return {
@@ -105,6 +111,16 @@ function fakeControllerNamespace(): FakeControllerNamespace {
                 : new URL(input.url);
           const path = url.pathname;
           if (path === "/start") {
+            if (options.failStart === true) {
+              return Response.json(
+                {
+                  code: "PROVIDER_CONNECT_FAILED",
+                  providerResponse:
+                    "private upstream response sk-provider-secret",
+                },
+                { status: 503 },
+              );
+            }
             return Response.json({
               channel: "private",
               kind: "started",
@@ -573,11 +589,13 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       {} as ExecutionContext,
     );
     expect(start.status).toBe(201);
-    const started = await jsonBody(start);
+    const started = CreateManagedRealtimeCallResponseSchema.parse(
+      await start.json(),
+    );
     const managedCallId = started.managedCallId;
-    expect(typeof managedCallId).toBe("string");
     expect(started).not.toHaveProperty("providerCallId");
     expect(started).not.toHaveProperty("safetyIdentifier");
+    expect(start.headers.get("x-correlation-id")).toBe(started.correlationId);
 
     const usagePath = `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/judge/usage`;
     const usageSummary = await handler.fetch!(
@@ -849,6 +867,38 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
         "DELETE FROM judge_usage_reservations WHERE meeting_id = ? AND account_id = ?",
       ).bind(MEETING_ID, JUDGE_USER_ID),
     ]);
+
+    const connectorFailure = await handler.fetch!(
+      request(
+        `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        {
+          channel: "private",
+          idempotencyKey: "managed-worker-connector-failure",
+          meetingId: MEETING_ID,
+          sdpOffer:
+            "v=0\r\ns=private-offer-must-not-escape\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+        },
+      ),
+      workerEnv(fakeControllerNamespace({ failStart: true })),
+      {} as ExecutionContext,
+    );
+    expect(connectorFailure.status).toBe(503);
+    const connectorFailureBody = ErrorEnvelopeSchema.parse(
+      await connectorFailure.json(),
+    );
+    expect(connectorFailureBody).toEqual({
+      code: "REALTIME_UNAVAILABLE",
+      correlationId: connectorFailureBody.correlationId,
+      details: {},
+      message: "Realtime updates are temporarily unavailable.",
+      retryable: true,
+    });
+    expect(connectorFailure.headers.get("x-correlation-id")).toBe(
+      connectorFailureBody.correlationId,
+    );
+    expect(JSON.stringify(connectorFailureBody)).not.toMatch(
+      /private-offer|providerResponse|sk-provider|judge-worker|203\.0\.113\.44/iu,
+    );
   });
 
   it("rechecks session revocation before forwarding an owned turn", async () => {
