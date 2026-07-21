@@ -9,9 +9,11 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Deployed implementation commit:
-  `0d4f0e38c6a59d546c44ebb5db50f4ab6b004a71`
+  `f1d46ed068bffc8cddc36f0d3ce4917f53c0ed35`
 - Rendered configuration SHA-256:
   `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`
+- Deployment status SHA-256:
+  `f7e14f3787f985979f192d1c015e32e93ba34c784b0033f7d98686c2529c2152`
 - D1 binding: production database with forward-only migrations applied
 - R2 binding: `counterpoint-artifacts-production`
 - Durable Object bindings: `MEETINGS` (`MeetingCoordinator`) and
@@ -27,7 +29,7 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 
 ## Verification
 
-- Build, secret scan, security matrix `300/300`, and Cloudflare pool `142/142`
+- Build, secret scan, security matrix `302/302`, and Cloudflare pool `142/142`
   passed at the deployment boundary.
 - Target dry-run, forward D1 migration, strict Worker deploy,
   health/readiness/SPA/auth smoke, and Flagship smoke passed.
@@ -64,10 +66,17 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   participant and received `403 JUDGE_MODE_FORBIDDEN` from the judge usage
   route. Ordinary participant access therefore does not inherit the judge
   capability.
+- The `f1d46ed` deployment adds Worker parity for the append-only
+  `POST /api/v1/decisions/review-resolution` path and preserves permanent
+  Realtime usage-limit errors without automatic retry. An authenticated
+  intentionally incomplete Production request returned `400 VALIDATION_FAILED`,
+  proving the canonical Worker reaches the new handler rather than a missing
+  route. A private-judge revision 3 recommit remains a separate semantic check.
 - The canonical-origin recheck also passed the read-only remote smoke and the
-  external browser boundary `2/2` (`worker-product-view.spec.ts`, `38.6s`).
-  This used only synthetic Flagship state and does not replace the full hosted
-  C5 or independent cost-limit evidence.
+  external browser boundary `2/2` (`worker-product-view.spec.ts`, `16.3s`). A
+  follow-up provider-free Flagship smoke reset the synthetic meeting and
+  passed. This does not replace the full hosted C5 or independent cost-limit
+  evidence.
 
 The hosted C5 security-matrix rerun, independent cost-limit evidence, timed
 three-minute human rehearsal, and final repository visibility switch remain

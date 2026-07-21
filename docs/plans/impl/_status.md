@@ -1366,7 +1366,18 @@ judge-enabled follow-up are recorded in the section below.
   manifest.
 - The full release baseline passed after the slice: build, repository/generated
   secret scan, security matrix `302/302`, and Cloudflare pool `142/142`.
-- Canonical Production has not yet been redeployed with this slice. The next
-  boundary is one explicit production deployment followed by a clean judge
-  recommit and non-billable Realtime limit check; do not claim the hosted P0s
-  closed before that recheck.
+- Commit `f1d46ed068bffc8cddc36f0d3ce4917f53c0ed35` was explicitly deployed to
+  canonical Production. The deployment gate reran security matrix `302/302`
+  and Cloudflare pool `142/142`, then passed target dry-run, forward D1
+  migrations, strict Worker deployment, health/readiness/root/auth smoke, and
+  provider-free Flagship smoke. The external Production browser boundary
+  passed `2/2` in `16.3s`, followed by a successful Flagship reset smoke.
+- An authenticated product-account probe of
+  `POST /api/v1/decisions/review-resolution` returned `400 VALIDATION_FAILED`
+  for an intentionally incomplete body. This proves the canonical Worker
+  reaches the newly deployed handler rather than the prior missing route. A
+  clean private-judge walkthrough must still create `REVIEW_REQUIRED`, commit
+  revision 3, and inspect history/export before the hosted resolution P0 is
+  claimed complete. The non-billable Realtime limit behavior remains proven by
+  the committed browser/contract coverage; no provider budget was burned merely
+  to exhaust a hosted limit.
