@@ -88,12 +88,16 @@ matrix `302/302`, and Cloudflare pool `142/142`.
 ## Current non-acceptance release gates
 
 - Hosted C5 matrix, independent cost-limit evidence, and the first-time timed
-  human rehearsal. Production deployment/migrations, private judge identity,
-  separate Worker Secret registration, and operator-confirmed judge/provider
-  access are recorded in the production deployment record.
-- Final project license, repository public visibility, final name/message
-  hierarchy, Devpost preview, reel, submission tag, and judging-period
-  operations.
+  human rehearsal remain intentionally deferred by the owner. Production
+  deployment/migrations, private judge identity, separate Worker Secret
+  registration, and operator-confirmed judge/provider access are recorded in
+  the production deployment record.
+- The hosted revision-3 semantic walkthrough is delegated to the reviewer with
+  exact actions and expected outcomes in
+  [`production-reviewer-walkthrough.md`](./production-reviewer-walkthrough.md).
+- Apache-2.0, the final name/message hierarchy, and the private Devpost judge
+  credential handoff are closed. Repository public visibility, the submission
+  tag, reel, and judging-period operations remain owner-controlled gates.
 - Final visual/OCR/frame scan of the exact public screenshots and video.
 
 The full local command baseline is recorded in

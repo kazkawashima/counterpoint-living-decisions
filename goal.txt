@@ -158,10 +158,13 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [ ] `REVIEW_REQUIRED`からhuman resolutionを実行し、recommitではrevision 3をappendして
       history/audit/exportへ反映する。ローカルWorker・browser証拠とcanonical Production
       deploy、route到達確認は完了し、実judge状態でのhosted recommit確認だけを残す。
+      操作と期待結果は`docs/verification/production-reviewer-walkthrough.md`に固定し、
+      ユーザー指定により実確認をレビュワーへ委任する。
 - [ ] 初見の通し実演を約3分以内に収める。facilitatorとsynthetic participantが、
       micまたは同じdurable endpointのmanual text、private-agentのstaged cue、exact
       excerpt承認、human Decision commit、staged event、AT_RISK→REVIEW_REQUIRED、
       history/audit/exportを一本の導線で再生する。実時間は人間リハーサルで計測する。
+      ユーザーが後ほど実施するため、現時点では未完了のまま保持する。
 
 ### UI検証と記録
 
@@ -213,7 +216,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 
 - [ ] security matrixをhosted Worker経路でも再実行し、IDOR、meeting isolation、
       private disclosure、SSRF、upload spoofing、expiry/revocation、webhook replay、
-      secret/log leakageを確認する。
+      secret/log leakageを確認する。ユーザー指定によりこのsliceは後回しとする。
 - [x] logged-out browserでroot/health/ready/auth boundaryを確認し、private dataや
       judge-only情報が認証前に見えない。
 - [x] ordinary user、judge user、display tokenを別browser contextで試し、権限境界と

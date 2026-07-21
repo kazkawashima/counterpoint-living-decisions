@@ -4,6 +4,11 @@ This is the operator path used in the 2026-07-21 production walkthrough. It is
 also a presentation script. It contains no password, API key, bearer token, or
 private credential.
 
+The reviewer-owned semantic check that continues through append-only revision
+3, export, and reload persistence is documented separately in
+[`production-reviewer-walkthrough.md`](../verification/production-reviewer-walkthrough.md).
+This tutorial remains the three-minute presentation path.
+
 ## Start safely
 
 - Production judge URL:

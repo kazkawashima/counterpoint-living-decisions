@@ -1405,3 +1405,18 @@ judge-enabled follow-up are recorded in the section below.
 - The release security verification then passed the full security matrix
   `302/302` and Cloudflare pool `140/140`; the first sandbox-only run's
   `0.0.0.0` WebSocket bind failure was not used as evidence.
+
+## 2026-07-21 reviewer handoff and owner gate update
+
+- The remaining hosted semantic check is now specified in
+  `docs/verification/production-reviewer-walkthrough.md`. It gives the reviewer
+  the exact Production operations and expected state transitions from private
+  excerpt approval through append-only revision 3, export, and reload
+  persistence, without including a credential or API key.
+- The owner confirmed that the private Devpost judge-credential handoff and
+  visibility check are complete. Hosted C5 remains open but is explicitly
+  deferred, and the timed three-minute human rehearsal remains open for the
+  owner's later session.
+- Neither deferred gate is claimed complete. The reviewer walkthrough remains
+  unchecked until its result is returned; repository public visibility also
+  remains a separate explicit release action.
