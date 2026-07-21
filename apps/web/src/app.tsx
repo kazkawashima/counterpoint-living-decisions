@@ -112,6 +112,14 @@ function messageFor(error: unknown): string {
     : "Descant could not reach the decision service.";
 }
 
+function isAiRecoveryError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === "OPENAI_UNAVAILABLE" ||
+      error.code === "JUDGE_MODE_FORBIDDEN")
+  );
+}
+
 function labelForToken(value: string): string {
   const normalized = value.replaceAll("_", " ");
   return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
@@ -1004,11 +1012,7 @@ function FacilitatorDecisionPanel({
       populateCandidate(response.candidate);
     } catch (cause) {
       setError(messageFor(cause));
-      setPhase(
-        cause instanceof ApiError && cause.code === "OPENAI_UNAVAILABLE"
-          ? "ai-unavailable"
-          : "idle",
-      );
+      setPhase(isAiRecoveryError(cause) ? "ai-unavailable" : "idle");
     }
   }
 
@@ -2977,9 +2981,7 @@ function WorkspaceShell({
     } catch (cause) {
       setError(messageFor(cause));
       setPhase(
-        assistance === "ai_preferred" &&
-          cause instanceof ApiError &&
-          cause.code === "OPENAI_UNAVAILABLE"
+        assistance === "ai_preferred" && isAiRecoveryError(cause)
           ? "ai-unavailable"
           : "idle",
       );

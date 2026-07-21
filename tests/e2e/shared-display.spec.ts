@@ -120,13 +120,13 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
   ).toBeVisible();
   const largeDisplayLayout = await largeDisplayPage.evaluate(() => ({
     gridMaxWidth: getComputedStyle(
-      document.querySelector(".shared-display-grid") as HTMLElement,
+      document.querySelector<HTMLElement>(".shared-display-grid")!,
     ).maxWidth,
-    gridWidth: (
-      document.querySelector(".shared-display-grid") as HTMLElement
-    ).getBoundingClientRect().width,
+    gridWidth: document
+      .querySelector<HTMLElement>(".shared-display-grid")!
+      .getBoundingClientRect().width,
     heroMaxWidth: getComputedStyle(
-      document.querySelector(".shared-display-hero") as HTMLElement,
+      document.querySelector<HTMLElement>(".shared-display-hero")!,
     ).maxWidth,
   }));
   expect(largeDisplayLayout.gridMaxWidth).toBe("none");

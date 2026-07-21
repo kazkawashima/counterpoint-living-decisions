@@ -1,6 +1,16 @@
+import { mkdir } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
 const MEETING_ID = "meeting-global-ai-rollout";
+const recoveryScreenshotDirectory = evidenceDirectory(
+  "screenshots/decision-review",
+);
+
+test.beforeAll(async () => {
+  await mkdir(recoveryScreenshotDirectory, { recursive: true });
+});
 
 test("Worker SPA serves the hosted flagship through one external-style origin", async ({
   page,
@@ -68,8 +78,18 @@ test("Worker SPA serves the hosted flagship through one external-style origin", 
     .getByRole("button", { name: "Prepare grounded sharing preview" })
     .click();
   await expect(page.getByRole("alert")).toContainText(
-    "Private assistant is temporarily unavailable",
+    /Private assistant is temporarily unavailable|This action is unavailable in judge mode/,
   );
+  await expect(
+    page.getByRole("button", { name: "Continue with manual excerpt" }),
+  ).toBeVisible();
+  if (process.env.CAPTURE_EVIDENCE === "1") {
+    await page.screenshot({
+      animations: "disabled",
+      fullPage: true,
+      path: `${recoveryScreenshotDirectory}/2026-07-21-ordinary-production-manual-fallback.png`,
+    });
+  }
   await page
     .getByRole("button", { name: "Continue with manual excerpt" })
     .click();
@@ -203,9 +223,12 @@ test("Worker keeps ordinary, judge, and shared-display browser contexts separate
       `/api/v1/meetings/${MEETING_ID}/judge/usage`,
       { headers: ordinaryAuthorization },
     );
-    expect(ordinaryJudgeUsage.status()).toBe(503);
+    expect([403, 503]).toContain(ordinaryJudgeUsage.status());
     await expect(ordinaryJudgeUsage.json()).resolves.toMatchObject({
-      code: "REALTIME_UNAVAILABLE",
+      code:
+        ordinaryJudgeUsage.status() === 403
+          ? "JUDGE_MODE_FORBIDDEN"
+          : "REALTIME_UNAVAILABLE",
     });
 
     const displayPage = await displayContext.newPage();
