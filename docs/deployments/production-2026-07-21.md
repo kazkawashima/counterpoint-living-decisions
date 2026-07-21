@@ -64,6 +64,10 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   participant and received `403 JUDGE_MODE_FORBIDDEN` from the judge usage
   route. Ordinary participant access therefore does not inherit the judge
   capability.
+- The canonical-origin recheck also passed the read-only remote smoke and the
+  external browser boundary `2/2` (`worker-product-view.spec.ts`, `38.6s`).
+  This used only synthetic Flagship state and does not replace the full hosted
+  C5 or independent cost-limit evidence.
 
 The hosted C5 security-matrix rerun, independent cost-limit evidence, timed
 three-minute human rehearsal, and final repository visibility switch remain

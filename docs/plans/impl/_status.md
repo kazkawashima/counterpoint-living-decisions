@@ -1308,3 +1308,17 @@ judge-enabled follow-up are recorded in the section below.
 - This closes the ordinary-user manual continuity repair, but does not close
   the full hosted C5 matrix, independent cost-limit proof, timed human
   rehearsal, or owner-controlled public visibility switch.
+
+## 2026-07-21 canonical Production external recheck
+
+- The read-only remote smoke passed for the canonical Production origin:
+  health `200`, readiness `200`, SPA root `200`, and unauthenticated API
+  `401`. The Cloudflare configuration contract also passed.
+- `E2E_BASE_URL=https://counterpoint-living-decisions-production.gs2safari.workers.dev`
+  with `tests/e2e-cloudflare/worker-product-view.spec.ts` passed `2/2` in
+  `38.6s`. The cases cover the ordinary manual fallback and separate
+  ordinary/judge/display browser contexts with display-token revocation.
+- The fixture used only synthetic Flagship state and reset that meeting within
+  the test. This is a fresh hosted boundary signal, not a claim that the full
+  C5 matrix, independent USD 25 cost-limit exhaustion, or timed human
+  rehearsal is complete.

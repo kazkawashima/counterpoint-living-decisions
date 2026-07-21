@@ -45,6 +45,15 @@ dry-run was provider-free and mutation-free. These results strengthen the
 hosted Flagship boundary but do not claim the full C5 matrix or independent
 cost-limit exhaustion proof.
 
+Current canonical-origin recheck: on 2026-07-21, the explicit Production
+origin passed the read-only remote smoke (`health=200`, `ready=200`, SPA
+`root=200`, unauthenticated API `401`) and
+`tests/e2e-cloudflare/worker-product-view.spec.ts` passed `2/2` in `38.6s`.
+The test used only synthetic Flagship state and reset it within that fixture.
+This refreshes the manual-fallback and ordinary/judge/display browser-boundary
+evidence; it still does not close hosted C5, independent cost-limit proof, or
+the first-time timed human rehearsal.
+
 ## Current non-acceptance release gates
 
 - Hosted C5 matrix, independent cost-limit evidence, and the first-time timed
