@@ -74,3 +74,6 @@ coverage or independent real-provider cost exhaustion.
 The full local command baseline is recorded in
 [`docs/plans/impl/_status.md`](../plans/impl/_status.md) after each verified
 slice. CI must keep the generated dependency and media manifests current.
+
+The current GitHub repository visibility is still private (`main`); the public
+visibility switch remains an owner-controlled final release gate per UD-02.

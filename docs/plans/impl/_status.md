@@ -1323,6 +1323,14 @@ judge-enabled follow-up are recorded in the section below.
   C5 matrix, independent USD 25 cost-limit exhaustion, or timed human
   rehearsal is complete.
 
+## 2026-07-21 repository visibility gate recheck
+
+- A read-only GitHub repository check confirms
+  `kazkawashima/counterpoint-living-decisions` remains private on `main`.
+  This matches UD-02: keep it private until the final public-safety/rules
+  review, then make the visibility switch explicitly in GitHub Settings.
+- No repository visibility mutation was performed by this check.
+
 ## 2026-07-21 managed-AI boundary suite recheck
 
 - The focused managed-AI boundary suite passed `80/80`: three Cloudflare
