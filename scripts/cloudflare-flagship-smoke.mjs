@@ -186,9 +186,9 @@ export async function runCloudflareFlagshipSmoke(input) {
     token,
   );
   expectValue(
-    initialProjection.meeting?.purpose?.includes("Work & Productivity") ===
-      true && initialProjection.participant?.userId === userId,
-    "Flagship projection did not expose the Work & Productivity meeting",
+    initialProjection.meeting?.purpose === "Global AI Product Rollout" &&
+      initialProjection.participant?.userId === userId,
+    "Flagship projection did not expose the renamed flagship meeting",
   );
 
   let position = Number.isSafeInteger(initialProjection.shared?.position)

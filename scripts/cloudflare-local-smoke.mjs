@@ -170,7 +170,7 @@ try {
     (body) => {
       projectedPosition = body.shared?.position;
       expectValue(
-        body.meeting?.purpose?.includes("Work & Productivity") === true &&
+        body.meeting?.purpose === "Global AI Product Rollout" &&
           body.participant?.userId === "product" &&
           Number.isSafeInteger(projectedPosition),
         "Hosted Worker did not expose the flagship projection",
