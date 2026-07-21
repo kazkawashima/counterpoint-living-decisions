@@ -248,7 +248,8 @@ describe("Worker managed Realtime HTTP boundary", () => {
       throw new Error("Expected a JSON object");
     }
     expect(internalBody.reservationId).toBe(RESERVATION_ID);
-    expect(internalBody.safetyIdentifier).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(internalBody.safetyIdentifier).toMatch(/^[a-f0-9]{64}$/u);
+    expect(String(internalBody.safetyIdentifier)).toHaveLength(64);
     expect(internalBody).not.toHaveProperty("meetingId");
     expect(internalBody).not.toHaveProperty("participantId");
   });

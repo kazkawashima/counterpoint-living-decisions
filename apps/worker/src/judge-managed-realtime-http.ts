@@ -375,9 +375,9 @@ async function startManagedCall(input: {
     }
 
     controller = input.dependencies.controllers(reservationId);
-    const safetyIdentifier = `sha256:${await input.dependencies.tokens.digest(
+    const safetyIdentifier = await input.dependencies.tokens.digest(
       `counterpoint:realtime-safety:v1:${authorization.authorization.userId}`,
-    )}`;
+    );
     controllerRequestStarted = true;
     const internalResponse = await controller.fetch(internalUrl("/start"), {
       body: JSON.stringify({

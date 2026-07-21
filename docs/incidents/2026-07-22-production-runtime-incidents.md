@@ -7,7 +7,7 @@ private meeting content, provider call IDs, or raw fingerprints.
 
 ## Summary
 
-Three independent production defects affected Realtime:
+Four independent production defects affected Realtime:
 
 1. projection polling repeatedly exceeded the Cloudflare Worker CPU limit and
    temporarily made login return 503;
@@ -16,7 +16,9 @@ Three independent production defects affected Realtime:
    409 `CONFLICT` instead of retrying the provider operation;
 3. the Cloudflare Worker did not expose the ordinary-user BYOK lease routes,
    and the managed path collapsed distinct provider failure stages into a
-   generic 503, making UI recovery and root-cause diagnosis unreliable.
+   generic 503, making UI recovery and root-cause diagnosis unreliable;
+4. the judge-managed path sent a 71-character provider safety identifier even
+   though the OpenAI contract allows at most 64 characters.
 
 The React application did not execute on the Worker or directly consume its
 CPU budget. It scheduled projection reads in the browser. Each read invoked an
@@ -223,3 +225,45 @@ clean-browser judge-managed private/shared Connect/Disconnect/reconnect check
 and an ordinary-user BYOK configure/private/shared/clear check on the 100%-served
 version. Until those hosted observations pass, this incident remains under
 verification and manual text remains the supported fallback.
+
+## Incident 4 — judge safety identifier exceeded the provider contract
+
+### Evidence
+
+- The recovered public error retained provider status `400` and safe reason
+  `PROVIDER_REJECTED`. That proves authentication, judge authorization, secret
+  resolution, Worker egress, and the provider request boundary were reached.
+- The same key, model, multipart request shape, and browser-generated
+  media-only SDP succeeded in the direct live smoke. The ordinary production
+  BYOK path also completed private and shared calls.
+- The only provider-request difference was the safety identifier. Ordinary
+  BYOK sent a 64-character SHA-256 hex digest. Judge-managed Realtime prepended
+  `sha256:` to the same representation and sent 71 characters.
+- OpenAI documents a maximum length of 64 characters for a stable hashed
+  end-user safety identifier. A RED test reproduced the exact 71-character
+  judge value, and a second RED test proved the adapter incorrectly accepted
+  65 characters.
+
+### Root cause
+
+One helper format was used mentally for two different contracts. Internal D1
+idempotency and request fingerprints deliberately use the self-describing
+`sha256:<64 hex>` form. The provider-facing safety identifier reused that
+prefix even though it is an opaque bounded identifier, not an internal hash
+serialization. Local provider smokes used a shorter base64url digest and
+therefore did not cross the 64-character boundary.
+
+### Remediation and prevention
+
+- Send the raw 64-character lowercase SHA-256 hex digest only for the
+  provider-facing judge safety identifier. Keep internal prefixed fingerprints
+  unchanged.
+- Enforce the provider's 64-character maximum both before the Durable Object
+  accepts a managed start and before the OpenAI adapter performs `fetch()`.
+- Keep boundary tests that assert the generated judge identifier is exactly 64
+  lowercase hex characters and that 65 characters are rejected without a
+  provider request.
+- The local gates after the fix passed unit/integration `913/913`, security
+  matrix `337/337`, Cloudflare `149/149`, secret scan, build, and a real
+  media-only OpenAI Realtime call. Hosted judge private/shared
+  Connect/Disconnect remains the final verification boundary.

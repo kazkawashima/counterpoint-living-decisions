@@ -112,6 +112,12 @@ configuration.
   Call them through a wrapper that preserves the runtime global receiver, and
   keep a receiver-sensitive default-path unit test. Injected-fetch tests alone
   do not exercise this production runtime boundary.
+- OpenAI `safety_identifier` values must be at most 64 characters. Use the raw
+  64-character lowercase SHA-256 hex digest for provider-facing identifiers;
+  do not prepend `sha256:` to that hex value. Prefixed digests may remain in
+  internal D1 idempotency/fingerprint fields, which are a different contract.
+  Keep RED/GREEN coverage at the Worker-to-Durable-Object boundary and in the
+  OpenAI adapter so an overlength identifier is rejected before provider work.
 - This invariant exists because production commit `ff46f37` was first deployed
   without the two judge-mode render inputs. That deployment preserved the
   secret names but rendered both judge routes disabled and omitted

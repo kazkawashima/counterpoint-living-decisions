@@ -15,7 +15,7 @@ export const MAX_OPENAI_REALTIME_SDP_BYTES = 64 * 1024;
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_CALL_ID_LENGTH = 255;
-const MAX_SAFETY_IDENTIFIER_LENGTH = 512;
+const MAX_SAFETY_IDENTIFIER_LENGTH = 64;
 const REALTIME_CALL_ID_PATTERN = /^rtc_[A-Za-z0-9_-]+$/u;
 const REALTIME_CALL_LOCATION_PATTERN =
   /^\/v1\/realtime\/calls\/(rtc_[A-Za-z0-9_-]+)$/u;

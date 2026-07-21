@@ -251,7 +251,7 @@ export function parseJudgeRealtimeStartCallInput(
     !nonEmptyString(value.reservationId) ||
     value.reservationId.length > 255 ||
     !nonEmptyString(value.safetyIdentifier) ||
-    value.safetyIdentifier.length > 512 ||
+    value.safetyIdentifier.length > 64 ||
     /\s/u.test(value.safetyIdentifier) ||
     typeof value.sdpOffer !== "string" ||
     value.sdpOffer.trim().length === 0 ||

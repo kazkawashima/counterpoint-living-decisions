@@ -421,7 +421,7 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
     },
     {
       label: "oversized safety identifier",
-      value: { ...request, safetyIdentifier: "a".repeat(513) },
+      value: { ...request, safetyIdentifier: "a".repeat(65) },
     },
   ])("rejects a $label before calling OpenAI", async ({ value }) => {
     const fetch = vi.fn<FetchLike>();

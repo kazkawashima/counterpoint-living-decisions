@@ -411,6 +411,15 @@ describe("managed Realtime start input parsing", () => {
       }),
     ).toBeUndefined();
   });
+
+  it("rejects a safety identifier longer than the provider maximum", () => {
+    expect(
+      parseJudgeRealtimeStartCallInput({
+        ...input,
+        safetyIdentifier: "a".repeat(65),
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("JudgeRealtimeCallLifecycle", () => {
