@@ -1446,3 +1446,10 @@ judge-enabled follow-up are recorded in the section below.
   `18/18` and `38/38`, the full contract project passed `150/150`, and
   typecheck, lint, build, Cloudflare configuration, and media-manifest checks
   passed.
+- Cloudflare test isolation was tightened for shared D1 execution, after which
+  the complete pool passed `140/140`. Production deployment
+  `e496f8fcbee67616915bef3b58eb783d711fa44f` then passed security matrix
+  `302/302`, Cloudflare pool `140/140`, dry-run, D1 migration, strict deploy,
+  health/readiness/SPA/auth smoke, and the full provider-free Flagship smoke.
+  The deployment record is stored at
+  `.wrangler/deploy/records/production-e496f8fcbee67616915bef3b58eb783d711fa44f.json`.

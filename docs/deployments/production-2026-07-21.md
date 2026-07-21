@@ -9,11 +9,11 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Deployed implementation commit:
-  `1f0a8521fd2de8bd92ddf41be675892415079804`
+  `e496f8fcbee67616915bef3b58eb783d711fa44f`
 - Rendered configuration SHA-256:
   `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`
 - Deployment status SHA-256:
-  `fcb28c040cbffe26e3260811c2824c980b1d488d6cd0b3360a9dd5f0bdd61250`
+  `9c1bf49a27cb54d9a7dbf185540630b056d38d0aed74aebdc110ebaf1e123e23`
 - D1 binding: production database with forward-only migrations applied
 - R2 binding: `counterpoint-artifacts-production`
 - Durable Object bindings: `MEETINGS` (`MeetingCoordinator`) and
@@ -21,8 +21,9 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Production safety flags: judge structured and managed Realtime routes
   enabled only for the exact `judge` allowlist; `OPENAI_MODE=disabled` and
   `DEMO_STORY_MODE=disabled`. New judge work is blocked only by the rolling
-  24-hour `$25` server-funded cost ceiling; the one-active-call guard remains
-  as a lifecycle safety limit.
+  24-hour `$25` server-funded cost ceiling. Account, IP, meeting, concurrency,
+  Realtime-second, generation, and token dimensions remain as unbounded
+  protocol/telemetry fields and do not independently reject judge work.
 - The exact allowlisted judge may optionally enter a personal OpenAI API key
   in the browser tab. It is sent over the authenticated HTTPS client-secret
   request only, is not persisted, logged, returned, or placed in D1/R2/DO
@@ -40,6 +41,14 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   passed at the deployment boundary.
 - Target dry-run, forward D1 migration, strict Worker deploy,
   health/readiness/SPA/auth smoke, and Flagship smoke passed.
+- D1 migration `0013_rename_flagship_meeting.sql` changed the seeded room title
+  to `Global AI Product Rollout`. The final Flagship smoke asserted that exact
+  title and passed the authenticated disclosure, Decision commit, monitoring,
+  and final-reset path.
+- Managed Realtime reserves USD 12 per new server-funded call, so private and
+  shared channels can coexist under the USD 25 ceiling. The Worker integration
+  passed two simultaneous starts and rejects only a further start whose cost
+  reservation would cross the rolling ceiling.
 - The latest deployment also includes the projector-oriented shared-display
   layout and presentation tutorial. Preview and production both passed the
   remote health/readiness/root/auth smoke and the Flagship smoke at commit
