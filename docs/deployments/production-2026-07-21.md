@@ -11,7 +11,7 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Deployed implementation commit:
   `0d4f0e38c6a59d546c44ebb5db50f4ab6b004a71`
 - Rendered configuration SHA-256:
-  `3e95494e58a84a7eb03e84b19022ab6f2d8ba1d564e124ee582b2e0d5ee256d4`
+  `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`
 - D1 binding: production database with forward-only migrations applied
 - R2 binding: `counterpoint-artifacts-production`
 - Durable Object bindings: `MEETINGS` (`MeetingCoordinator`) and
@@ -35,6 +35,9 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   layout and presentation tutorial. Preview and production both passed the
   remote health/readiness/root/auth smoke and the Flagship smoke at commit
   `0d4f0e38c6a59d546c44ebb5db50f4ab6b004a71`.
+- The canonical Production D1 binding was restored before this deployment;
+  the local deployment environment now matches the named
+  `counterpoint-production` resource that contains the active `judge` account.
 - After the production judge configuration was explicitly rendered with
   `JUDGE_USER_ID=judge`, the external browser boundary passed: ordinary
   access receives the guarded judge response and still reaches the manual
@@ -48,6 +51,10 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   assumption invalidation evaluation, human premise confirmation, Decision
   commit, staged event, `AT_RISK`, human review, `REVIEW_REQUIRED`, and JSON
   export.
+- The first post-deploy smoke was retried after Worker propagation; the
+  follow-up full Flagship smoke passed through monitoring, staged event,
+  invalidation review, and reset. The transient first attempt was not used as
+  completion evidence.
 - The provider route was exercised only through the guarded judge path; no
   BYOK credential was entered or exposed in the browser flow.
 - A separate production browser context logged in as the synthetic `safety`
