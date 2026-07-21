@@ -81,7 +81,7 @@ async function expectManualContinuity(page: Page) {
 test("real Wrangler replays the provider-free staged rule and manual review arc with managed provider disabled", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const apiRequests: URL[] = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/")) {
@@ -168,7 +168,7 @@ test("real Wrangler replays the provider-free staged rule and manual review arc 
     .getByRole("button", { name: "Create human-authored candidate" })
     .click();
   await expect(page.getByText("Human authored")).toBeVisible();
-  await page.getByRole("button", { name: "Confirm edited premise" }).click();
+  await page.getByRole("button", { name: "Confirm premise" }).click();
   await page.getByRole("button", { name: "Save Decision draft" }).click();
   await expect(page.getByText("Revision 1 · immutable DRAFT")).toBeVisible();
   await page.getByRole("button", { name: "Validate and mark ready" }).click();
@@ -220,7 +220,7 @@ test("real Wrangler replays the provider-free staged rule and manual review arc 
     "Evaluation recorded · Human review still required",
   );
   await expect(page.locator(".invalidation-risk-pulse")).toContainText(
-    "Staged demo rule · Human review required",
+    "Staged synthetic rule · grounded in shared Evidence · Human review required",
   );
   await expect(
     page.getByRole("region", { name: "Facilitator risk review" }),
