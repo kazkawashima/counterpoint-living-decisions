@@ -29,7 +29,6 @@ if (!Number.isSafeInteger(port) || port < 1024 || port > 65_535) {
 }
 
 const origin = `http://127.0.0.2:${String(port)}`;
-const meetingId = "meeting-global-ai-rollout";
 const safeFailureReasons = new Set([
   "OFFER_REJECTED",
   "PROVIDER_LOCATION_INVALID",

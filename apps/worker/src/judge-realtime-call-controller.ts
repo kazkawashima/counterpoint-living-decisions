@@ -253,8 +253,8 @@ export function parseJudgeRealtimeStartCallInput(
     !nonEmptyString(value.safetyIdentifier) ||
     value.safetyIdentifier.length > 512 ||
     /\s/u.test(value.safetyIdentifier) ||
-    (typeof value.sdpOffer !== "string" ||
-      value.sdpOffer.trim().length === 0) ||
+    typeof value.sdpOffer !== "string" ||
+    value.sdpOffer.trim().length === 0 ||
     new TextEncoder().encode(value.sdpOffer).byteLength >
       MAX_OPENAI_REALTIME_SDP_BYTES
   ) {
@@ -351,9 +351,7 @@ export class JudgeRealtimeCallLifecycle {
       return { kind: "conflict" };
     }
     if (this.#startCancelled) {
-      await this.#usage
-        .release(input.reservationId)
-        .catch(() => undefined);
+      await this.#usage.release(input.reservationId).catch(() => undefined);
       return { kind: "unavailable" };
     }
 
@@ -670,8 +668,7 @@ export class JudgeRealtimeCallLifecycle {
             estimatedInputTokens: state.sidebandUsage.totals.inputTokens,
             estimatedOutputTokens: state.sidebandUsage.totals.outputTokens,
             generationCount: state.sidebandUsage.totals.generationCount,
-            realtimeSeconds:
-              state.sidebandUsage.totals.transcriptionSeconds,
+            realtimeSeconds: state.sidebandUsage.totals.transcriptionSeconds,
           }
         : state.reservedUsage;
       await this.#usage.finalize(state.reservationId, actualUsage);

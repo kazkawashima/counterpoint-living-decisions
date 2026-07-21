@@ -12,7 +12,8 @@ const lease = {
 
 function stubWith(responses: Response[]) {
   return {
-    fetch: vi.fn((_input: string | URL | Request) => {
+    fetch: vi.fn((input: string | URL | Request) => {
+      void input;
       const response = responses.shift();
       if (response === undefined) {
         throw new Error("Unexpected coordinator request");
@@ -60,7 +61,16 @@ describe("MeetingCoordinatorApiKeyLeaseStore", () => {
     );
 
     expect(
-      coordinator.fetch.mock.calls.map(([input]) => new URL(String(input)).pathname),
+      coordinator.fetch.mock.calls.map(
+        ([input]) =>
+          new URL(
+            input instanceof Request
+              ? input.url
+              : input instanceof URL
+                ? input.href
+                : input,
+          ).pathname,
+      ),
     ).toEqual([
       "/byok/configure",
       "/byok/find",

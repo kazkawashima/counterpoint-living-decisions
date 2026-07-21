@@ -441,7 +441,9 @@ describe("JudgeRealtimeCallLifecycle", () => {
     const fixture = lifecycle();
     await fixture.instance.start(input);
     await beginAndStopSpeech(fixture, 1);
-    await fixture.sidebandObserver?.onProviderEvent({ type: "response.created" });
+    await fixture.sidebandObserver?.onProviderEvent({
+      type: "response.created",
+    });
     await fixture.sidebandObserver?.onProviderEvent(responseDone());
 
     await fixture.instance.terminate();
@@ -879,16 +881,13 @@ describe("JudgeRealtimeCallLifecycle", () => {
 
     expect(fixture.sidebandCreateResponse).toHaveBeenCalledTimes(3);
     expect(fixture.hangup).toHaveBeenCalledOnce();
-    expect(fixture.finalize).toHaveBeenCalledWith(
-      input.reservationId,
-      {
-        estimatedCostUsd: 0.02247,
-        estimatedInputTokens: 396,
-        estimatedOutputTokens: 363,
-        generationCount: 3,
-        realtimeSeconds: 3,
-      },
-    );
+    expect(fixture.finalize).toHaveBeenCalledWith(input.reservationId, {
+      estimatedCostUsd: 0.02247,
+      estimatedInputTokens: 396,
+      estimatedOutputTokens: 363,
+      generationCount: 3,
+      realtimeSeconds: 3,
+    });
   });
 
   it("cannot resurrect an active call with a stale telemetry write", async () => {

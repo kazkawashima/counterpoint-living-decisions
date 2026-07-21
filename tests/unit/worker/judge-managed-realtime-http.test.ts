@@ -427,9 +427,8 @@ describe("Worker managed Realtime HTTP boundary", () => {
   it("preserves only a safe unaccepted-provider failure reason", async () => {
     const fixtureValue = fixture();
     fixtureValue.controller.fetch = vi.fn((input) => {
-      const path = new URL(
-        input instanceof Request ? input.url : String(input),
-      ).pathname;
+      const path = new URL(input instanceof Request ? input.url : String(input))
+        .pathname;
       return Promise.resolve(
         path === "/start"
           ? Response.json(

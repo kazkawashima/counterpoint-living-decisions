@@ -23,9 +23,7 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
 
 function nonEmptyTrimmed(value: unknown): value is string {
   return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.trim() === value
+    typeof value === "string" && value.length > 0 && value.trim() === value
   );
 }
 
@@ -96,7 +94,11 @@ export class MeetingCoordinatorApiKeyLeaseStore implements MeetingApiKeyLeaseSto
     this.#requireMeeting(lease.meetingId);
     const response = await this.#request("/byok/configure", lease);
     const body = await response.json().catch(() => undefined);
-    if (response.status === 201 && isRecord(body) && body.kind === "configured") {
+    if (
+      response.status === 201 &&
+      isRecord(body) &&
+      body.kind === "configured"
+    ) {
       return { kind: "configured" };
     }
     if (
@@ -162,11 +164,14 @@ export class MeetingCoordinatorApiKeyLeaseStore implements MeetingApiKeyLeaseSto
   }
 
   #request(path: string, body: unknown): Promise<Response> {
-    return this.#coordinator.fetch(`https://meeting-coordinator.internal${path}`, {
-      body: JSON.stringify(body),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
+    return this.#coordinator.fetch(
+      `https://meeting-coordinator.internal${path}`,
+      {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
   }
 
   #requireMeeting(meetingId: string): void {

@@ -24,6 +24,7 @@
 ### Task 1: Lock the real-browser SDP regression with a failing test
 
 **Files:**
+
 - Modify: `tests/cloudflare/judge-realtime-call-controller.test.ts`
 - Test: `tests/cloudflare/judge-realtime-call-controller.test.ts`
 
@@ -97,6 +98,7 @@ This proves the new regression surface is absent before implementation.
 ### Task 2: Implement the SDP-specific parser rule
 
 **Files:**
+
 - Modify: `apps/worker/src/judge-realtime-call-controller.ts`
 - Test: `tests/cloudflare/judge-realtime-call-controller.test.ts`
 
@@ -120,8 +122,7 @@ Keep every existing field and byte-limit check, but replace
 `!nonEmptyString(value.sdpOffer)` with:
 
 ```ts
-(typeof value.sdpOffer !== "string" ||
-  value.sdpOffer.trim().length === 0)
+typeof value.sdpOffer !== "string" || value.sdpOffer.trim().length === 0;
 ```
 
 Return `value.sdpOffer` unchanged. Do not call `.trim()` on the returned value.
@@ -149,6 +150,7 @@ git commit -m "fix: accept browser realtime SDP framing"
 ### Task 3: Verify adjacent managed Realtime boundaries
 
 **Files:**
+
 - Verify: `packages/adapters-openai/src/realtime-calls.ts`
 - Verify: `apps/worker/src/judge-managed-realtime-http.ts`
 - Verify: `apps/web/src/realtime-openai.ts`
@@ -194,6 +196,7 @@ working tree contains no agent-created uncommitted files.
 ### Task 4: Deploy and close the hosted owner check
 
 **Files:**
+
 - Update after acceptance: `docs/plans/impl/_status.md`
 - Update after acceptance: `goal.txt`
 - Update after acceptance: `docs/deployments/production-2026-07-21.md`

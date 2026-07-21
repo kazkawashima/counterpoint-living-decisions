@@ -108,11 +108,7 @@ function parseByokOwner(input: unknown):
   | undefined {
   if (
     !isRecord(input) ||
-    !exactKeys(input, [
-      "meetingId",
-      "ownerParticipantId",
-      "ownerSessionId",
-    ]) ||
+    !exactKeys(input, ["meetingId", "ownerParticipantId", "ownerSessionId"]) ||
     !nonEmptyString(input.meetingId) ||
     !nonEmptyString(input.ownerParticipantId) ||
     !nonEmptyString(input.ownerSessionId)
