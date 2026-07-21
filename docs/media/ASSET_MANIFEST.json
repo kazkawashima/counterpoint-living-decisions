@@ -1090,6 +1090,39 @@
       "sha256": "7936017e77b4195da62b123d7bfacd27a3201ea945541a15ad3cf5b0fe7bd2ae"
     },
     {
+      "bytes": 432452,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/realtime-recovery/2026-07-22-judge-ephemeral-private-connected.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures; no provider key is rendered",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "1bf522d17d63d661e98f2cecf69ea82bcf981667325408053ccd31cba0dff6dc"
+    },
+    {
+      "bytes": 490570,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/realtime-recovery/2026-07-22-judge-provider-rejected-recovery.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "2513faf380706ecec141b0698b5e9e55fb8fbc4b888a665798ca606f3051d176"
+    },
+    {
+      "bytes": 306537,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/realtime-recovery/2026-07-22-worker-byok-both-connected.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures; raw API key is not rendered",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "2431222b6a2e8b62bb7b7ae56cfa6aab93395776f84b675a5003a605a2e0a323"
+    },
+    {
       "bytes": 707031,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/regulatory-event/2026-07-19-event-received-evaluation-pending-desktop.png",

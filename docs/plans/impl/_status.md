@@ -1548,3 +1548,35 @@ judge-enabled follow-up are recorded in the section below.
   passed. The remaining Realtime evidence is only the private-credential judge
   server-funded private/shared owner observation; it is not inferred from the
   ordinary BYOK result.
+
+## 2026-07-22 Judge ephemeral Realtime release candidate
+
+- Production evidence isolated the remaining judge failure after OpenAI call
+  acceptance and before the Worker-side Durable Object sideband became usable.
+  Ordinary and judge-provided BYOK already proved that the browser direct WebRTC
+  connector works. The submission path therefore no longer routes an
+  allowlisted judge through `/realtime/calls`.
+- The authorized client-secret endpoint now selects
+  `OPENAI_API_KEY_JUDGE` only inside the Worker, exchanges it for a 30-second
+  channel-scoped credential, and returns only that credential. Private and
+  shared judge Connect use the same direct browser WebRTC path as proven BYOK;
+  an optional tab-local judge key still takes precedence and is not persisted.
+- The standard key remains a Cloudflare Secret and is absent from responses,
+  browser state, D1, R2, Durable Object storage, screenshots, and committed
+  files. The managed-call implementation remains in source as a dormant
+  rollback path.
+- Direct judge Realtime no longer has server-side call telemetry, forced
+  termination, or exact D1 settlement. Its judge usage summary is therefore
+  hidden, and this release does not claim that direct Realtime is held by the
+  application USD 25 hard cap. Structured judge AI retains its existing
+  reservation and accounting path.
+- RED/GREEN evidence passed: Worker client-secret coverage `7/7`, security
+  matrix `337/337`, Cloudflare pool `149/149`, and the focused browser scenario
+  `1/1`. Typecheck, lint, format, build, secret scan, and media-manifest checks
+  passed. The browser scenario proves no-key private/shared
+  `Connect → Connected → Disconnect`, optional judge BYOK continuity, and zero
+  `/realtime/calls` requests.
+- The synthetic 1440 × 900 connected state was visually reviewed and saved at
+  `docs/media/screenshots/realtime-recovery/2026-07-22-judge-ephemeral-private-connected.png`.
+  Production deployment and a clean owner-observed judge cycle remain the only
+  open items in this recovery slice.

@@ -8,11 +8,15 @@ import {
   D1SessionRepository,
   WebCryptoSessionTokenIssuer,
 } from "@counterpoint/adapters-cloudflare";
-import type { ParticipantAssignment } from "@counterpoint/ports";
+import type {
+  ManagedRealtimeSecretIssuer,
+  ParticipantAssignment,
+} from "@counterpoint/ports";
 
 import {
   createWorkerHandler,
   meetingCoordinatorFor,
+  type CreateWorkerHandlerOptions,
   type Env,
 } from "../../apps/worker/src/index.js";
 
@@ -295,24 +299,59 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
     expect(cleared.status).toBe(200);
   });
 
-  it("keeps direct judge client-secret issuance disabled so usage control cannot be bypassed", async () => {
+  it("issues a server-funded short-lived secret to an allowlisted judge without storing the standard key", async () => {
     await seedJudgeFixture();
     const configuredEnv = workerEnv({
+      JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "enabled",
       JUDGE_USER_ID,
       OPENAI_API_KEY_JUDGE: STANDARD_KEY,
     });
+    const factoryKeys: string[] = [];
+    const issuerInputs: Parameters<ManagedRealtimeSecretIssuer["issue"]>[0][] =
+      [];
+    const options: CreateWorkerHandlerOptions & {
+      readonly judgeManagedRealtimeClientSecretIssuerFactory: (
+        apiKey: string,
+      ) => ManagedRealtimeSecretIssuer;
+    } = {
+      judgeManagedRealtimeClientSecretIssuerFactory: (apiKey) => {
+        factoryKeys.push(apiKey);
+        return {
+          issue: (input) => {
+            issuerInputs.push(input);
+            return Promise.resolve({
+              channel: input.channel,
+              expiresAt: new Date(Date.now() + 30_000).toISOString(),
+              model: "gpt-realtime-2.1",
+              value: "ek_worker_judge_ephemeral_only",
+            });
+          },
+        };
+      },
+    };
 
-    const firstHandler = createWorkerHandler();
+    const firstHandler = createWorkerHandler(options);
     const first = await firstHandler.fetch!(
       request(JUDGE_BEARER),
       configuredEnv,
       {} as ExecutionContext,
     );
-    expect(first.status).toBe(503);
+    expect(first.status).toBe(201);
     await expect(first.clone().json()).resolves.toMatchObject({
-      code: "REALTIME_UNAVAILABLE",
+      clientSecret: "ek_worker_judge_ephemeral_only",
+      keySource: "judgeManaged",
     });
     expect(await first.text()).not.toContain(STANDARD_KEY);
+    expect(factoryKeys).toEqual([STANDARD_KEY]);
+    expect(issuerInputs).toEqual([
+      expect.objectContaining({
+        channel: "private",
+        meetingId: MEETING_ID,
+        ownerParticipantId: "participant-worker-judge",
+        sessionId: "session-worker-judge-c3",
+      }),
+    ]);
+    expect(issuerInputs[0]?.safetyIdentifier).toMatch(/^[0-9a-f]{64}$/u);
 
     const ordinary = await firstHandler.fetch!(
       request(ORDINARY_BEARER),
@@ -324,15 +363,33 @@ describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
       code: "API_KEY_REQUIRED",
     });
 
-    const afterEviction = await createWorkerHandler().fetch!(
+    const access = await firstHandler.fetch!(
+      new Request(
+        `https://counterpoint.test/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/access`,
+        {
+          headers: { authorization: `Bearer ${JUDGE_BEARER}` },
+        },
+      ) as unknown as WorkerRequest,
+      configuredEnv,
+      {} as ExecutionContext,
+    );
+    expect(access.status).toBe(200);
+    await expect(access.json()).resolves.toMatchObject({
+      mode: "judgeManaged",
+      usageSummary: "hidden",
+    });
+
+    const afterEviction = await createWorkerHandler(options).fetch!(
       request(JUDGE_BEARER),
       configuredEnv,
       {} as ExecutionContext,
     );
-    expect(afterEviction.status).toBe(503);
+    expect(afterEviction.status).toBe(201);
     await expect(afterEviction.json()).resolves.toMatchObject({
-      code: "REALTIME_UNAVAILABLE",
+      clientSecret: "ek_worker_judge_ephemeral_only",
+      keySource: "judgeManaged",
     });
+    expect(factoryKeys).toEqual([STANDARD_KEY, STANDARD_KEY]);
 
     const coordinatorHealth = await (
       await meetingCoordinatorFor(configuredEnv, MEETING_ID).fetch(

@@ -25,6 +25,7 @@ import {
   HealthResponseSchema,
   ReadinessResponseSchema,
 } from "@counterpoint/protocol";
+import type { ManagedRealtimeSecretIssuer } from "@counterpoint/ports";
 
 import type { MeetingCoordinator } from "./meeting-coordinator.js";
 import { MeetingCoordinatorApiKeyLeaseStore } from "./meeting-api-key-leases.js";
@@ -117,6 +118,9 @@ export type Env = Readonly<
 >;
 
 export interface CreateWorkerHandlerOptions {
+  readonly judgeManagedRealtimeClientSecretIssuerFactory?: (
+    apiKey: string,
+  ) => ManagedRealtimeSecretIssuer;
   readonly judgeAssumptionInvalidationEvaluator?: ConcreteAssumptionInvalidationEvaluator;
   readonly judgePrivateDisclosureProposer?: ConcretePrivateDisclosureProposer;
   readonly judgeSharedDecisionSynthesizer?: ConcreteSharedDecisionSynthesizer;
@@ -155,6 +159,14 @@ function judgeManagedRealtimeRouteEnabled(env: Env): boolean {
     judgeUserId(env) !== undefined &&
     nonEmptyTrimmed(env.OPENAI_API_KEY_JUDGE) &&
     nonEmptyTrimmed(env.JUDGE_IP_HMAC_SECRET)
+  );
+}
+
+function judgeEphemeralRealtimeRouteEnabled(env: Env): boolean {
+  return (
+    String(env.JUDGE_MANAGED_REALTIME_ROUTE_ENABLED) === "enabled" &&
+    judgeUserId(env) !== undefined &&
+    nonEmptyTrimmed(env.OPENAI_API_KEY_JUDGE)
   );
 }
 
@@ -857,8 +869,8 @@ export function createWorkerHandler(
             meetings: new D1MeetingRepository(env.DB),
             realtimeAccess: {
               clock,
-              judgeManagedAvailable: judgeManagedRealtimeRouteEnabled(env),
-              judgeUsageSummaryAvailable: true,
+              judgeManagedAvailable: judgeEphemeralRealtimeRouteEnabled(env),
+              judgeUsageSummaryAvailable: false,
               leases,
             },
             sessions: new D1SessionRepository(env.DB),
@@ -962,6 +974,20 @@ export function createWorkerHandler(
             clock,
             judgeByokIssuerFactory: (apiKey) =>
               new OpenAiManagedRealtimeClientSecretIssuer({ apiKey }),
+            judgeManagedIssuerFactory: () => {
+              const apiKey = env.OPENAI_API_KEY_JUDGE;
+              if (
+                !judgeEphemeralRealtimeRouteEnabled(env) ||
+                !nonEmptyTrimmed(apiKey)
+              ) {
+                return undefined;
+              }
+              return (
+                options.judgeManagedRealtimeClientSecretIssuerFactory?.(
+                  apiKey,
+                ) ?? new OpenAiManagedRealtimeClientSecretIssuer({ apiKey })
+              );
+            },
             meetings: new D1MeetingRepository(env.DB),
             realtimeSecrets: {
               clock,

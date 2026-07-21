@@ -356,7 +356,7 @@ async function createOwnedCall(managedCallId: string): Promise<{
 }
 
 describe("Cloudflare Worker managed Realtime HTTP", () => {
-  it("reports managed access only when every Worker gate is active", async () => {
+  it("reports ephemeral judge access without claiming managed usage accounting", async () => {
     await seedFixture();
     const handler = createWorkerHandler();
     const environment = workerEnv(fakeControllerNamespace());
@@ -372,7 +372,7 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       await managed.json(),
     );
     expect(managedBody.mode).toBe("judgeManaged");
-    expect(managedBody.usageSummary).toBe("available");
+    expect(managedBody.usageSummary).toBe("hidden");
     expect(Object.keys(managedBody).sort()).toEqual([
       "correlationId",
       "mode",
@@ -398,7 +398,6 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
         JUDGE_MANAGED_REALTIME_ROUTE_ENABLED: "disabled",
       },
       environmentWithoutJudgeKey,
-      environmentWithoutIpSecret,
     ];
     for (const degradedEnvironment of degradedEnvironments) {
       const degraded = await handler.fetch!(
@@ -411,9 +410,19 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
         RealtimeAccessResponseSchema.parse(await degraded.json()),
       ).toMatchObject({
         mode: "unavailable",
-        usageSummary: "available",
+        usageSummary: "hidden",
       });
     }
+
+    const withoutIpSecret = await handler.fetch!(
+      getRequest(path),
+      environmentWithoutIpSecret,
+      {} as ExecutionContext,
+    );
+    expect(withoutIpSecret.status).toBe(200);
+    expect(
+      RealtimeAccessResponseSchema.parse(await withoutIpSecret.json()),
+    ).toMatchObject({ mode: "judgeManaged", usageSummary: "hidden" });
 
     const ordinary = await handler.fetch!(
       getRequest(path, ORDINARY_BEARER),

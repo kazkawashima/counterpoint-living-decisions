@@ -11,13 +11,10 @@ import {
 import {
   acquireSharedFloor,
   ApiError,
-  awaitManagedRealtimeTranscript,
-  beginManagedRealtimeTurn,
   captureUtterance,
   clearMeetingByok,
   clearStoredMeetingByok,
   configureMeetingByok,
-  createManagedRealtimeCall,
   getJudgeUsage,
   getRealtimeAccess,
   getRoleProjection,
@@ -31,10 +28,8 @@ import {
   type JudgeUsageSummaryResponse,
   type RealtimeAccessResponse,
   type StoredSession,
-  terminateManagedRealtimeCall,
 } from "./api.js";
 import {
-  connectManagedOpenAiRealtime,
   connectOpenAiRealtime,
   createOpenAiRealtimeController,
   RealtimeConnectionStageError,
@@ -421,10 +416,7 @@ export function RealtimePanel({
   }, [meetingId, session]);
 
   if (controllers.current === undefined) {
-    const connect = async (
-      selectedChannel: OpenAiRealtimeChannel,
-      idempotencyKey: string,
-    ) => {
+    const connect = async (selectedChannel: OpenAiRealtimeChannel) => {
       let failureStage: RealtimeFailureStage = "access";
       try {
         const access = await getRealtimeAccess(session, meetingId);
@@ -450,78 +442,17 @@ export function RealtimePanel({
         }
         if (access.mode === "judgeManaged") {
           const judgeByokKey = loadStoredMeetingByok(meetingId);
-          if (judgeByokKey !== undefined) {
-            failureStage = "call_creation";
-            const issued = await issueRealtimeClientSecret(
-              session,
-              meetingId,
-              selectedChannel,
-              judgeByokKey,
-            );
-            return await connectOpenAiRealtime({
-              clientSecret: issued.clientSecret,
-              onTranscript: (transcript) =>
-                transcriptHandlers.current[selectedChannel]?.(transcript),
-            });
-          }
           failureStage = "call_creation";
-          return await connectManagedOpenAiRealtime({
-            awaitTranscript: async ({ managedCallId, utteranceId }) => {
-              for (let attempt = 0; attempt < 40; attempt += 1) {
-                try {
-                  const completed = await awaitManagedRealtimeTranscript(
-                    session,
-                    {
-                      managedCallId,
-                      meetingId,
-                      utteranceId,
-                    },
-                  );
-                  void refreshJudgeUsage();
-                  return completed;
-                } catch (cause) {
-                  if (
-                    !(cause instanceof ApiError) ||
-                    cause.code !== "CONFLICT" ||
-                    attempt === 39
-                  ) {
-                    throw cause;
-                  }
-                  await new Promise<void>((resolve) => {
-                    window.setTimeout(resolve, 125);
-                  });
-                }
-              }
-              throw new Error("Managed transcript polling exhausted");
-            },
-            beginTurn: async ({ managedCallId, utteranceId }) => {
-              await beginManagedRealtimeTurn(session, {
-                managedCallId,
-                meetingId,
-                utteranceId,
-              });
-            },
-            channel: selectedChannel,
-            createCall: async ({ channel, idempotencyKey: key, sdpOffer }) => {
-              const created = await createManagedRealtimeCall(session, {
-                channel,
-                idempotencyKey: key,
-                meetingId,
-                sdpOffer,
-              });
-              void refreshJudgeUsage();
-              return created;
-            },
-            idempotencyKey,
+          const issued = await issueRealtimeClientSecret(
+            session,
+            meetingId,
+            selectedChannel,
+            judgeByokKey,
+          );
+          return await connectOpenAiRealtime({
+            clientSecret: issued.clientSecret,
             onTranscript: (transcript) =>
               transcriptHandlers.current[selectedChannel]?.(transcript),
-            terminateCall: async (managedCallId) => {
-              await terminateManagedRealtimeCall(session, {
-                managedCallId,
-                meetingId,
-              });
-              void refreshJudgeUsage();
-            },
           });
         }
         throw new ApiError(
@@ -1206,7 +1137,7 @@ export function RealtimePanel({
                 </span>
                 <p>
                   This key is sent only to issue a short-lived client secret;
-                  the Worker does not store it. Judge-managed access remains
+                  the Worker does not store it. Judge-sponsored access remains
                   available after removal.
                 </p>
                 <div className="realtime-key-actions">
@@ -1218,11 +1149,13 @@ export function RealtimePanel({
               </>
             ) : (
               <>
-                <span className="realtime-key-state">Judge-managed access</span>
+                <span className="realtime-key-state">
+                  Judge-sponsored Realtime
+                </span>
                 <p>
-                  Server-owned bounded call. No provider credential enters this
-                  browser. Optional: use your own API key for direct Realtime in
-                  this tab.
+                  The Worker exchanges its server key for a short-lived browser
+                  credential. The standard key never enters this browser.
+                  Optional: use your own API key in this tab.
                 </p>
                 <div className="realtime-key-actions">
                   <span className="realtime-state connected">Ready</span>

@@ -3,6 +3,16 @@
 All captures use synthetic identities, synthetic SDP, and nonfunctional test
 credentials. No production API key or private user content is present.
 
+## `2026-07-22-judge-ephemeral-private-connected.png`
+
+- Change: server-funded judge Realtime recovery through the short-lived
+  client-secret and direct browser WebRTC path
+- State: allowlisted judge has no personal key in the tab; the Worker-issued
+  ephemeral credential connected the Private agent while Shared remains off
+- Viewport: 1440 × 900 desktop, reduced motion
+- Source: `tests/e2e/realtime-channels.spec.ts`, synthetic Node browser fixture
+- Branch/change: `codex/flagship-reliability`, judge ephemeral Realtime recovery
+
 ## `2026-07-22-judge-provider-rejected-recovery.png`
 
 - Change: safe stage-specific recovery copy for a server-managed Realtime call

@@ -842,7 +842,143 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
   );
 });
 
-test("server-owned access switches the browser to a credential-free managed call", async ({
+test("server-funded judge access uses ephemeral direct WebRTC for private and shared channels", async ({
+  baseURL,
+  browser,
+}) => {
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1440 },
+  });
+  await installSyntheticWebRtc(context);
+  const meetingId = "meeting-global-ai-rollout";
+  const secretBodies: {
+    readonly apiKey?: string;
+    readonly channel: "private" | "shared";
+    readonly meetingId: string;
+  }[] = [];
+  let directProviderRequests = 0;
+  let managedCallRequests = 0;
+
+  await context.route("**/api/v1/meetings/*/realtime/access", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        correlationId: "correlation-ephemeral-access",
+        mode: "judgeManaged",
+        usageSummary: "hidden",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await context.route(
+    "**/api/v1/meetings/*/realtime/client-secrets",
+    async (route) => {
+      const body = route.request().postDataJSON() as {
+        apiKey?: string;
+        channel: "private" | "shared";
+        meetingId: string;
+      };
+      secretBodies.push(body);
+      await route.fulfill({
+        body: JSON.stringify({
+          channel: body.channel,
+          clientSecret: `ek_synthetic_server_funded_${body.channel}`,
+          correlationId: `correlation-server-funded-${body.channel}`,
+          expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          keySource:
+            body.apiKey === undefined ? "judgeManaged" : "judgeProvided",
+          meetingId,
+          model: "gpt-realtime-2.1",
+        }),
+        contentType: "application/json",
+        status: 201,
+      });
+    },
+  );
+  await context.route(
+    "https://api.openai.com/v1/realtime/calls",
+    async (route) => {
+      directProviderRequests += 1;
+      await route.fulfill({
+        body: "v=0\r\no=openai 4 4 IN IP4 127.0.0.1\r\ns=Server-funded ephemeral answer\r\nt=0 0\r\n",
+        contentType: "application/sdp",
+        status: 200,
+      });
+    },
+  );
+  await context.route(
+    "**/api/v1/meetings/*/realtime/calls**",
+    async (route) => {
+      managedCallRequests += 1;
+      await route.fulfill({
+        body: "managed path must stay dormant",
+        status: 500,
+      });
+    },
+  );
+
+  const page = await context.newPage();
+  await page.goto(baseURL ?? "/");
+  await signIn(page, "Product", "counterpoint-product");
+  await expect(page.getByText("Judge-sponsored Realtime")).toBeVisible();
+  await expect(
+    page.getByText(
+      "The Worker exchanges its server key for a short-lived browser credential. The standard key never enters this browser. Optional: use your own API key in this tab.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Judge usage limits" }),
+  ).toHaveCount(0);
+
+  const privateCard = page
+    .getByRole("article")
+    .filter({ hasText: "Private agent" });
+  const sharedCard = page
+    .getByRole("article")
+    .filter({ hasText: "Shared room agent" });
+
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
+  await page
+    .getByRole("region", { name: "Live channels, explicit boundaries" })
+    .screenshot({
+      animations: "disabled",
+      path: `${realtimeRecoveryScreenshotDirectory}/2026-07-22-judge-ephemeral-private-connected.png`,
+    });
+  await privateCard.getByRole("button", { name: "Disconnect" }).click();
+  await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
+
+  await sharedCard.getByRole("button", { name: "Connect" }).click();
+  await expect(sharedCard.getByText("Connected")).toBeVisible();
+  await sharedCard.getByRole("button", { name: "Disconnect" }).click();
+  await expect(sharedCard.getByText("Off", { exact: true })).toBeVisible();
+
+  expect(secretBodies.slice(0, 2)).toEqual([
+    { channel: "private", meetingId },
+    { channel: "shared", meetingId },
+  ]);
+  expect(directProviderRequests).toBe(2);
+  expect(managedCallRequests).toBe(0);
+
+  await page.getByLabel("Optional judge BYOK · tab only").fill(standardApiKey);
+  await page.getByRole("button", { name: "Use my key" }).click();
+  await expect(
+    page.getByText("Your API key active · this tab only"),
+  ).toBeVisible();
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
+  expect(secretBodies[2]).toEqual({
+    apiKey: standardApiKey,
+    channel: "private",
+    meetingId,
+  });
+  expect(directProviderRequests).toBe(3);
+  expect(managedCallRequests).toBe(0);
+  await context.close();
+});
+
+test.skip("legacy managed sideband UI path remains dormant for rollback", async ({
   baseURL,
   browser,
 }) => {
