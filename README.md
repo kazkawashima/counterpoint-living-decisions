@@ -10,9 +10,11 @@ a staged external event, review a grounded invalidation suggestion, and decide
 whether human review is required.
 
 The local Node/Compose flagship and the Cloudflare Worker application path are
-implemented. The public Cloudflare preview is available for verification;
-provider-funded judge routes remain disabled by default until a separate
-approved secret and deployment boundary. Product and submission source material is in
+implemented. The public Cloudflare preview remains provider-free; the explicitly
+approved Production judge route is available only to the exact private `judge`
+identity through server-funded Worker Secrets. Full hosted C5, independent
+cost-limit evidence, timed human rehearsal, and the final public-visibility
+switch remain separate release gates. Product and submission source material is in
 [`docs/topics/`](docs/topics/README.md), the normalized build contract is in
 [`docs/specs/`](docs/specs/README.md), and current implementation status is in
 [`docs/plans/impl/_status.md`](docs/plans/impl/_status.md).
@@ -180,13 +182,15 @@ preview resource plan and remote-mutation boundary.
 
 ## Known limitations and release boundary
 
-- The hosted preview and logged-out/incognito product boundary are available
-  through the explicit Cloudflare deployment. The hosted full security matrix
-  and provider-funded judge verification remain pending as separate release
-  gates.
-- Judge-funded OpenAI routes are disabled by default. Their separate Worker
-  Secrets and USD 25 rolling-24-hour cap must be verified on the hosted target
-  before a judge credential is issued.
+- The hosted preview is provider-free. The explicitly approved Production
+  judge path is server-funded and available only to the exact private `judge`
+  identity; ordinary users receive the guarded manual fallback and cannot use
+  the judge key. The full hosted security matrix, independent cost-limit
+  evidence, and derived secondary-limit proof remain pending release gates.
+- The application enforces a USD 25 rolling-24-hour judge ceiling and keeps the
+  provider's USD 50 alert as a secondary warning. Independent provider-sample
+  evidence and the timed human rehearsal are still required before claiming
+  final submission readiness.
 - Demo identities and meeting content are synthetic and fixed for the
   hackathon flow; this is not a production identity-management system.
 - Realtime supports voice input into explicit private/shared channels, not

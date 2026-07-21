@@ -9,8 +9,16 @@ no real customer or workplace data.
 Show the complete private-to-living-Decision value arc in no more than three
 minutes. Reset the target demo meeting immediately before each take so event
 positions, revision numbers, and visible cues are deterministic. The event is
-the synthetic Flagship staged story; in the preview it is evaluated by the
-provider-free `staged-demo-rule-v1`, not by a live production monitor.
+the synthetic Flagship staged story; in Preview it is evaluated by the
+provider-free `staged-demo-rule-v1`, while Production judge mode uses the
+server-funded, bounded evaluation path. Neither is a live production monitor.
+
+For the Production take, use only the canonical judge origin:
+<https://counterpoint-living-decisions-production.gs2safari.workers.dev>.
+The older bare Workers host serves a legacy `Counterpoint` deployment and is
+not the current judge route. After opening the seeded room, confirm
+`Judge-managed access` / `Ready`; never enter a provider key in the judge
+browser.
 
 | Time | Beat | Screen proof |
 | --- | --- | --- |
@@ -33,6 +41,10 @@ the first pass if time is tight.
   staged review, same-origin SPA/manual fallback, and separate
   ordinary/judge/display contexts. This is an automated path-health result,
   not a substitute for timing a first-time human walkthrough.
+- 2026-07-21: The canonical Production origin passed the read-only smoke and
+  the external browser boundary `2/2` in `38.6s`, covering manual fallback and
+  ordinary/judge/display separation. This is also automated path-health
+  evidence, not a substitute for timing a first-time human walkthrough.
 - The human rehearsal remains targeted at three minutes and must still be performed
   from the checklist above before claiming the three-minute acceptance gate.
 
@@ -49,8 +61,10 @@ the first pass if time is tight.
 
 ## Take checklist
 
-1. Sign in as the Product facilitator; have the synthetic Legal participant use
-   a second tab when available.
+1. For Production, sign in with the private `judge` facilitator identity; for
+   Preview/local, use the synthetic Product facilitator. Have the synthetic
+   Legal participant use a second tab when available. Never put the private
+   judge credential in this file or any capture.
 2. Reset only the staged flagship meeting and confirm the Context cue returns.
 3. Use the fixed synthetic utterance and event; do not improvise real examples.
 4. Show the private-agent cue and say aloud that it is staged/proposed and
