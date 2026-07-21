@@ -232,3 +232,9 @@ Public-safe judge testing steps are in
 [`docs/submission-testing-instructions.md`](docs/submission-testing-instructions.md).
 Credentials, if required, are intentionally omitted and must be supplied only
 through a verified private submission field.
+
+The exact production walkthrough and presentation narration are in
+[`docs/presentation/flagship-production-tutorial.md`](docs/presentation/flagship-production-tutorial.md).
+The current response to projector, readability, onboarding, and model-choice
+feedback is tracked in
+[`docs/plans/ui-feedback-2026-07-21.md`](docs/plans/ui-feedback-2026-07-21.md).

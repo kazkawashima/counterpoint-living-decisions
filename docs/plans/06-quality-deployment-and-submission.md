@@ -27,7 +27,8 @@ lightweight verification evidence in the meantime.
 - [x] Run format, lint, typecheck, unit, contract, integration, security, and
       complete E2E suites.
 - [x] Run fresh Compose start and persistent restart.
-- [x] Run Cloudflare preview smoke; production smoke remains pending.
+- [x] Run Cloudflare preview smoke and the explicitly approved production
+      judge/Flagship smoke.
 - [x] Run desktop, mobile, reduced-motion, and external-host browser matrix.
 - [x] Map direct proof to AC-01 through AC-19.
 - [x] Record known limitations; do not disguise failing gates.

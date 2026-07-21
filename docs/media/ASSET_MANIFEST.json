@@ -111,7 +111,7 @@
       "sha256": "fc2e136b03d9e644e80ae0d5e8aaeeca7c9bd29fe87cf84881428f22bf8f5b5b"
     },
     {
-      "bytes": 446074,
+      "bytes": 1696824,
       "mediaType": "video/webm",
       "path": "docs/media/clips/shared-display/2026-07-19-shared-evidence-to-revoked.webm",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -119,7 +119,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "2508a0bb58d3626fa66b3761226dde8da0a2d1d8891503596492de15b846eac6"
+      "sha256": "136e568c64e6df68f39d13a11333af92b1e67406358fe07ebebb4c6fbe7067a0"
     },
     {
       "bytes": 2553857,
@@ -881,7 +881,7 @@
       "sha256": "6e32c1e3a2dd3cc39211ccf98ec1ad175b15d67ae470658621d00eb7a788ad4c"
     },
     {
-      "bytes": 268008,
+      "bytes": 264120,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/shared-display/2026-07-19-shared-display-empty-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -889,10 +889,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "1aa5a223f443939fe4e88d006e6436519ebfee0398f17c7a092d8cf8807f432d"
+      "sha256": "e47a1d1cfc48db5e1f45ed504e260f5a278d8adc62373b7a98ae1e7be14fefc3"
     },
     {
-      "bytes": 288666,
+      "bytes": 284091,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/shared-display/2026-07-19-shared-display-evidence-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -900,10 +900,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "c4269526fcd70afce6411e872d982da58b594c22008aa324935f3cfe35780844"
+      "sha256": "70ccf2335a9c87ec5a8cd0dcd0721480dcffb45e2a1ef459b2c2fa2e187a55ce"
     },
     {
-      "bytes": 183487,
+      "bytes": 184543,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/shared-display/2026-07-19-shared-display-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -911,10 +911,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "31be4ffbd308ee87294fec34e015df6a9c58096a9c5fbfefb792ea57c3f0e487"
+      "sha256": "ff878332e3f194b17b71220f9ae2781ffbe0d9a5f4db81baba8c351fe9133364"
     },
     {
-      "bytes": 171621,
+      "bytes": 168000,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/shared-display/2026-07-19-shared-display-revoked-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -922,7 +922,18 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "921a7153270fd62f43164aa0e2292f092e7fb15f2d6dc0c3fc4252ceec5ba1c8"
+      "sha256": "f66f87957fd5f50287fccd639a2f22b39376ed692d39d461fd3c70d313de6f15"
+    },
+    {
+      "bytes": 343893,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/shared-display/2026-07-21-shared-display-projector-empty-4k.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "0277d0c3849e5459d6f7c8e0d4659074184882a0ff72f4f2ff2c9891d642a308"
     },
     {
       "bytes": 171686,

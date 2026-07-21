@@ -110,6 +110,34 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
   ).toHaveCount(0);
   await expect(displayPage.getByText("participant-product")).toHaveCount(0);
   await expect(displayPage.getByText("No Decision yet")).toBeVisible();
+  const largeDisplayContext = await browser.newContext({
+    viewport: { height: 1440, width: 2560 },
+  });
+  const largeDisplayPage = await largeDisplayContext.newPage();
+  await largeDisplayPage.goto(displayHref);
+  await expect(
+    largeDisplayPage.getByRole("heading", { name: meeting.purpose }),
+  ).toBeVisible();
+  const largeDisplayLayout = await largeDisplayPage.evaluate(() => ({
+    gridMaxWidth: getComputedStyle(
+      document.querySelector(".shared-display-grid") as HTMLElement,
+    ).maxWidth,
+    gridWidth: (
+      document.querySelector(".shared-display-grid") as HTMLElement
+    ).getBoundingClientRect().width,
+    heroMaxWidth: getComputedStyle(
+      document.querySelector(".shared-display-hero") as HTMLElement,
+    ).maxWidth,
+  }));
+  expect(largeDisplayLayout.gridMaxWidth).toBe("none");
+  expect(largeDisplayLayout.heroMaxWidth).toBe("none");
+  expect(largeDisplayLayout.gridWidth).toBeGreaterThan(2_000);
+  await largeDisplayPage.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${screenshotDirectory}/2026-07-21-shared-display-projector-empty-4k.png`,
+  });
+  await largeDisplayContext.close();
   await displayPage.screenshot({
     animations: "disabled",
     fullPage: true,

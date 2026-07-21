@@ -1255,3 +1255,20 @@ Run the hosted C5 security matrix and cost-boundary evidence against the
 production Worker, then update the submission testing instructions with the
 private judge handoff. Keep repository visibility private until the owner
 performs the final logged-out/public safety check.
+
+## 2026-07-21 projector display and presentation tutorial
+
+- The owner feedback identified the shared display's `90rem` max-width as too
+  narrow for a 4K monitor or projector. The display hero, grid, and footer now
+  use the full available viewport with responsive gutters; the mobile
+  single-column fallback remains intact.
+- `tests/e2e/shared-display.spec.ts` passed `1/1` and now checks a 2560×1440
+  display layout plus a synthetic projector screenshot. The media manifest was
+  regenerated and checked. Typecheck, lint, and format checks pass.
+- The response decision table is in
+  `docs/plans/ui-feedback-2026-07-21.md`. It defers the broad workspace density
+  redesign until after submission-critical gates, keeps model choice
+  operator-only, and preserves the private/shared projection boundary.
+- The exact production walkthrough and the compressed presentation narration
+  are in `docs/presentation/flagship-production-tutorial.md`. It contains no
+  credential and explicitly labels the event injection as a staged demo story.
