@@ -1,7 +1,8 @@
 # Reel and visual evidence
 
 This directory stores synthetic, submission-safe visual material for the
-hackathon introduction reel.
+hackathon introduction reel. These first-party captures are covered by the
+project's Apache-2.0 license; third-party media is not included.
 
 ## Layout
 

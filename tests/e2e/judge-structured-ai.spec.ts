@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 import {
   createErrorEnvelope,
@@ -9,9 +11,17 @@ import {
   ListSharedExternalEventsResponseSchema,
   LoginResponseSchema,
 } from "@counterpoint/protocol";
+import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
+const privateAgentCueScreenshotDirectory = evidenceDirectory(
+  "screenshots/private-agent-cue",
+);
+
+test.beforeAll(async () => {
+  await mkdir(privateAgentCueScreenshotDirectory, { recursive: true });
+});
 
 async function signIn(page: Page) {
   await page.getByRole("button", { name: "Product" }).click();
@@ -151,6 +161,42 @@ async function expectManualContinuity(page: Page) {
   const { input } = manualTextControls(page);
   await expect(input).toBeEnabled();
 }
+
+test("private input surfaces a staged hidden-premise cue without sharing it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await signIn(page);
+  await openMeeting(page, FLAGSHIP_PURPOSE);
+
+  const note =
+    "The launch depends on a documented approval gate; keep fallback ownership private until staffing review.";
+  await sendPrivateText(page, note);
+
+  const privateAgentCue = page.getByRole("region", {
+    name: "Private agent cue",
+  });
+  await expect(privateAgentCue).toContainText("Hidden premise surfaced");
+  await expect(privateAgentCue).toContainText(
+    "Launch depends on a documented approval gate.",
+  );
+  await expect(privateAgentCue).toContainText(
+    "Proposed only · text input · nothing shared",
+  );
+  await expect(privateAgentCue).toContainText("Staged demo cue");
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${privateAgentCueScreenshotDirectory}/2026-07-21-private-agent-cue-desktop.png`,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: `${privateAgentCueScreenshotDirectory}/2026-07-21-private-agent-cue-mobile-reduced-motion.png`,
+  });
+});
 
 test("invalidation 429 preserves durable text and manual controls", async ({
   page,

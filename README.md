@@ -191,30 +191,29 @@ preview resource plan and remote-mutation boundary.
   hackathon flow; this is not a production identity-management system.
 - Realtime supports voice input into explicit private/shared channels, not
   human-to-human audio conferencing.
-- The product is presented publicly as Descant — Living Decisions. The final
-  message hierarchy remains provisional until the submission review.
+- The product is presented publicly as Descant — Living Decisions. The approved
+  submission message hierarchy is: “The commitment layer for agent-native
+  teams.” / “Independent minds. Shared commitment.” / “Decisions should know
+  when they are no longer true.”
 - Reel production is intentionally deferred until the hosted product is
   viewable.
 
 ## Licensing
 
-No license for the Descant project source has been granted yet. Repository
-visibility and the final project license are separate decisions; public
-visibility for submission must not be described as an open-source grant unless
-a project license is deliberately added. Current Build Week guidance says a
-public repository should carry a relevant open-source license, so the remaining
-owner decision is public MIT, public Apache-2.0, or the officially supported
-private-repository judging path. The package metadata remains `UNLICENSED`
-until that decision is made.
+The submitted Descant source and first-party synthetic media are licensed under
+Apache-2.0; see [`LICENSE`](LICENSE). Preserve the Apache-2.0 copyright and
+license notice, modification notices, and the attribution material in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) when redistributing. The
+Descant name and marks are not granted by the software license.
 
 Pinned direct/transitive package metadata is generated in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Development-only
 LGPL/MPL-identified tooling and authoritative package license/NOTICE files
 remain flagged for final release review. This metadata inventory is not a
 substitute for that review. Media hashes and explicitly reviewed provenance,
-creator, synthetic-fixture status, and pending rights status are recorded in
+creator, synthetic-fixture status, and third-party-media status are recorded in
 [`docs/media/ASSET_MANIFEST.json`](docs/media/ASSET_MANIFEST.json).
-The engineering inventory and remaining owner decision are recorded in
+The engineering inventory and release review are recorded in
 [`docs/submission-license-audit.md`](docs/submission-license-audit.md).
 
 ## Documentation

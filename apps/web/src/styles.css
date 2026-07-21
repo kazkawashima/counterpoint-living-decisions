@@ -2258,6 +2258,59 @@ button:disabled {
   line-height: 1.5;
 }
 
+.private-agent-cue {
+  display: grid;
+  margin: 0 0 1rem;
+  padding: 1rem;
+  gap: 0.5rem;
+  border: 1px solid rgba(217, 255, 112, 0.45);
+  background:
+    linear-gradient(110deg, rgba(217, 255, 112, 0.08), transparent 65%),
+    rgba(8, 15, 13, 0.86);
+  animation: realtime-card-arrival 360ms ease-out both;
+}
+
+.private-agent-cue-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.private-agent-cue h3 {
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+}
+
+.private-agent-cue p {
+  margin: 0;
+  color: #cbd5cd;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.private-agent-cue p strong {
+  color: var(--acid);
+  font-weight: 600;
+}
+
+.private-agent-cue small {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.56rem;
+}
+
+.cue-origin {
+  flex: 0 0 auto;
+  padding: 0.32rem 0.45rem;
+  border: 1px solid rgba(217, 255, 112, 0.36);
+  color: var(--acid);
+  font-family: ui-monospace, monospace;
+  font-size: 0.53rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .assistant-signal {
   position: relative;
   width: 2.6rem;
@@ -4691,6 +4744,10 @@ button:disabled {
 
   .speech-console-header {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .private-agent-cue-heading {
     flex-direction: column;
   }
 

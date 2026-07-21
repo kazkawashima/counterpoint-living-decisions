@@ -34,6 +34,33 @@ preview`, inspect the exact excerpt, and approve it.
    Reload once to confirm the record, history, audit, and JSON export remain
    available.
 
+## Three-minute guided rehearsal
+
+Use two browser tabs when a second person is available: the facilitator is
+`Product`, and the participant is the synthetic `Legal` role. This is a smooth
+minimum path, not a claim that the preview is a live conferencing product.
+
+1. **0:00–0:20 — open:** the facilitator signs in, opens the seeded Flagship,
+   and resets it if a previous take left state behind.
+2. **0:20–0:45 — speak privately:** the participant uses the microphone in the
+   `Private` channel when configured. If Preview voice is unavailable, enter the
+   equivalent text command; it writes to the same durable private utterance
+   path. Say: “The launch depends on a documented approval gate; keep fallback
+   ownership private until staffing review.”
+3. **0:45–1:05 — surface the premise:** the private zone shows `Hidden premise
+surfaced`, `Staged demo cue`, and `nothing shared`. This cue is a provider-free
+   staged demo aid, not an AI inference and not a disclosure.
+4. **1:05–1:40 — commit together:** the facilitator selects the exact excerpt,
+   uses the manual fallback if needed, approves it, confirms the premise, saves,
+   validates, and commits the Decision.
+5. **1:40–2:25 — show change:** start monitoring, inject the clearly labeled
+   staged regulatory event, then review `AT_RISK` and have the facilitator
+   confirm impact. The event is a synthetic time jump, not continuous live
+   monitoring.
+6. **2:25–3:00 — prove the record:** show `REVIEW_REQUIRED`, Action hold, and
+   reconsideration task, then open history, audit, or JSON export. Stop on the
+   human-reviewed record.
+
 ## Expected safety boundaries
 
 - `Private` material is not shared until its owner approves the exact excerpt.
@@ -44,6 +71,8 @@ preview`, inspect the exact excerpt, and approve it.
   receives only the shared projection.
 - If managed AI is unavailable, the manual text and Decision path remains
   usable; no judge credential or provider key should be entered in the browser.
+- The private-agent cue is deliberately marked `Proposed only`; it never moves
+  private source text into Shared evidence.
 
 ## Operator checklist before submission
 

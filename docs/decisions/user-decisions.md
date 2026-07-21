@@ -20,17 +20,15 @@ crossed without a decision.
 
 ## UD-02 — Repository visibility and final license
 
-- **Status:** Visibility decided; dependency/media inventory complete; final
-  rights/notice review and project license pending.
+- **Status:** Decided on 2026-07-21; Apache-2.0 selected and release inventory
+  recorded.
 - **Decision:** Make the repository public for submission to reduce judging
   access failures.
 - **Commercial intent:** Preserve the option to commercialize a substantially
   revised product later.
-- **License gate:** Before switching the repository to public, inventory direct
-  and transitive dependencies plus bundled media, record their licenses and
-  notices, identify redistribution/source-disclosure obligations, and then
-  choose the project license or an All Rights Reserved distribution posture
-  compatible with the official submission rules.
+- **License gate:** Direct/transitive dependencies and bundled media were
+  inventoried; redistribution, notice, and Apache-2.0 obligations are recorded
+  in `docs/submission-license-audit.md`.
 - **2026-07-20 preliminary inventory result:** Runtime package metadata uses
   only MIT or Apache-2.0 identifiers; reciprocal identifiers are confined to
   development tooling. This inventory does not replace review of authoritative
@@ -39,11 +37,12 @@ crossed without a decision.
   relevant open-source license. The compatible public choices are therefore
   MIT or Apache-2.0; the rights-preserving alternative is to keep the
   repository private and share it with both official judging addresses.
-- **Blocks:** Public visibility switch and final project-license declaration.
+- **Blocks:** Public visibility switch and the final pre-submit rules/access
+  recheck, not the project-license choice.
 - **Does not block:** Development.
-- **Answer:** Public at submission. Product owner must complete the final
-  rights/notice review and choose MIT or Apache-2.0 before the visibility
-  switch; until then the manifest remains `license: "UNLICENSED"`.
+- **Answer:** Public at submission with Apache-2.0. Keep the repository private
+  until the final public-safety and official-rules recheck immediately before
+  the visibility switch.
 
 ## UD-03 — Judge-mode spend envelope
 
@@ -78,15 +77,16 @@ crossed without a decision.
 
 ## UD-05 — Final submission message hierarchy
 
-- **Status:** Open; current language is an unapproved placeholder.
-- **Decision needed:** Approve or revise the descriptor and primary tagline.
-- **Current working placeholders only:**
+- **Status:** Decided on 2026-07-21; the owner confirmed the current Devpost
+  message hierarchy.
+- **Approved descriptor, tagline, and hook:**
   - Descriptor: “The commitment layer for agent-native teams.”
   - Tagline: “Independent minds. Shared commitment.”
   - Hook: “Decisions should know when they are no longer true.”
-- **Blocks:** Final landing copy, reel narration, README hero, and Devpost copy.
+- **Blocks:** None for the current submission copy; preserve the same boundary
+  across landing, README, reel, and Devpost.
 - **Does not block:** UI layout using replaceable copy tokens.
-- **Answer:** Revise later; do not treat the current hierarchy as approved.
+- **Answer:** Use the approved descriptor, tagline, and hook above.
 
 ## UD-06 — Reel narrative treatment
 
@@ -100,16 +100,15 @@ crossed without a decision.
 
 ## UD-07 — Judge credential delivery path
 
-- **Status:** Open after repo-side preview verification; Devpost submission
-  preview and logged-out visibility still require product-owner inspection.
-- **Decision needed:** Choose the non-public credential handoff after the actual
-  Devpost submission preview is inspected.
+- **Status:** Decided on 2026-07-21; the owner confirmed the non-public
+  submission handoff and its visibility boundary.
 - **Preferred order:** Private Testing Instructions if verified non-public;
   otherwise the officially approved private repository or organizer channel.
-- **Blocks:** Final credential handoff.
+- **Blocks:** None for the credential handoff; keep credentials out of every
+  public artifact and recheck after any Devpost edit.
 - **Does not block:** Authentication or judge-account implementation.
-- **Answer:** Expect Testing Instructions to work; product owner will verify the
-  actual Devpost preview and logged-out view before placing any credential.
+- **Answer:** Use the verified private Testing Instructions path; never put the
+  judge credential in README, video, repository, screenshots, or public fields.
 
 ## How to answer
 

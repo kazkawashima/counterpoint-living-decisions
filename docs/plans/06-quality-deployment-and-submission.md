@@ -60,8 +60,9 @@ lightweight verification evidence in the meantime.
       known limitations, and degraded mode.
 - [x] Generate direct/transitive dependency license inventory and
       third-party notices, including bundled media and generated assets.
-- [ ] Resolve copyleft, source-disclosure, attribution, and redistribution
-      obligations before recommending the project license.
+- [x] Resolve copyleft, source-disclosure, attribution, and redistribution
+      obligations before recommending the project license; Apache-2.0 is now
+      selected and recorded in `LICENSE` and the release audit.
 - [ ] Distinguish pre-existing topic references from greenfield Build Week code.
 - [x] Add “Work completed during Build Week.”
 - [ ] Identify the primary `/feedback` Session ID at final submission time.
@@ -81,8 +82,8 @@ lightweight verification evidence in the meantime.
 ### Q6 — Devpost submission
 
 - [ ] Use the decided Work & Productivity category from UD-01.
-- [ ] Complete the remaining license portion of UD-02 after ER-11, then make
-      the repository public for submission.
+- [x] Complete the remaining license portion of UD-02 after ER-11; Apache-2.0
+      is selected. Make the repository public only at the separate final gate.
 - [ ] Finalize UD-04 after ER-10 and UD-07 after ER-07.
 - [ ] Complete ER-01, ER-02, ER-07, ER-08, ER-10, and ER-11.
 - [ ] Prepare English title, description, category, repository, demo URL,

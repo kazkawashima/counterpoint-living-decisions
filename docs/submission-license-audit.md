@@ -2,8 +2,8 @@
 
 Updated: 2026-07-21
 
-This is an engineering inventory, not legal advice. The project license remains
-unselected until the owner confirms the public-release policy.
+This is an engineering inventory, not legal advice. The owner selected
+Apache-2.0 for the submitted project on 2026-07-21.
 
 The current [OpenAI Build Week Official Rules](https://openai.devpost.com/rules)
 require a public repository to have relevant licensing, or a private repository
@@ -26,25 +26,18 @@ by the repository's inventory script. This is a classification signal, not a
 substitute for reviewing each package's authoritative LICENSE and NOTICE file.
 
 Bundled screenshots and clips are first-party synthetic captures and are
-tracked separately in `docs/media/ASSET_MANIFEST.json`. They currently retain
-`LicenseRef-Descant-Pending` until the project release policy is chosen.
+tracked separately in `docs/media/ASSET_MANIFEST.json`. They are marked
+`Apache-2.0` after the owner selected the project release policy.
 
-## Release decision still required
+## Release decision
 
-The recorded product intent is commercial reuse after a possible future
-rewrite, while the hackathon repository is intended to become public at
-submission. The practical candidates are:
+The owner selected **Apache-2.0** for the submitted source and first-party
+synthetic media. `LICENSE` and root package metadata now match, and the media
+manifest marks first-party captures as `Apache-2.0`. Apache-2.0's NOTICE,
+copyright-retention, modification-notice, and trademark limitations apply.
 
-1. MIT for the submitted source: simplest commercial-compatible permission,
-   with copyright and license notice retention.
-2. Apache-2.0 for the submitted source: commercial-compatible permission with
-   an express patent grant and additional notice/marking obligations.
-3. All Rights Reserved / another owner-approved distribution posture only if
-   the official submission rules explicitly permit a public repository without
-   an OSS license.
-
-Before switching repository visibility, confirm one choice, add the matching
-`LICENSE`, update the root package metadata, resolve media rights, and rerun
-`npm run licenses:check`, `npm run security:secrets`, and the submission access
-check. Do not infer that dependency permissiveness chooses the project's own
-license.
+The 286-entry dependency inventory remains authoritative for third-party
+notices: development-only MPL/LGPL-identified tooling is not redistributed as
+runtime application code, and `THIRD_PARTY_NOTICES.md` remains checked in for
+package attribution. Re-run `npm run licenses:check`, `npm run security:secrets`,
+and the submission access check immediately before public visibility.

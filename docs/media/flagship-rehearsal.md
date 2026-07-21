@@ -14,15 +14,16 @@ provider-free `staged-demo-rule-v1`, not by a live production monitor.
 
 | Time | Beat | Screen proof |
 | --- | --- | --- |
-| 0:00–0:18 | Private context stays owner-only | Private workspace and boundary copy |
-| 0:18–0:38 | Exact disclosure requires permission | Preview, exact excerpt, approve/keep-private controls |
-| 0:38–1:03 | Evidence becomes a human commitment | Grounded candidate, premise confirmation, explicit commit |
-| 1:03–1:23 | Time changes the decision | Monitoring state, synthetic EU regulatory event, expected affected region |
-| 1:23–1:50 | A staged rule advises; a human decides | `AT_RISK`, affected premise and Action, facilitator review |
-| 1:50–2:17 | The living Decision is revised | `REVIEW_REQUIRED`, Action hold, task, revision 2/3 comparison and recommit |
-| 2:17–2:30 | The record remains inspectable | Revision history, audit lineage, JSON export |
+| 0:00–0:20 | Facilitator opens the seeded Flagship | Product login, meeting reset, Context cue |
+| 0:20–0:45 | Participant speaks into the private channel | Mic input or equivalent text command, durable private utterance |
+| 0:45–1:05 | The private agent cue surfaces a hidden premise | `Hidden premise surfaced`, `Staged demo cue`, `nothing shared` |
+| 1:05–1:40 | Evidence becomes a human commitment | Exact excerpt, permission, premise confirmation, explicit commit |
+| 1:40–2:25 | Time changes the decision | Monitoring state, synthetic EU regulatory event, expected affected region |
+| 2:25–2:45 | A staged rule advises; a human decides | `AT_RISK`, facilitator reason, `REVIEW_REQUIRED`, Action hold |
+| 2:45–3:00 | The record remains inspectable | Reconsideration task, revision history, audit lineage, JSON export |
 
-Total target: **2 minutes 30 seconds**, leaving 30 seconds of edit tolerance.
+Total target: **3 minutes**, with the optional revision comparison omitted from
+the first pass if time is tight.
 
 ## Verification log
 
@@ -32,7 +33,7 @@ Total target: **2 minutes 30 seconds**, leaving 30 seconds of edit tolerance.
   staged review, same-origin SPA/manual fallback, and separate
   ordinary/judge/display contexts. This is an automated path-health result,
   not a substitute for timing a first-time human walkthrough.
-- The human rehearsal remains targeted at 2:30 and must still be performed
+- The human rehearsal remains targeted at three minutes and must still be performed
   from the checklist above before claiming the three-minute acceptance gate.
 
 ## Capture map
@@ -48,9 +49,13 @@ Total target: **2 minutes 30 seconds**, leaving 30 seconds of edit tolerance.
 
 ## Take checklist
 
-1. Sign in as the Product facilitator.
+1. Sign in as the Product facilitator; have the synthetic Legal participant use
+   a second tab when available.
 2. Reset only the staged flagship meeting and confirm the Context cue returns.
-3. Use the fixed synthetic note and event; do not improvise real examples.
-4. Keep the stage cue visible at each narrative transition.
-5. Capture desktop motion plus mobile reduced-motion states.
-6. End on revision history or JSON export, not on an unreviewed AI suggestion.
+3. Use the fixed synthetic utterance and event; do not improvise real examples.
+4. Show the private-agent cue and say aloud that it is staged/proposed and
+   nothing has been shared.
+5. Complete exact excerpt approval, human Decision commit, staged event, and
+   facilitator review in that order.
+6. Capture desktop motion plus mobile reduced-motion states.
+7. End on revision history or JSON export, not on an unreviewed AI suggestion.

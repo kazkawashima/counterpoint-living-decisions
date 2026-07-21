@@ -45,6 +45,7 @@ import {
 interface RealtimePanelProps {
   readonly facilitator: boolean;
   readonly meetingId: string;
+  readonly onPrivateUtterance: (text: string, source: "text" | "voice") => void;
   readonly onPositionChange: (
     position: CaptureUtteranceResponse["position"],
   ) => void;
@@ -352,6 +353,7 @@ function RealtimeChannelCard({
 export function RealtimePanel({
   facilitator,
   meetingId,
+  onPrivateUtterance,
   onPositionChange,
   participantId,
   session,
@@ -574,6 +576,9 @@ export function RealtimePanel({
         utteranceId: turn.utteranceId,
       });
       onPositionChange(captured.position);
+      if (turn.channel === "private") {
+        onPrivateUtterance(captured.utterance.text, "voice");
+      }
       setSpeechState("sent");
       setSpeechStatus(
         turn.channel === "private"
@@ -758,6 +763,9 @@ export function RealtimePanel({
         utteranceId: turn.utteranceId,
       });
       onPositionChange(captured.position);
+      if (turn.channel === "private") {
+        onPrivateUtterance(captured.utterance.text, "text");
+      }
       let realtimeDelivered = false;
       try {
         if (selectedRealtimeState.status === "connected") {

@@ -76,6 +76,13 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   完了した。stale rowのSELECTだけを行い、provider、judge/HMAC Secret、D1 mutationを
   発生させていない。これはpre-billable運用経路の確認であり、production judge enableや
   measured derived limitsの完了とは扱わない。
+- 2026-07-21、ユーザー裁定として提出プロジェクトのライセンスをApache-2.0に確定し、
+  `LICENSE`、root package metadata、first-party synthetic media manifest、NOTICE監査を
+  同期した。Apache-2.0のNOTICE・copyright retention・modification notice・trademark
+  境界を公開前の運用条件として記録している。
+- 2026-07-21、UD-05のdescriptor/tagline/hookをDevpost提出文面として確定し、UD-07の
+  審査credentialは非公開Testing Instructions経路で受け渡す裁定を確認した。公開欄・README・
+  video・repositoryへcredentialを置かない境界は維持する。
 - production Secretを登録しないまま、rollback、judge shutdown、credential rotation/deleteの
   runbookとguarded deployment workflowを確認した。対象shellの`bash -n`とCloudflare
   deployment/config契約22/22が成功し、preview/productionのplan commandもremote
@@ -86,7 +93,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] ユーザーに見える正式表示を `Descant — Living Decisions` に統一する。
 - [x] 少なくとも README の見出し・説明・デモ説明、HTML title/meta、Web UIの
       Brand、footer、ARIA label、エラー文、JSON download名を棚卸しして更新する。
-- [ ] Devpost、README、画面内の製品主張が同じ名称と同じ主張境界になる。
+- [x] Devpost、README、画面内の製品主張が同じ名称と同じ主張境界になる。
 - [x] `Counterpoint` が残る箇所を「公開表示」「提出文書」「歴史資料」「内部識別子」
       に分類し、公開表示・提出文書には意図しない旧称を残さない。
 - [x] リポジトリ名・内部namespaceを変更しないことをREADMEまたは開発メモで明示し、
@@ -102,7 +109,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       分かる。
 - [x] 固定の合成ユーザーでログイン後、room作成・参加者割り当てを要求せず、seed済み
       Work & Productivity Flagship を一覧から開ける。
-- [ ] judge credentialは公開README、動画、リポジトリ、Devpostの公開欄へ置かず、
+- [x] judge credentialは公開README、動画、リポジトリ、Devpostの公開欄へ置かず、
       非公開と確認できた審査用Testing Instructions等の経路だけで渡す。
 
 ### 導線の価値弧
@@ -120,8 +127,10 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] OpenAI disabled、provider障害、judge cap到達のいずれでも、既存のroom状態、
       手動excerpt、Decision編集、history、JSON exportを保持する。
 - [x] Flagship resetは対象meetingだけを初期状態へ戻し、再実行して同じ価値弧を再生できる。
-- [ ] 初見の通し実演を約3分以内に収める。機能追加で長くなった場合は任意機能を導線から
-      外し、Flagshipを優先する。
+- [ ] 初見の通し実演を約3分以内に収める。facilitatorとsynthetic participantが、
+      micまたは同じdurable endpointのmanual text、private-agentのstaged cue、exact
+      excerpt承認、human Decision commit、staged event、AT_RISK→REVIEW_REQUIRED、
+      history/audit/exportを一本の導線で再生する。実時間は人間リハーサルで計測する。
 
 ### UI検証と記録
 
@@ -145,7 +154,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] 固定デモパスワードは実アカウントの認証情報ではなく合成demo-only credential
       と明示し、seed dataもすべて架空にする。公開後の漏洩を前提に、judge credentialは
       失効・rotateできる運用を確認する。
-- [ ] 直接依存・推移依存・同梱mediaのlicense/NOTICEを棚卸しし、公開切替前に
+- [x] 直接依存・推移依存・同梱mediaのlicense/NOTICEを棚卸しし、公開切替前に
       `MIT` または `Apache-2.0` 等の最終方針を決める。未確定のまま公開しない。
 
 ### 認証・権限・AI費用

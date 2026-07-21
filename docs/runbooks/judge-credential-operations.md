@@ -37,6 +37,29 @@ as the production judge password.
 6. Put the credential only in the submission form's private Testing
    Instructions after logging out and confirming the field is not public.
 
+## Registering production Worker Secrets
+
+These are Cloudflare Worker Secrets, not `.env` values, `vars`, D1/R2 data, or
+browser settings. Register them only after the approved production Worker and
+its bindings exist. The command prompts for each value interactively; do not
+put a value in shell history, a command argument, or a log.
+
+```bash
+CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false \
+  npx wrangler secret put OPENAI_API_KEY_JUDGE \
+  --name counterpoint-living-decisions-production
+
+CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false \
+  npx wrangler secret put JUDGE_IP_HMAC_SECRET \
+  --name counterpoint-living-decisions-production
+```
+
+Alternatively use Cloudflare Dashboard → Workers & Pages → the approved
+production Worker → Settings → Variables and Secrets → Add secret. Confirm the
+target Worker name before saving. Secret registration alone does not enable
+judge routes; the exact `JUDGE_USER_ID`, feature flags, cost limits, and
+production deployment gate still have to pass.
+
 ## Shutdown and rotation
 
 After the judging window:

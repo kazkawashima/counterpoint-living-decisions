@@ -71,6 +71,21 @@ const SYNTHETIC_EXACT_SNIPPET =
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
 const STAGED_DEMO_RULE_MODEL = "staged-demo-rule-v1";
 
+interface PrivateAgentCue {
+  readonly source: "text" | "voice";
+  readonly statement: string;
+}
+
+function privateAgentCueFor(text: string): PrivateAgentCue {
+  return {
+    source: "text",
+    statement:
+      /approval|gate|launch|承認|ゲート/iu.test(text) === true
+        ? "Launch depends on a documented approval gate."
+        : "The speaker may be relying on an unstated condition.",
+  };
+}
+
 function isStagedDemoRule(
   invalidation: InvalidationEvaluation | undefined,
 ): boolean {
@@ -2780,6 +2795,7 @@ function WorkspaceShell({
     readonly sourceArtifactId: string;
     readonly text: string;
   }>();
+  const [privateAgentCue, setPrivateAgentCue] = useState<PrivateAgentCue>();
   const outgoingPreviewRef = useRef<HTMLElement>(null);
   const privateConfirmationRef = useRef<HTMLElement>(null);
   const sharedEvidenceRef = useRef<HTMLElement>(null);
@@ -3036,6 +3052,7 @@ function WorkspaceShell({
       setDisplayAccessState("idle");
       setSelectedSnippet(SYNTHETIC_EXACT_SNIPPET);
       setUploadedPrivateSource(undefined);
+      setPrivateAgentCue(undefined);
       commandKeys.current = {
         approve: crypto.randomUUID(),
         preview: crypto.randomUUID(),
@@ -3289,6 +3306,11 @@ function WorkspaceShell({
       <RealtimePanel
         facilitator={meeting.role === "facilitator"}
         meetingId={meeting.meetingId}
+        onPrivateUtterance={(text, source) => {
+          if (isFlagship) {
+            setPrivateAgentCue({ ...privateAgentCueFor(text), source });
+          }
+        }}
         onPositionChange={advancePosition}
         participantId={meeting.participantId}
         session={session}
@@ -3373,6 +3395,31 @@ function WorkspaceShell({
             </div>
             <span className="assistant-boundary">Suggestion only</span>
           </section>
+          {privateAgentCue !== undefined ? (
+            <section
+              aria-label="Private agent cue"
+              aria-live="polite"
+              className="private-agent-cue"
+            >
+              <div className="private-agent-cue-heading">
+                <div>
+                  <span className="source-type">Private agent cue</span>
+                  <h3>Hidden premise surfaced</h3>
+                </div>
+                <span className="cue-origin">Staged demo cue</span>
+              </div>
+              <p>
+                Candidate premise: <strong>{privateAgentCue.statement}</strong>
+              </p>
+              <p>
+                Unresolved: fallback ownership stays private until the staffing
+                review.
+              </p>
+              <small>
+                Proposed only · {privateAgentCue.source} input · nothing shared
+              </small>
+            </section>
+          ) : null}
           <div className="channel-choice">
             <div className="channel active">
               <span aria-hidden="true">◉</span>

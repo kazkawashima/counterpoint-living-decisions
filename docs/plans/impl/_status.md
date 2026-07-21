@@ -1087,6 +1087,29 @@ The canonical implementation-facing artifacts are:
   synthetic evidence and a passing meeting-creation browser test. The
   Flagship path remains unchanged.
 
+## 2026-07-21 owner decisions, staged cue, and rehearsal path
+
+- The owner selected Apache-2.0 for the submitted source and first-party
+  synthetic media. `LICENSE`, root package metadata, media manifest rights, and
+  the release audit are synchronized. UD-05 is closed with the approved
+  descriptor/tagline/hook; UD-07 is closed with the private Testing
+  Instructions handoff and no public credential.
+- The flagship private input now shows a provider-free `Private agent cue`
+  after durable text or voice capture. It is explicitly labeled `Staged demo
+  cue`, `Proposed only`, and `nothing shared`; it is not presented as AI
+  inference and cannot disclose private source text. A local browser E2E and
+  synthetic screenshot are required evidence for this UI slice.
+- `docs/submission-testing-instructions.md` and
+  `docs/media/flagship-rehearsal.md` now define a three-minute two-role path:
+  facilitator plus synthetic participant, mic-or-text fallback, hidden-premise
+  cue, exact excerpt approval, human commit, staged event, human review, and
+  durable-record inspection. The human timed rehearsal remains open.
+- Production Worker Secret registration remains open and unperformed. The
+  guarded runbook identifies `OPENAI_API_KEY_JUDGE` and
+  `JUDGE_IP_HMAC_SECRET` as separate Cloudflare Worker Secrets; adding them
+  alone does not enable judge routes. Hosted C5, derived cost-limit proof,
+  production deployment, and final visibility switch remain separate gates.
+
 ## 2026-07-21 current-tree security verification
 
 - On implementation commit `16701db`, `npm run security:verify` passed the
@@ -1147,8 +1170,8 @@ The canonical implementation-facing artifacts are:
   internal namespace, or migration-context documentation. They are not being
   treated as the current public product name.
 - The actual Devpost title/description and public/private field visibility are
-  external owner-controlled surfaces; this repository audit cannot close that
-  comparison gate or the open UD-05 message hierarchy.
+  external owner-controlled surfaces; this repository audit cannot close the
+  final logged-out visibility check.
 
 ## 2026-07-21 Preview reconciliation dry-run
 
@@ -1179,11 +1202,11 @@ demonstrably viewable.
 
 - Closed: UD-01 Work & Productivity, UD-03 USD 25/day judge cap, and UD-06
   explicitly labeled demo-story treatment.
-- Partially closed: UD-02 public at submission; final project license awaits
-  dependency/submission audit.
+- Partially closed: UD-02 public at submission; the final visibility switch
+  still awaits the submission-safety recheck.
 - Closed: UD-04 public-facing name is Descant — Living Decisions; historical and
   internal Counterpoint identifiers remain intentionally unchanged.
-- Open: UD-05 final message hierarchy and UD-07 credential path.
+- Closed: UD-05 final message hierarchy and UD-07 private credential path.
 - ER-07 repository-side preview and logged-out/browser checks are closed for
   this slice; actual Devpost submission-preview visibility and credential
   handoff remain product-owner gates.

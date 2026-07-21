@@ -88,7 +88,7 @@ export async function buildMediaAssetManifest(root, reviewedManifest) {
     assets,
     generatedFrom: "docs/media/**/*.png and docs/media/**/*.webm",
     rightsStatement:
-      "First-party development evidence; final project license is pending.",
+      "First-party synthetic development evidence; project source and captures are Apache-2.0.",
     schemaVersion: 1,
     verificationNote:
       "Hashes prove file identity. Perform a final visual/OCR/frame review for secrets, private data, and third-party marks before submission.",

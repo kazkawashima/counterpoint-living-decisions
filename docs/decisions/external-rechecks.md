@@ -22,15 +22,15 @@ Do not convert an unverified topic statement into a current fact. Record the
 date, exact source, and observed value when each item is closed.
 
 The repository-side preview and logged-out/browser safety checks for ER-07 are
-complete. Product-owner inspection of the actual Devpost submission preview,
-including the logged-out view and any private Testing Instructions field,
-remains open before entering credentials.
+complete. The product owner confirmed the actual Devpost submission preview,
+logged-out view, and private Testing Instructions handoff; do not copy the
+credential into any repository or public field.
 
 ER-03 was closed on 2026-07-19. ER-01, ER-02, and ER-08 were rechecked and
 closed for the current slice on 2026-07-20, with ER-01 still requiring the
-mandated immediate pre-submit refresh. ER-11 now has generated dependency and
-media inventories and a compatibility result, but remains open for the
-product-owner's public-license/private-repository choice and final NOTICE
-review. ER-04 has a verified model/WebRTC topology but remains open for
-account-specific expiry and limit verification. See
+mandated immediate pre-submit refresh. ER-07 was closed on 2026-07-21 by the
+owner's private Testing Instructions confirmation. ER-11 was closed on
+2026-07-21 after the owner selected Apache-2.0 and the project/media/NOTICE
+inventory was synchronized. ER-04 has a verified model/WebRTC topology but
+remains open for account-specific expiry and limit verification. See
 [`external-recheck-results.md`](./external-recheck-results.md).

@@ -80,7 +80,7 @@ describe("media asset manifest generation", () => {
       assets: unreviewedAssets.map((asset) => ({
         ...asset,
         creator: "Counterpoint Playwright scenario",
-        license: "LicenseRef-Counterpoint-Pending",
+        license: "Apache-2.0",
         origin: "First-party synthetic UI capture",
         syntheticData: true,
         thirdPartyMedia: false,
