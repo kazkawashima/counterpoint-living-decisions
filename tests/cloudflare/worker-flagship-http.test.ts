@@ -2501,20 +2501,6 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
       limit: "cost",
       tokenCount: 0,
     },
-    {
-      costMicroUsd: 0,
-      generationCount: 0,
-      label: "tokens",
-      limit: "tokens",
-      tokenCount: 17_369_601,
-    },
-    {
-      costMicroUsd: 0,
-      generationCount: 65,
-      label: "generations",
-      limit: "generation",
-      tokenCount: 0,
-    },
   ] as const)(
     "denies exhausted $label managed work before the provider",
     async ({ costMicroUsd, generationCount, limit, tokenCount }) => {

@@ -128,8 +128,15 @@ users for a single-person multi-participant demo.
 - Local development may read a standard key from a Git-ignored `.env` or `.dev.vars`.
 - A facilitator-provided key applies only to the target meeting.
 - Never disclose the standard key to participants.
+- An allowlisted judge may optionally enter a personal key in the tab. The
+  authenticated Worker uses it only to issue a short-lived client secret and
+  then discards it; ordinary users cannot use this request-scoped judge BYOK
+  path, and the server-funded judge path remains the default.
 - Allow judge mode only for the judge account, never for ordinary users.
-- Enforce hard limits for account, IP, meetings, Realtime duration, tokens, and daily spend.
+- Enforce the rolling USD 25 product ceiling as the only judge spend lock.
+  Retain one active-call guard for lifecycle safety, but do not independently
+  lock judge work on account, IP, meeting, Realtime duration, generation, or
+  token counters.
 - Return only a server-generated opaque handle for a managed Realtime call.
   Bind reservation, provider call, participant, session, and key-source
   identity server-side, then re-authenticate and re-resolve meeting assignment,

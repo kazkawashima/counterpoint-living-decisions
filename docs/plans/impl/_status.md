@@ -1381,3 +1381,27 @@ judge-enabled follow-up are recorded in the section below.
   claimed complete. The non-billable Realtime limit behavior remains proven by
   the committed browser/contract coverage; no provider budget was burned merely
   to exhaust a hosted limit.
+
+## 2026-07-21 judge budget and optional BYOK recheck
+
+- Judge budget policy is now intentionally simple: the rolling 24-hour USD 25
+  cost ceiling is the only server-funded spend lock. The one-active-call guard
+  remains as a lifecycle safety control; account/IP/meeting/Realtime-second,
+  generation, and token dimensions are unbounded for judge work and are not
+  rendered in the current usage panel.
+- An exact allowlisted judge can optionally choose `Use my key`. The browser
+  keeps the personal key in tab-scoped `sessionStorage`; the Worker accepts it
+  only on the authenticated Realtime client-secret request, uses it through a
+  request-scoped issuer, and returns only the short-lived secret with
+  `keySource=judgeProvided`. Ordinary users are rejected before provider work.
+  The key is not stored in D1, R2, Durable Object state, logs, events, or
+  responses, and this user-funded path does not consume the server-funded USD
+  25 ledger.
+- Contract tests passed `51/51`, focused Cloudflare/unit tests passed `18/18`,
+  typecheck passed, and the browser E2E for managed access plus optional judge
+  BYOK passed `1/1` with external-style `0.0.0.0` binding. A synthetic,
+  credential-free desktop capture is recorded at
+  `docs/media/screenshots/realtime-channels/2026-07-21-judge-byok-optional-desktop.png`.
+- The release security verification then passed the full security matrix
+  `302/302` and Cloudflare pool `140/140`; the first sandbox-only run's
+  `0.0.0.0` WebSocket bind failure was not used as evidence.

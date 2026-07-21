@@ -116,7 +116,9 @@ Reactアプリ内に次の独立した表示面を持つ。
 - ファシリテーターが入力したキーは、対象会議だけに適用する。
 - 参加者へ標準APIキーを開示しない。
 - judge modeは審査専用ユーザーだけに許可し、一般ユーザーへserver-funded keyを使用させない。
-- judge modeにはアカウント、IP、会議、Realtime接続時間、token、日次総額のhard limitを設ける。
+- judge modeのserver-funded workはrolling 24時間USD 25だけを費用hard lockとする。
+  同時実行1件はライフサイクル安全策として残し、account/IP/meeting/Realtime接続時間/
+  token/generationの二次ロックは適用しない。
 - managed Realtime callはサーバー生成のopaque handleだけをブラウザへ返す。
   reservation、provider call ID、participant、session、key sourceは
   サーバー側で結び、各start/turn/transcript/terminate要求ごとに認証、
@@ -134,6 +136,9 @@ Reactアプリ内に次の独立した表示面を持つ。
 - ファシリテーター接続中はheartbeatでkey leaseを更新する。
 - 明示ログアウト、会議終了、ログインセッション失効、切断後5分のうち最も早い時点でサーバー側コピーを破棄する。
 - WorkerまたはDurable Objectの退避によってキーが消えた場合は、ファシリテーターへ再入力を求める。
+- allowlist済みjudgeは任意で自分のキーをタブへ入力できる。キーは認証済みWorkerへ
+  client-secret発行時だけ送信し、Workerは短命発行後に破棄する。通常ユーザーはこの
+  request-scoped judge BYOK経路を使えず、server-funded judge経路は従来どおりキー不要。
 
 ブラウザ終了はサーバーから確実に検知できない。したがって保証は次の通りとする。
 

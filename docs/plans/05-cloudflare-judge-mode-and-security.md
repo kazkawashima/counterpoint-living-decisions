@@ -66,17 +66,19 @@ C2 runtime notes:
 - [ ] Register `OPENAI_API_KEY_JUDGE` via secret workflow without echoing value.
 - [x] Allow only the judge user capability.
 - [x] Keep standard key out of browser, DO storage, D1, R2, logs, and events.
-- [x] Keep direct judge client-secret issuance fail-closed until the C4
-      server-owned call path enforces its reservation.
+- [x] Keep server-funded direct judge client-secret issuance fail-closed until
+      the C4 server-owned call path enforces its reservation.
+- [x] Allow an allowlisted judge to opt into request-scoped personal BYOK for a
+      short-lived client secret without creating a server key lease.
 - [x] Keep ordinary BYOK behavior unchanged.
 
-The local C3 implementation uses an internal, server-derived
-`judge:managed-ai` capability that is granted only by an exact user-ID
-allowlist and is filtered from public role projections. Clients cannot request
-judge mode or select a key source. Node retains the ordinary facilitator-BYOK
-client-secret path. The Worker authenticates and resolves the allowlisted judge
-but deliberately returns `REALTIME_UNAVAILABLE` from the direct client-secret
-route, even when its Secret binding exists.
+The C3 implementation uses an internal, server-derived `judge:managed-ai`
+capability that is granted only by an exact user-ID allowlist and is filtered
+from public role projections. Clients cannot request judge authority. Node
+retains the ordinary facilitator-BYOK client-secret path. The Worker keeps the
+server-funded direct client-secret route fail-closed, while an allowlisted judge
+may explicitly send a personal key on the client-secret request; that key is
+used only by a request-scoped issuer and is never persisted or returned.
 
 Cloudflare-native proof covers exact D1 authentication and meeting scope,
 ordinary-user denial, configured-or-missing-Secret fail-closed behavior, and
@@ -87,13 +89,16 @@ configure/heartbeat/clear route; ordinary Node BYOK behavior and its shared
 HTTP contract remain unchanged, and the hosted transient-DO BYOK adapter stays
 in A6 parity work.
 
-The ordinary BYOK client-secret adapter explicitly requests a 30-second TTL
+The ordinary and judge-provided BYOK client-secret adapter explicitly requests
+a 30-second TTL
 instead of the provider's longer default. Provider client secrets may create
 multiple sessions until expiry, and attached session configuration can be
 overridden by the client, so the ephemeral token and its channel label are
-bootstrap data, not an application authorization boundary. Judge mode
+bootstrap data, not an application authorization boundary. Judge-managed mode
 therefore uses no direct token path; authentication, meeting scope,
-private/shared publication rules, and C4 usage limits remain server-owned.
+private/shared publication rules, and C4 usage limits remain server-owned. The
+judge-provided path returns only a short-lived client secret and does not
+consume the server-funded USD 25 ledger.
 
 No remote Secret was registered in this local implementation boundary.
 `OPENAI_API_KEY_JUDGE` and the exact judge identity must remain absent from
@@ -258,11 +263,12 @@ C4 foundation notes:
   `available` even while the provider route is disabled; ordinary sessions and
   all Node sessions receive `hidden`. The browser uses that flag to fetch and
   render the strict summary without inferring judge identity.
-- The judge workspace now shows the USD 25 rolling-24-hour budget and all eight
-  enforced dimensions, including available, exhausted, loading, and retryable
+- The judge workspace now shows the USD 25 rolling-24-hour budget as the only
+  judge spend lock, including available, exhausted, loading, and retryable
   unavailable states. Refresh is explicit rather than polling. Reaching or
-  failing to read the limit preserves the meeting and manual text path, and
-  screenshots cover desktop, mobile, and reduced motion.
+  failing to read the limit preserves the meeting and manual text path. Older
+  multi-dimension captures remain historical evidence, not the current UI
+  contract.
 - Cloudflare-pool integration now exercises the enabled route with a synthetic
   controller: judge authentication, cross-meeting rejection, turn/transcript
   forwarding, duplicate-start reservation suppression, termination settlement,

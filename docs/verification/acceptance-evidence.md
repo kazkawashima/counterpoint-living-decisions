@@ -62,6 +62,15 @@ proves local/contract replay, conflict, concurrency, ownership, termination,
 reservation, and pre-provider limit behavior. It is not evidence of hosted C5
 coverage or independent real-provider cost exhaustion.
 
+Judge access recheck: the current judge UI keeps server-funded managed access as
+the default, exposes only the rolling USD 25 cost meter, and offers an optional
+tab-only personal key to the allowlisted judge. The HTTP contract suite passed
+`51/51`, focused Cloudflare/unit coverage passed `18/18`, and the browser E2E
+passed `1/1` for managed access, cost-only exhaustion fallback, and the
+request-scoped `judgeProvided` client-secret path. The raw key was synthetic
+and did not appear in the response or capture. This remains local/contract
+evidence; it is not hosted C5 or independent provider-cost exhaustion proof.
+
 Submission-critical P0 recheck: the Worker flagship integration now reaches
 `REVIEW_REQUIRED` and successfully posts `review-resolution`, appending a
 committed revision 3 (`14/14`). The full Decision browser E2E proves the stage

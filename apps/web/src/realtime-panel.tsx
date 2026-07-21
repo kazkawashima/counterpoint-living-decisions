@@ -90,8 +90,8 @@ function safeMessage(error: unknown): string {
       typeof error.details.limit === "string"
         ? error.details.limit
         : undefined;
-    return limit === "generation"
-      ? "Daily judge generation limit reached. A Realtime connection reserves 3 generations. Meeting state and text remain available."
+    return limit === "cost"
+      ? "Daily judge cost limit reached. Meeting state and text remain available."
       : `Daily judge${limit === undefined ? "" : ` ${limit.replaceAll("_", " ")}`} limit reached. Meeting state and text remain available.`;
   }
   return error instanceof ApiError
@@ -181,35 +181,21 @@ function JudgeUsagePanel({
           1,
           dimensions.costMicroUsd.used / dimensions.costMicroUsd.limit,
         );
-  const dailyAllowanceReached = [
-    dimensions.account,
-    dimensions.costMicroUsd,
-    dimensions.generation,
-    dimensions.ip,
-    dimensions.meeting,
-    dimensions.realtimeSeconds,
-    dimensions.tokens,
-  ].some(({ limit, remaining }) => limit > 0 && remaining === 0);
-  const callSlotInUse =
-    dimensions.concurrency.limit > 0 && dimensions.concurrency.remaining === 0;
+  const costLimitReached = dimensions.costMicroUsd.remaining === 0;
 
   return (
     <section
       aria-busy={state === "loading"}
       aria-label="Judge usage limits"
       className={`judge-usage-panel ${
-        dailyAllowanceReached ? "exhausted" : "available"
+        costLimitReached ? "exhausted" : "available"
       }`}
     >
       <div className="judge-usage-heading">
         <div>
           <span className="source-type">Judge safety budget · rolling 24h</span>
           <strong aria-live="polite">
-            {dailyAllowanceReached
-              ? "Daily allowance reached"
-              : callSlotInUse
-                ? "Bounded call slot in use"
-                : "Budget available"}
+            {costLimitReached ? "Daily cost limit reached" : "Budget available"}
           </strong>
         </div>
         <button
@@ -233,61 +219,9 @@ function JudgeUsagePanel({
         </div>
         <progress aria-label="Judge cost usage" max={1} value={costRatio} />
       </div>
-      <dl className="judge-usage-dimensions">
-        <div>
-          <dt>Account requests</dt>
-          <dd>
-            {dimensions.account.used} / {dimensions.account.limit}
-            <em> · {dimensions.account.remaining} left</em>
-          </dd>
-        </div>
-        <div>
-          <dt>Network requests</dt>
-          <dd>
-            {dimensions.ip.used} / {dimensions.ip.limit}
-            <em> · {dimensions.ip.remaining} left</em>
-          </dd>
-        </div>
-        <div>
-          <dt>Meeting requests</dt>
-          <dd>
-            {dimensions.meeting.used} / {dimensions.meeting.limit}
-            <em> · {dimensions.meeting.remaining} left</em>
-          </dd>
-        </div>
-        <div>
-          <dt>Active calls</dt>
-          <dd>
-            {dimensions.concurrency.used} / {dimensions.concurrency.limit}
-            <em> · {dimensions.concurrency.remaining} free</em>
-          </dd>
-        </div>
-        <div>
-          <dt>Realtime</dt>
-          <dd>
-            {dimensions.realtimeSeconds.used}s
-            <em> / {dimensions.realtimeSeconds.limit}s</em>
-          </dd>
-        </div>
-        <div>
-          <dt>Generations</dt>
-          <dd>
-            {dimensions.generation.used}
-            <em> / {dimensions.generation.limit}</em>
-          </dd>
-        </div>
-        <div>
-          <dt>Tokens</dt>
-          <dd>
-            {dimensions.tokens.used.toLocaleString("en-US")}
-            <em> / {dimensions.tokens.limit.toLocaleString("en-US")}</em>
-          </dd>
-        </div>
-      </dl>
       <p>
-        Reserved or completed work counts toward these limits. The server checks
-        every managed start before provider work; reaching a limit preserves the
-        meeting and manual text path.
+        Only the rolling 24h cost total locks new managed work at $25. Meeting
+        state and manual text remain available after the lock.
       </p>
     </section>
   );
@@ -391,6 +325,7 @@ export function RealtimePanel({
     "Choose a channel. Hold to speak, or type the same command below.",
   );
   const lifecycleGeneration = useRef(0);
+  const configuredMeetingByok = useRef<string | undefined>(undefined);
   const pendingVoice = useRef<PendingVoiceTurn | undefined>(undefined);
   const transcriptHandlers = useRef<
     Partial<Record<OpenAiRealtimeChannel, (transcript: string) => void>>
@@ -443,6 +378,20 @@ export function RealtimePanel({
           });
         }
         if (access.mode === "judgeManaged") {
+          const judgeByokKey = loadStoredMeetingByok(meetingId);
+          if (judgeByokKey !== undefined) {
+            const issued = await issueRealtimeClientSecret(
+              session,
+              meetingId,
+              selectedChannel,
+              judgeByokKey,
+            );
+            return await connectOpenAiRealtime({
+              clientSecret: issued.clientSecret,
+              onTranscript: (transcript) =>
+                transcriptHandlers.current[selectedChannel]?.(transcript),
+            });
+          }
           return await connectManagedOpenAiRealtime({
             awaitTranscript: async ({ managedCallId, utteranceId }) => {
               for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -877,8 +826,19 @@ export function RealtimePanel({
       return;
     }
     const storedKey = loadStoredMeetingByok(meetingId);
+    if (realtimeAccess === "judgeManaged") {
+      setKeyState(storedKey === undefined ? "missing" : "active");
+      return;
+    }
+    if (realtimeAccess !== "facilitatorProvided") {
+      return;
+    }
     if (storedKey === undefined) {
       setKeyState("missing");
+      return;
+    }
+    if (configuredMeetingByok.current === storedKey) {
+      setKeyState("active");
       return;
     }
     let cancelled = false;
@@ -887,6 +847,7 @@ export function RealtimePanel({
     void configureMeetingByok(session, meetingId, storedKey)
       .then(() => {
         if (!cancelled) {
+          configuredMeetingByok.current = storedKey;
           setKeyState("active");
           setRealtimeAccess("facilitatorProvided");
         }
@@ -900,10 +861,14 @@ export function RealtimePanel({
     return () => {
       cancelled = true;
     };
-  }, [facilitator, meetingId, session]);
+  }, [facilitator, meetingId, realtimeAccess, session]);
 
   useEffect(() => {
-    if (!facilitator || keyState !== "active") {
+    if (
+      !facilitator ||
+      realtimeAccess !== "facilitatorProvided" ||
+      keyState !== "active"
+    ) {
       return;
     }
     const interval = window.setInterval(() => {
@@ -913,7 +878,7 @@ export function RealtimePanel({
       });
     }, 60_000);
     return () => window.clearInterval(interval);
-  }, [facilitator, keyState, meetingId, session]);
+  }, [facilitator, keyState, meetingId, realtimeAccess, session]);
 
   async function configure(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -925,11 +890,16 @@ export function RealtimePanel({
     setKeyState("configuring");
     setError(undefined);
     try {
-      await configureMeetingByok(session, meetingId, candidate);
+      if (realtimeAccess !== "judgeManaged") {
+        await configureMeetingByok(session, meetingId, candidate);
+        configuredMeetingByok.current = candidate;
+      }
       storeMeetingByok(meetingId, candidate);
       setApiKey("");
       setKeyState("active");
-      setRealtimeAccess("facilitatorProvided");
+      if (realtimeAccess !== "judgeManaged") {
+        setRealtimeAccess("facilitatorProvided");
+      }
     } catch (cause) {
       setKeyState("error");
       setError(safeMessage(cause));
@@ -952,7 +922,9 @@ export function RealtimePanel({
     }
     setError(undefined);
     try {
-      await clearMeetingByok(session, meetingId);
+      if (realtimeAccess !== "judgeManaged") {
+        await clearMeetingByok(session, meetingId);
+      }
     } catch (cause) {
       if (!(cause instanceof ApiError && cause.code === "API_KEY_REQUIRED")) {
         setError(
@@ -961,9 +933,12 @@ export function RealtimePanel({
       }
     } finally {
       clearStoredMeetingByok(meetingId);
+      configuredMeetingByok.current = undefined;
       setApiKey("");
       setKeyState("missing");
-      setRealtimeAccess("unavailable");
+      if (realtimeAccess !== "judgeManaged") {
+        setRealtimeAccess("unavailable");
+      }
     }
   }
 
@@ -1039,20 +1014,68 @@ export function RealtimePanel({
           }`}
         >
           {realtimeAccess === "judgeManaged" ? (
-            <>
-              <span className="realtime-key-state">Judge-managed access</span>
-              <p>
-                Server-owned bounded call. Each connection reserves 3
-                generations and up to 30 seconds. No provider credential enters
-                this browser.
-              </p>
-              <div className="realtime-key-actions">
-                <span className="realtime-state connected">Ready</span>
-                <span className="managed-access-mark" aria-hidden="true">
-                  ◆
+            keyState === "active" ? (
+              <>
+                <span className="realtime-key-state">
+                  Your API key active · this tab only
                 </span>
-              </div>
-            </>
+                <p>
+                  This key is sent only to issue a short-lived client secret;
+                  the Worker does not store it. Judge-managed access remains
+                  available after removal.
+                </p>
+                <div className="realtime-key-actions">
+                  <span className="realtime-state connected">Ready</span>
+                  <button onClick={() => void removeKey()} type="button">
+                    Remove key
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="realtime-key-state">Judge-managed access</span>
+                <p>
+                  Server-owned bounded call. No provider credential enters this
+                  browser. Optional: use your own API key for direct Realtime in
+                  this tab.
+                </p>
+                <div className="realtime-key-actions">
+                  <span className="realtime-state connected">Ready</span>
+                  <span className="managed-access-mark" aria-hidden="true">
+                    ◆
+                  </span>
+                </div>
+                {facilitator ? (
+                  <form onSubmit={(event) => void configure(event)}>
+                    <label htmlFor={apiKeyId}>
+                      Optional judge BYOK · tab only
+                    </label>
+                    <p>
+                      Never shown to participants or returned by the Worker.
+                    </p>
+                    <div className="realtime-key-entry">
+                      <input
+                        autoComplete="off"
+                        id={apiKeyId}
+                        onChange={(event) => setApiKey(event.target.value)}
+                        placeholder="Paste standard API key"
+                        spellCheck={false}
+                        type="password"
+                        value={apiKey}
+                      />
+                      <button
+                        disabled={keyState === "configuring"}
+                        type="submit"
+                      >
+                        {keyState === "configuring"
+                          ? "Securing…"
+                          : "Use my key"}
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+              </>
+            )
           ) : facilitator ? (
             keyState === "active" ? (
               <>

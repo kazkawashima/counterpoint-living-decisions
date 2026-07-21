@@ -578,19 +578,39 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       JUDGE_REALTIME_RESERVED_USAGE.estimatedOutputTokens;
     expect(usageBody).toMatchObject({
       dimensions: {
-        account: { limit: 100, remaining: 99, used: 1 },
+        account: {
+          limit: Number.MAX_SAFE_INTEGER,
+          remaining: Number.MAX_SAFE_INTEGER - 1,
+          used: 1,
+        },
         concurrency: { limit: 1, remaining: 0, used: 1 },
         costMicroUsd: {
           limit: 25_000_000,
           remaining: 12_000_000,
           used: JUDGE_REALTIME_RESERVED_USAGE.estimatedCostUsd * 1_000_000,
         },
-        generation: { limit: 64, remaining: 61, used: 3 },
-        ip: { limit: 100, remaining: 99, used: 1 },
-        meeting: { limit: 100, remaining: 99, used: 1 },
-        realtimeSeconds: { limit: 600, remaining: 570, used: 30 },
+        generation: {
+          limit: Number.MAX_SAFE_INTEGER,
+          remaining: Number.MAX_SAFE_INTEGER - 3,
+          used: 3,
+        },
+        ip: {
+          limit: Number.MAX_SAFE_INTEGER,
+          remaining: Number.MAX_SAFE_INTEGER - 1,
+          used: 1,
+        },
+        meeting: {
+          limit: Number.MAX_SAFE_INTEGER,
+          remaining: Number.MAX_SAFE_INTEGER - 1,
+          used: 1,
+        },
+        realtimeSeconds: {
+          limit: Number.MAX_SAFE_INTEGER,
+          remaining: Number.MAX_SAFE_INTEGER - 30,
+          used: 30,
+        },
         tokens: {
-          limit: JUDGE_GLOBAL_USAGE_LIMITS.tokensPerWindow,
+          limit: Number.MAX_SAFE_INTEGER,
           remaining: JUDGE_GLOBAL_USAGE_LIMITS.tokensPerWindow - reservedTokens,
           used: reservedTokens,
         },

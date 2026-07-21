@@ -8,6 +8,7 @@ import {
 import {
   ASSUMPTION_INVALIDATION_OPERATION,
   DECISION_SYNTHESIS_OPERATION,
+  OpenAiManagedRealtimeClientSecretIssuer,
   OpenAiPrivateDisclosureModel,
   OpenAiPrivateDisclosureProposer,
   OpenAiRealtimeClientSecretIssuer,
@@ -925,6 +926,8 @@ export function createWorkerHandler(
                     judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
                   },
             clock: { now: () => new Date().toISOString() },
+            judgeByokIssuerFactory: (apiKey) =>
+              new OpenAiManagedRealtimeClientSecretIssuer({ apiKey }),
             meetings: new D1MeetingRepository(env.DB),
             realtimeSecrets: {
               clock: { now: () => new Date().toISOString() },

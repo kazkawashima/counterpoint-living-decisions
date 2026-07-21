@@ -108,8 +108,10 @@ Security rules:
   authenticated session/user, current meeting assignment, participant, and
   channel are owned server-side; every call operation re-authenticates and
   re-resolves those scopes before the controller is addressed.
-- Hard limits bound account, IP, meeting count, concurrent sessions, Realtime
-  seconds, generations, tokens, and daily spend.
+- The enforced judge spend lock is the rolling USD 25 product ceiling. One
+  active managed call is retained as a lifecycle safety guard; account, IP,
+  meeting, Realtime-second, generation, and token counters remain observable
+  protocol dimensions but do not independently lock judge work.
 - The application-side currency boundary is USD 25 per rolling 24-hour period.
   It is enforced before new billable work.
 - The provider's USD 50 budget alert is a secondary warning and MUST NOT be
@@ -118,11 +120,29 @@ Security rules:
   worst case remains within the currency boundary.
 - Hitting any limit fails closed with an explicit cap error and no new OpenAI
   request.
-- Direct judge Realtime client-secret issuance remains disabled. Judge WebRTC
-  will start only through the server-owned call controller once the controller
+- Server-funded direct judge Realtime client-secret issuance remains disabled.
+  Judge WebRTC will start through the server-owned call controller once it
   can bound both duration and in-call spend, own the provider call ID, and
   account for the reserved call. Ordinary facilitator-provided BYOK remains a
-  separate mode.
+  separate mode. Optional judge-provided BYOK is a separate request-scoped mode
+  described below.
+
+### Optional judge-provided BYOK
+
+- An allowlisted judge may choose `Use my key` in the facilitator tab, but the
+  server-funded judge-managed path remains the default and does not require a
+  key.
+- The browser keeps the entered key in tab-scoped `sessionStorage` only and
+  sends it only on the authenticated client-secret request. The Worker uses it
+  transiently to request a short-lived Realtime client secret, then discards
+  the request-scoped issuer. The raw key is never returned, logged, persisted
+  to D1/R2/Durable Object state, or included in events and projections.
+- The request-scoped key path is available only after the server resolves the
+  exact judge capability. Ordinary accounts are rejected before provider work;
+  clients cannot select judge authority in the request body.
+- The response exposes `keySource=judgeProvided` and only the short-lived
+  client secret. The key path is user-funded and does not consume the server's
+  USD 25 managed-work ledger.
 
 Exact budget values are a user decision recorded separately.
 

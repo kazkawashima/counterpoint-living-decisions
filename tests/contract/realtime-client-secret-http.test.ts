@@ -83,6 +83,7 @@ class FixtureManagedIssuer implements ManagedRealtimeSecretIssuer {
 
 async function fixture(options: {
   readonly judge: boolean;
+  readonly judgeByokIssuer?: ManagedRealtimeSecretIssuer;
   readonly managedIssuer?: ManagedRealtimeSecretIssuer;
 }) {
   const clock = new MutableClock(NOW);
@@ -91,6 +92,7 @@ async function fixture(options: {
   const tokens = new DeterministicSessionTokenIssuer();
   const leases = new MemoryLeaseStore();
   const byokIssuer = new FixtureByokIssuer();
+  const judgeByokApiKeys: string[] = [];
   const userId = options.judge ? "user-judge" : "user-ordinary";
   await meetings.createWithAssignments(
     {
@@ -130,11 +132,20 @@ async function fixture(options: {
   }
   return {
     byokIssuer,
+    judgeByokApiKeys,
     dependencies: {
       authorizationPolicy: options.judge
         ? { judgeManagedAiUserIds: new Set([userId]) }
         : {},
       clock,
+      ...(options.judgeByokIssuer === undefined
+        ? {}
+        : {
+            judgeByokIssuerFactory: (apiKey: string) => {
+              judgeByokApiKeys.push(apiKey);
+              return options.judgeByokIssuer;
+            },
+          }),
       meetings,
       realtimeSecrets: {
         clock,
@@ -210,6 +221,45 @@ describe("shared Realtime client-secret HTTP semantics", () => {
     expect(managedIssuer.inputs).toHaveLength(1);
     expect("apiKey" in managedIssuer.inputs[0]!).toBe(false);
     expect(JSON.stringify(result.body)).not.toContain(BYOK);
+  });
+
+  it("lets an allowlisted judge use a request-scoped BYOK key without storing or returning it", async () => {
+    const judgeByokIssuer = new FixtureManagedIssuer();
+    const { dependencies, judgeByokApiKeys } = await fixture({
+      judge: true,
+      judgeByokIssuer,
+    });
+
+    const result = await handle(dependencies, {
+      apiKey: BYOK,
+      channel: "private",
+      meetingId: MEETING_ID,
+    });
+
+    expect(result.status).toBe(201);
+    expect(result.body).toMatchObject({
+      clientSecret: "ek_contract_managed",
+      keySource: "judgeProvided",
+    });
+    expect(judgeByokApiKeys).toEqual([BYOK]);
+    expect(judgeByokIssuer.inputs).toHaveLength(1);
+    expect(JSON.stringify(result.body)).not.toContain(BYOK);
+  });
+
+  it("does not accept a request-scoped BYOK key from an ordinary account", async () => {
+    const { byokIssuer, dependencies } = await fixture({ judge: false });
+
+    const result = await handle(dependencies, {
+      apiKey: BYOK,
+      channel: "private",
+      meetingId: MEETING_ID,
+    });
+
+    expect(result).toMatchObject({
+      body: { code: "VALIDATION_FAILED" },
+      status: 400,
+    });
+    expect(byokIssuer.inputs).toEqual([]);
   });
 
   it("preserves ordinary BYOK behavior without inheriting judge mode", async () => {

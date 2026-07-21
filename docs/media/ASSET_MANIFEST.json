@@ -606,7 +606,7 @@
       "sha256": "1792e9dbcd8130fceda874b1b9b0a03865280563a0d1b2c45d2137466505d739"
     },
     {
-      "bytes": 44978,
+      "bytes": 28635,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-available-desktop-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -614,10 +614,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "9065801715ee14cb9257ffde98927818a45dba591bccab20736e6b16c664b777"
+      "sha256": "6050ceb3e8e019e3071b3b30a89b37a279e9b67829b3d483a08c33df0e6d10f4"
     },
     {
-      "bytes": 43412,
+      "bytes": 28243,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-exhausted-desktop-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -625,10 +625,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "5b0c710a2b50d9297c344ebd365ed71af90e29b8c49b5fdd5a961c6487e06926"
+      "sha256": "3381d62a7bcc9ddde051c419b86b072cefe71f17d5c069ad64718e8d3cf98bfb"
     },
     {
-      "bytes": 41136,
+      "bytes": 22849,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-exhausted-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -636,10 +636,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "e983d44e96ec5669b0677e8585e9701b7c3c15d7b296225c907b4ea72dbd651b"
+      "sha256": "8c4844aa2002f6f4aa2bae870c3d448458d38667d675abd9d8bce020722b55ed"
     },
     {
-      "bytes": 15225,
+      "bytes": 14960,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-unavailable-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -647,10 +647,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "5461fd762873496750d2b0d9b550c5a2f159984c900463228f7495073cd77766"
+      "sha256": "f66174f01a239395e1e0beac9a19abf44adbafc3ab6721fdfdc048d9796fe7f3"
     },
     {
-      "bytes": 468329,
+      "bytes": 425249,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-21-judge-realtime-generation-limit-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -658,7 +658,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "165aae50b85c93e09f201cd62d3005286807e16ce3152c2c2626dec42a7b85ae"
+      "sha256": "7936017e77b4195da62b123d7bfacd27a3201ea945541a15ad3cf5b0fe7bd2ae"
     },
     {
       "bytes": 132692,
@@ -859,7 +859,7 @@
       "sha256": "97ee22aa54c9af04c1051c5596201e9bb0acb55353853ec00575e62dd54cff2d"
     },
     {
-      "bytes": 456909,
+      "bytes": 489514,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/realtime-channels/2026-07-20-judge-managed-connected-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -867,10 +867,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "13bd29037663cd50d9c4e3b485d94721bd155cec5c9a00d70f566d6038fcacc7"
+      "sha256": "60b05f02ba4d07229fc7e6b023141684e6e4f864b3e1ee23edb6ffa751ea2093"
     },
     {
-      "bytes": 326644,
+      "bytes": 330171,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/realtime-channels/2026-07-20-judge-managed-connected-mobile.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -878,7 +878,18 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "626016112eb2b728aaa3fa0468c729e5fbee97fcff86962f50555f14dd2f6661"
+      "sha256": "00ed6060fab1342d44f8839d144bf22f136290e1f0399df728bd97d83ec227b2"
+    },
+    {
+      "bytes": 425249,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/realtime-channels/2026-07-21-judge-byok-optional-desktop.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures; raw API key is not rendered",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "7936017e77b4195da62b123d7bfacd27a3201ea945541a15ad3cf5b0fe7bd2ae"
     },
     {
       "bytes": 707031,

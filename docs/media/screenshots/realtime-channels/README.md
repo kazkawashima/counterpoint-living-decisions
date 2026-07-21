@@ -13,6 +13,10 @@ Current product-visibility evidence:
    transcript returned only through the app-owned API.
 2. `2026-07-20-judge-managed-connected-mobile.png` — 390×844 responsive form
    of the same credential-free managed-call state.
+3. `2026-07-21-judge-byok-optional-desktop.png` — 1440×775 synthetic judge
+   workspace after selecting the optional tab-only key path. The raw key is
+   not rendered; the screen shows only the active-state label and durable text
+   fallback.
 
 Earlier direct-BYOK evidence:
 

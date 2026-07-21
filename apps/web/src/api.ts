@@ -725,11 +725,16 @@ export async function issueRealtimeClientSecret(
   session: StoredSession,
   meetingId: string,
   channel: "private" | "shared",
+  apiKey?: string,
 ): Promise<IssueRealtimeClientSecretResponse> {
   const body = await request(
     `/api/v1/meetings/${encodeURIComponent(meetingId)}/realtime/client-secrets`,
     {
-      body: JSON.stringify({ channel, meetingId }),
+      body: JSON.stringify({
+        channel,
+        meetingId,
+        ...(apiKey === undefined ? {} : { apiKey }),
+      }),
       method: "POST",
     },
     session,

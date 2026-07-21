@@ -372,14 +372,36 @@ test("server-owned access switches the browser to a credential-free managed call
     "**/api/v1/meetings/*/realtime/client-secrets",
     async (route) => {
       clientSecretRequests += 1;
-      await route.fulfill({ body: "", status: 500 });
+      const input = route.request().postDataJSON() as { apiKey?: string };
+      expect(input.apiKey).toBe(standardApiKey);
+      await route.fulfill({
+        body: JSON.stringify({
+          channel: "private",
+          clientSecret: "ek_synthetic_judge_byok",
+          correlationId: "correlation-judge-byok",
+          expiresAt: "2026-07-19T05:00:00.000Z",
+          keySource: "judgeProvided",
+          meetingId,
+          model: "gpt-realtime-2.1",
+        }),
+        contentType: "application/json",
+        status: 201,
+      });
     },
   );
   await context.route(
     "https://api.openai.com/v1/realtime/calls",
     async (route) => {
       directProviderRequests += 1;
-      await route.fulfill({ body: "", status: 500 });
+      if (clientSecretRequests === 0) {
+        await route.fulfill({ body: "", status: 500 });
+        return;
+      }
+      await route.fulfill({
+        body: "v=0\r\no=openai 2 2 IN IP4 127.0.0.1\r\ns=Judge BYOK synthetic answer\r\nt=0 0\r\n",
+        contentType: "application/sdp",
+        status: 200,
+      });
     },
   );
   await context.route("**/api/v1/meetings/*/judge/usage", async (route) => {
@@ -494,8 +516,8 @@ test("server-owned access switches the browser to a credential-free managed call
         await route.fulfill({
           body: JSON.stringify({
             code: "USAGE_LIMIT_REACHED",
-            correlationId: "correlation-managed-generation-limit",
-            details: { limit: "generation" },
+            correlationId: "correlation-managed-cost-limit",
+            details: { limit: "cost" },
             message: "The meeting usage limit has been reached.",
             retryable: false,
           }),
@@ -529,17 +551,20 @@ test("server-owned access switches the browser to a credential-free managed call
   await expect(page.getByText("Judge-managed access")).toBeVisible();
   await expect(
     page.getByText(
-      "Server-owned bounded call. Each connection reserves 3 generations and up to 30 seconds. No provider credential enters this browser.",
+      "Server-owned bounded call. No provider credential enters this browser. Optional: use your own API key for direct Realtime in this tab.",
     ),
   ).toBeVisible();
-  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(page.getByLabel("Optional judge BYOK · tab only")).toBeVisible();
   const usagePanel = page.getByRole("region", {
     name: "Judge usage limits",
   });
   await expect(usagePanel.getByText("Budget available")).toBeVisible();
   await expect(usagePanel.getByText("$18.40 / $25.00")).toBeVisible();
-  await expect(usagePanel.getByText("24s / 30s")).toBeVisible();
-  await expect(usagePanel.getByText("800,000 / 1,200,000")).toBeVisible();
+  await expect(
+    usagePanel.getByText(
+      "Only the rolling 24h cost total locks new managed work at $25. Meeting state and manual text remain available after the lock.",
+    ),
+  ).toBeVisible();
   expect(usageHost).not.toBe("localhost");
   await expect(
     usagePanel.getByText(
@@ -588,7 +613,7 @@ test("server-owned access switches the browser to a credential-free managed call
   expect(managedTurnUtteranceId).toMatch(/^[0-9a-f-]{36}$/u);
   expect(clientSecretRequests).toBe(0);
   expect(directProviderRequests).toBe(0);
-  await expect(usagePanel.getByText("Daily allowance reached")).toBeVisible();
+  await expect(usagePanel.getByText("Daily cost limit reached")).toBeVisible();
   await expect(usagePanel.getByText("$25.00 / $25.00")).toBeVisible();
   await expect.poll(() => usageRequests).toBeGreaterThanOrEqual(3);
   await usagePanel.screenshot({
@@ -624,7 +649,7 @@ test("server-owned access switches the browser to a credential-free managed call
   await page.setViewportSize({ height: 900, width: 1440 });
   usageUnavailable = false;
   await usagePanel.getByRole("button", { name: "Retry usage check" }).click();
-  await expect(usagePanel.getByText("Daily allowance reached")).toBeVisible();
+  await expect(usagePanel.getByText("Daily cost limit reached")).toBeVisible();
   await privateCard.getByRole("button", { name: "Disconnect" }).click();
   await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
   const startsBeforeDenial = managedStartRequests;
@@ -635,11 +660,27 @@ test("server-owned access switches the browser to a credential-free managed call
     page
       .getByRole("alert")
       .getByText(
-        "Daily judge generation limit reached. A Realtime connection reserves 3 generations. Meeting state and text remain available.",
+        "Daily judge cost limit reached. Meeting state and text remain available.",
       ),
   ).toBeVisible();
   await page.waitForTimeout(1_200);
   expect(managedStartRequests).toBe(startsBeforeDenial + 1);
+  await page.getByLabel("Optional judge BYOK · tab only").fill(standardApiKey);
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Use my key" }),
+  );
+  await expect(
+    page.getByText("Your API key active · this tab only"),
+  ).toBeVisible();
+  await privateCard.getByRole("button", { name: "Try again" }).click();
+  await expect(privateCard.getByText("Connected")).toBeVisible();
+  expect(clientSecretRequests).toBe(1);
+  expect(directProviderRequests).toBe(1);
+  await dock.screenshot({
+    animations: "disabled",
+    path: `${screenshotDirectory}/2026-07-21-judge-byok-optional-desktop.png`,
+  });
   await dock.screenshot({
     animations: "disabled",
     path: `${judgeUsageScreenshotDirectory}/2026-07-21-judge-realtime-generation-limit-desktop.png`,

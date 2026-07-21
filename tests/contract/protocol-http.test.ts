@@ -1202,6 +1202,13 @@ describe("strict v1 HTTP protocol", () => {
     expectTypeOf(
       parsedRequest,
     ).toEqualTypeOf<IssueRealtimeClientSecretRequest>();
+    const parsedJudgeByokRequest = IssueRealtimeClientSecretRequestSchema.parse(
+      {
+        ...request,
+        apiKey: "sk-synthetic-judge-byok-key",
+      },
+    );
+    expect(parsedJudgeByokRequest.apiKey).toBe("sk-synthetic-judge-byok-key");
     expect(
       IssueRealtimeClientSecretRequestSchema.safeParse({
         ...request,
@@ -1241,6 +1248,12 @@ describe("strict v1 HTTP protocol", () => {
     expectTypeOf(
       parsedResponse,
     ).toEqualTypeOf<IssueRealtimeClientSecretResponse>();
+    expect(
+      IssueRealtimeClientSecretResponseSchema.parse({
+        ...response,
+        keySource: "judgeProvided",
+      }).keySource,
+    ).toBe("judgeProvided");
     expect(
       IssueRealtimeClientSecretResponseSchema.safeParse({
         ...response,

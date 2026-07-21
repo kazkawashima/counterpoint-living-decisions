@@ -26,6 +26,9 @@ import {
 export interface IssueRealtimeClientSecretHttpDependencies {
   readonly authorizationPolicy?: UserAuthorizationPolicy;
   readonly clock: Clock;
+  readonly judgeByokIssuerFactory?: (
+    apiKey: string,
+  ) => ManagedRealtimeSecretIssuer | undefined;
   readonly judgeManagedIssuerFactory?: () =>
     ManagedRealtimeSecretIssuer | undefined;
   readonly meetings: MeetingRepository;
@@ -75,9 +78,33 @@ export async function handleIssueRealtimeClientSecretHttp(input: {
   if (resolved.kind === "rejected") {
     return apiErrorResponse(resolved.code, input.correlationId);
   }
+  const isJudge = resolved.authorization.capabilities.has("judge:managed-ai");
+  if (parsed.data.apiKey !== undefined && !isJudge) {
+    return apiErrorResponse("VALIDATION_FAILED", input.correlationId);
+  }
+  if (
+    parsed.data.apiKey !== undefined &&
+    input.dependencies.judgeByokIssuerFactory === undefined
+  ) {
+    return apiErrorResponse("REALTIME_UNAVAILABLE", input.correlationId);
+  }
+  let requestJudgeByokIssuer: ManagedRealtimeSecretIssuer | undefined;
+  if (parsed.data.apiKey !== undefined) {
+    try {
+      requestJudgeByokIssuer =
+        input.dependencies.judgeByokIssuerFactory?.(parsed.data.apiKey) ??
+        undefined;
+    } catch {
+      requestJudgeByokIssuer = undefined;
+    }
+    if (requestJudgeByokIssuer === undefined) {
+      return apiErrorResponse("REALTIME_UNAVAILABLE", input.correlationId);
+    }
+  }
   let requestManagedIssuer: ManagedRealtimeSecretIssuer | undefined;
   if (
-    resolved.authorization.capabilities.has("judge:managed-ai") &&
+    isJudge &&
+    requestJudgeByokIssuer === undefined &&
     input.dependencies.judgeManagedIssuerFactory !== undefined
   ) {
     try {
@@ -89,7 +116,12 @@ export async function handleIssueRealtimeClientSecretHttp(input: {
   }
   const result = await issueRealtimeClientSecret(
     requestManagedIssuer === undefined
-      ? input.dependencies.realtimeSecrets
+      ? requestJudgeByokIssuer === undefined
+        ? input.dependencies.realtimeSecrets
+        : {
+            ...input.dependencies.realtimeSecrets,
+            judgeByokIssuer: requestJudgeByokIssuer,
+          }
       : {
           ...input.dependencies.realtimeSecrets,
           judgeManagedIssuer: requestManagedIssuer,

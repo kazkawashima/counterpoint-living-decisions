@@ -501,6 +501,7 @@ export const ManagedCallIdSchema = OpaqueIdSchema.brand<"ManagedCallId">();
 export const RealtimeChannelSchema = z.enum(["private", "shared"]);
 export const RealtimeKeySourceSchema = z.enum([
   "facilitatorProvided",
+  "judgeProvided",
   "judgeManaged",
 ]);
 export const RealtimeAccessModeSchema = z.enum([
@@ -544,6 +545,7 @@ export const ClearMeetingByokResponseSchema = z.strictObject({
   ...RequiredCorrelationShape,
 });
 export const IssueRealtimeClientSecretRequestSchema = z.strictObject({
+  apiKey: ByokApiKeySchema.optional(),
   meetingId: MeetingIdSchema,
   channel: RealtimeChannelSchema,
   ...OptionalCorrelationShape,

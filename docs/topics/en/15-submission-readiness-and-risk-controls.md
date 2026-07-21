@@ -37,8 +37,9 @@ credentials could also be abused for API spend.
 3. After judge authentication, the Worker alone uses the Secret for OpenAI calls
    or short-lived Realtime secret issuance.
 4. Do not copy the standard key into the browser, Durable Object state, D1, R2, or audit events.
-5. Hard-limit account, IP, meeting, concurrent connection, Realtime minutes,
-   tokens, and daily spend.
+5. Use the rolling USD 25 ceiling as the only server-funded judge spend lock.
+   Retain one active-call guard for lifecycle safety; do not independently lock
+   account, IP, meeting, Realtime minutes, generation, or token counters.
 6. After entering credentials in Devpost Testing Instructions, verify the
    submission preview and logged-out view do not expose them.
 7. If privacy cannot be confirmed, use an approved private repository or operator channel.
@@ -118,7 +119,7 @@ makes usage grow with participant count.
 - Keep shared/private logic separate.
 - Establish connections only when needed; do not keep 16 sessions open constantly.
 - Separate shared-event reception from private-agent inference.
-- Limit concurrent time and generation count in judge mode.
+- Stop new server-funded judge work when the rolling USD 25 ceiling is reached.
 
 ### How
 
@@ -220,10 +221,12 @@ but can interrupt a meeting. Asking a judge to re-enter a key damages the demo.
 
 ### How
 
-Distinguish `facilitatorProvided` and `judgeManaged` as key sources. Do not pass
-the standard key to a Durable Object in `judgeManaged` mode. On BYOK loss, keep
-the meeting state and return `API_KEY_REQUIRED`; allow the user to retry the
-failed command after setting the key again.
+Distinguish `facilitatorProvided`, `judgeManaged`, and `judgeProvided` as key
+sources. Do not pass the standard key to a Durable Object in `judgeManaged`
+mode. An allowlisted judge may send a personal key only to the authenticated
+Worker for short-lived client-secret issuance; it is never stored, returned, or
+logged. On BYOK loss, keep the meeting state and return `API_KEY_REQUIRED`;
+allow the user to retry the failed command after setting the key again.
 
 ## 10. Meta-demo rights
 

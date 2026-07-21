@@ -25,6 +25,7 @@ export interface RealtimeSecretDependencies {
   readonly clock: Clock;
   readonly hashSafetyIdentifier: SafetyIdentifierHash;
   readonly issuer: RealtimeSecretIssuer;
+  readonly judgeByokIssuer?: ManagedRealtimeSecretIssuer;
   readonly judgeManagedIssuer?: ManagedRealtimeSecretIssuer;
   readonly leases: MeetingApiKeyLeaseStore;
 }
@@ -102,7 +103,8 @@ export type IssueRealtimeClientSecretResult =
       readonly channel: RealtimeChannel;
       readonly clientSecret: string;
       readonly expiresAt: string;
-      readonly keySource: "facilitatorProvided" | "judgeManaged";
+      readonly keySource:
+        "facilitatorProvided" | "judgeManaged" | "judgeProvided";
       readonly kind: "issued";
       readonly meetingId: string;
       readonly model: string;
@@ -378,14 +380,16 @@ export async function issueRealtimeClientSecret(
   }
 
   const usesJudgeManaged = judgeManaged(context);
+  const judgeByokIssuer = dependencies.judgeByokIssuer;
   const judgeManagedIssuer = dependencies.judgeManagedIssuer;
+  const selectedJudgeIssuer = judgeByokIssuer ?? judgeManagedIssuer;
   const lease = usesJudgeManaged
     ? undefined
     : await activeLease(dependencies, input.meetingId);
   if (!usesJudgeManaged && lease === undefined) {
     return failed("API_KEY_REQUIRED");
   }
-  if (usesJudgeManaged && judgeManagedIssuer === undefined) {
+  if (usesJudgeManaged && selectedJudgeIssuer === undefined) {
     return failed("REALTIME_UNAVAILABLE");
   }
 
@@ -403,8 +407,8 @@ export async function issueRealtimeClientSecret(
       sessionId: context.sessionId,
     };
     const secret =
-      usesJudgeManaged && judgeManagedIssuer !== undefined
-        ? await judgeManagedIssuer.issue(issuerInput)
+      usesJudgeManaged && selectedJudgeIssuer !== undefined
+        ? await selectedJudgeIssuer.issue(issuerInput)
         : lease === undefined
           ? undefined
           : await dependencies.issuer.issue({
@@ -431,7 +435,11 @@ export async function issueRealtimeClientSecret(
       channel: secret.channel,
       clientSecret: secret.value,
       expiresAt: secret.expiresAt,
-      keySource: usesJudgeManaged ? "judgeManaged" : "facilitatorProvided",
+      keySource: usesJudgeManaged
+        ? judgeByokIssuer === undefined
+          ? "judgeManaged"
+          : "judgeProvided"
+        : "facilitatorProvided",
       kind: "issued",
       meetingId: input.meetingId,
       model: secret.model,
