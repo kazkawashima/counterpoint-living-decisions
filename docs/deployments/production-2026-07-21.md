@@ -9,7 +9,7 @@ response bodies, Worker Secret values, judge password, and provider payloads.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Deployed implementation commit:
-  `fd3a62f0a200342dcd521ed136c220e988730709`
+  `84a4230c8ec48f70e05437886728a61d49caf309`
 - Rendered configuration SHA-256:
   `e19f78daa9c27f240b0e4ee154ccc9954fd7689fb3746ee7ffce6474186c7ecb`
 - D1 binding: production database with forward-only migrations applied
@@ -31,6 +31,10 @@ response bodies, Worker Secret values, judge password, and provider payloads.
   passed at the deployment boundary.
 - Target dry-run, forward D1 migration, strict Worker deploy,
   health/readiness/SPA/auth smoke, and Flagship smoke passed.
+- The latest deployment also includes the projector-oriented shared-display
+  layout and presentation tutorial. Preview and production both passed the
+  remote health/readiness/root/auth smoke and the Flagship smoke at commit
+  `84a4230c8ec48f70e05437886728a61d49caf309`.
 - A clean production browser confirmed judge login and server-funded
   structured-AI behavior: private excerpt suggestion, Decision candidate,
   assumption invalidation evaluation, human premise confirmation, Decision

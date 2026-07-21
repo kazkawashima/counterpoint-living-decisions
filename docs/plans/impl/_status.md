@@ -1272,3 +1272,7 @@ performs the final logged-out/public safety check.
 - The exact production walkthrough and the compressed presentation narration
   are in `docs/presentation/flagship-production-tutorial.md`. It contains no
   credential and explicitly labels the event injection as a staged demo story.
+
+The same implementation is deployed to both hosted preview and production at
+commit `84a4230c8ec48f70e05437886728a61d49caf309`; the credential-free
+production deployment record is aligned with that commit.
