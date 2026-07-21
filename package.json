@@ -27,6 +27,7 @@
     "cloudflare:deploy:plan:production": "bash scripts/cloudflare-deploy.sh --plan production",
     "cloudflare:deploy:preview": "bash scripts/cloudflare-deploy.sh --apply preview",
     "cloudflare:deploy:production": "bash scripts/cloudflare-deploy.sh --apply production",
+    "cloudflare:provision:judge": "bash scripts/provision-production-judge.sh",
     "cloudflare:dev:browser": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler dev --config wrangler.jsonc --ip 0.0.0.0 --port 8792",
     "cloudflare:dry-run": "npm run bundle --workspace @counterpoint/web && CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_LOG_PATH=.wrangler/wrangler.log WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --config wrangler.jsonc --outdir .wrangler/dry-run",
     "cloudflare:resources:create:preview": "bash scripts/cloudflare-preview-resources.sh --apply",

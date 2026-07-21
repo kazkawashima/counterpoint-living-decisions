@@ -63,6 +63,24 @@ target Worker name before saving. Secret registration alone does not enable
 judge routes; the exact `JUDGE_USER_ID`, feature flags, cost limits, and
 production deployment gate still have to pass.
 
+## Provisioning the private judge login
+
+Do not put the judge password in `.env` or send it through chat. Run the local
+provisioning command with the Cloudflare credentials exported from the ignored
+`.env`; it prompts without echoing, stores only a scrypt hash in production D1,
+and creates a facilitator assignment for the seeded Flagship:
+
+```bash
+set -a
+source /home/lion/projects/counterpoint-living-decisions/.env
+set +a
+npm run cloudflare:provision:judge
+```
+
+The default internal ID is `judge`. Give the resulting login credential only
+through the private submission Testing Instructions field. The public `product`
+demo password must not be used for the server-funded allowlist.
+
 ## Shutdown and rotation
 
 After the judging window:
