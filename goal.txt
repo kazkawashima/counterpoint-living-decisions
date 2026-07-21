@@ -120,6 +120,20 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   保持するがproductionでは非適用で、現行のusage lockはUSD 25 cost capだけである。
   unit 14/14とbrowser E2E 1/1が成功した。
 
+## 2026-07-22 Flagship reliability slice
+
+- 設計書のruntime修正、全Flagship操作inventory、alternate branch E2E、desktop / mobile /
+  reduced-motion証拠を実装した。最終local検証はbrowser `30/30`、unit/integration
+  `901/901`、Cloudflare `140/140`、typecheck、lint、build、secret scan、media manifest、
+  format、diff checkが成功した。
+- 6つの変更状態は合成データのみで18枚を保存し、Apache-2.0のfirst-party provenanceと
+  hashをmanifestへ記録した。Cloudflare 1102時のRetryボタンはcontrastを修正し、
+  computed-style assertionと画像目視の両方で確認した。
+- このsliceの残りは、明示承認済みのfinal production redeployと、その後のprivate/shared
+  judge `Connect → Connected → Disconnect` のowner観測だけである。後者はsynthetic E2Eから
+  完了推定しない。hosted C5、独立cost実測、3分人間リハーサル、public切替、tag、submissionは
+  引き続き別gateとして未完了に保つ。
+
 ## 完了条件 A — 名称変更
 
 - [x] ユーザーに見える正式表示を `Descant — Living Decisions` に統一する。

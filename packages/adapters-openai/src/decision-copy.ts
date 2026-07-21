@@ -41,10 +41,7 @@ function stripKnownLeadingWrapper(value: string, wrapper: RegExp): string {
     return value;
   }
   const leadingWord = /^\p{Ll}[\p{L}\p{M}]*/u.exec(stripped)?.[0];
-  if (
-    leadingWord === undefined ||
-    leadingWord !== leadingWord.toLocaleLowerCase("en-US")
-  ) {
+  if (leadingWord !== leadingWord?.toLocaleLowerCase("en-US")) {
     return stripped;
   }
   const [first = "", ...remainder] = Array.from(stripped);

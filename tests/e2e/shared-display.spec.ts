@@ -7,6 +7,7 @@ import {
   SharedDisplayProjectionResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { resetFlagshipFixture } from "../helpers/flagship-reset.js";
 import { activateByKeyboard } from "../helpers/keyboard.js";
 import { uploadAndUsePrivateMarkdown } from "../helpers/private-source.js";
 
@@ -27,6 +28,10 @@ async function signIn(page: Page, identity: string, password: string) {
 test.beforeAll(async () => {
   await mkdir(screenshotDirectory, { recursive: true });
   await mkdir(clipDirectory, { recursive: true });
+});
+
+test.afterEach(async ({ page }) => {
+  await resetFlagshipFixture(page.request);
 });
 
 test("facilitator opens and revokes a privacy-safe shared display", async ({
@@ -90,6 +95,15 @@ test("facilitator opens and revokes a privacy-safe shared display", async ({
     new URL(baseURL ?? page.url()).hostname,
   );
   expect(displayHref).not.toContain("localhost");
+
+  const activatedDisplayPromise = page.waitForEvent("popup");
+  await activeDisplay.getByRole("link", { name: "Open display" }).click();
+  const activatedDisplay = await activatedDisplayPromise;
+  await expect(
+    activatedDisplay.getByRole("heading", { name: meeting.purpose }),
+  ).toBeVisible();
+  expect(activatedDisplay.url()).toBe(new URL(displayHref).toString());
+  await activatedDisplay.close();
 
   const displayContext = await browser.newContext({
     recordVideo: {

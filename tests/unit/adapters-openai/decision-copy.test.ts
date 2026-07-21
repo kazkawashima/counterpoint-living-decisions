@@ -4,7 +4,6 @@ import {
   normalizeDecisionCandidateCopy,
   type DecisionCandidateCopy,
   type SharedDecisionModel,
-  type SharedDecisionModelRequest,
   type SharedDecisionModelResult,
   type SharedDecisionSynthesisInput,
 } from "@counterpoint/adapters-openai";
@@ -48,9 +47,7 @@ const wrappedModelOutput = {
 };
 
 class WrappedDecisionModel implements SharedDecisionModel {
-  generate(
-    _request: SharedDecisionModelRequest,
-  ): Promise<SharedDecisionModelResult> {
+  generate(): Promise<SharedDecisionModelResult> {
     return Promise.resolve({
       output: wrappedModelOutput,
       responseModel: "gpt-5.6-sol",

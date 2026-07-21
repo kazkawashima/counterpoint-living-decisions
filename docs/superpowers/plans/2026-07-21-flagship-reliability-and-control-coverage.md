@@ -464,7 +464,7 @@ Expected: all pass.
 - Modify: `tests/e2e/decision-commit.spec.ts`
 - Modify: `tests/e2e/realtime-channels.spec.ts`
 
-- [ ] **Step 1: Define the expected state-owned controls**
+- [x] **Step 1: Define the expected state-owned controls**
 
 Export a typed inventory whose entries have a state, accessible name, and test
 owner:
@@ -486,13 +486,13 @@ Include every button rendered in the Flagship workspace, grouped by reachable
 state. Controls intentionally disabled in a state remain in the inventory with
 `enabled:false`.
 
-- [ ] **Step 2: Write a failing inventory/meta-test**
+- [x] **Step 2: Write a failing inventory/meta-test**
 
 Render or traverse each seeded state and compare the visible accessible button
 names with the inventory for that state. Fail with the unregistered button
 names. Also fail when an inventory entry has no scenario owner.
 
-- [ ] **Step 3: Run the inventory test and verify RED**
+- [x] **Step 3: Run the inventory test and verify RED**
 
 Run:
 
@@ -502,7 +502,7 @@ npx playwright test tests/e2e/flagship-control-inventory.spec.ts
 
 Expected: FAIL listing current controls that have not yet been registered.
 
-- [ ] **Step 4: Complete the inventory and exercise alternate branches**
+- [x] **Step 4: Complete the inventory and exercise alternate branches**
 
 Register all discovered controls and add post-click assertions for Keep private,
 Reject premise, retry/manual paths, cancel/confirm reset, all three review
@@ -510,7 +510,7 @@ resolutions, export/download, shared-display preparation, Connect/Disconnect,
 channel selection, manual text, push-to-talk, BYOK set/remove, and usage
 refresh/retry.
 
-- [ ] **Step 5: Run the complete Flagship browser surface and verify GREEN**
+- [x] **Step 5: Run the complete Flagship browser surface and verify GREEN**
 
 Run:
 
@@ -530,20 +530,20 @@ one scenario and followed by a state assertion.
 - Modify: `docs/plans/impl/_status.md`
 - Modify: `goal.txt`
 
-- [ ] **Step 1: Capture changed UI states**
+- [x] **Step 1: Capture changed UI states**
 
 Run the changed Playwright scenarios with `CAPTURE_EVIDENCE=1` and save
 synthetic desktop, mobile, and reduced-motion images for Connect success,
 Connect staged failure, projection resource failure, cleaned candidate,
 revision no-op validation, and corrected commit gate.
 
-- [ ] **Step 2: Record only verified status**
+- [x] **Step 2: Record only verified status**
 
 Document test counts, commit, and remaining hosted verification. Do not mark
 canonical Production Connect complete until it has been tested after deployment
 with the private judge credential.
 
-- [ ] **Step 3: Run focused verification**
+- [x] **Step 3: Run focused verification**
 
 Run:
 
@@ -554,7 +554,7 @@ npx playwright test tests/e2e/flagship-control-inventory.spec.ts tests/e2e/decis
 
 Expected: zero failures.
 
-- [ ] **Step 4: Run repository gates**
+- [x] **Step 4: Run repository gates**
 
 Run:
 
@@ -572,7 +572,7 @@ git diff --check
 
 Expected: every command exits zero.
 
-- [ ] **Step 5: Audit every design acceptance criterion**
+- [x] **Step 5: Audit every design acceptance criterion**
 
 Re-read
 `docs/superpowers/specs/2026-07-21-flagship-reliability-and-control-coverage-design.md`

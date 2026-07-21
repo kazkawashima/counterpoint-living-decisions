@@ -1,4 +1,4 @@
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
@@ -12,6 +12,7 @@ import {
   LoginResponseSchema,
 } from "@counterpoint/protocol";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { resetFlagshipFixture } from "../helpers/flagship-reset.js";
 import { activateByKeyboard } from "../helpers/keyboard.js";
 import { uploadAndUsePrivateMarkdown } from "../helpers/private-source.js";
 
@@ -36,6 +37,12 @@ const degradedScreenshotDirectory = evidenceDirectory(
 );
 const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
 const FLAGSHIP_PURPOSE = "Global AI Product Rollout";
+const FLAGSHIP_EXACT_SNIPPET =
+  "Regional launch requires a documented approval gate.";
+
+test.afterEach(async ({ page }) => {
+  await resetFlagshipFixture(page.request);
+});
 
 async function signIn(page: Page, identity: string, password: string) {
   await activateByKeyboard(
@@ -233,6 +240,60 @@ async function driveFlagshipToAtRisk(page: Page) {
   };
 }
 
+async function openResetFlagship(page: Page) {
+  await page.goto("/");
+  await signIn(page, "Product", "counterpoint-product");
+  const meeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await activateByKeyboard(
+    page,
+    meeting.getByRole("button", { name: "Open workspace" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Reset staged demo" }),
+  );
+  await activateByKeyboard(
+    page,
+    page.getByRole("button", { name: "Confirm meeting reset" }),
+  );
+  await expect(page.getByText("Meeting reset complete")).toBeVisible();
+}
+
+async function approveFlagshipEvidence(page: Page) {
+  const privateWorkspace = page.locator(".private-zone");
+  await activateByKeyboard(
+    page,
+    privateWorkspace.getByRole("button", {
+      name: "Prepare grounded sharing preview",
+    }),
+  );
+  await activateByKeyboard(
+    page,
+    privateWorkspace
+      .getByRole("region", { name: "Review the exact payload" })
+      .getByRole("button", { name: "Approve exact excerpt" }),
+  );
+  await expect(page.locator(".shared-evidence")).toContainText(
+    "Permission recorded",
+  );
+}
+
+async function generateFlagshipCandidate(page: Page) {
+  const decisionForge = page.getByRole("region", {
+    name: "Turn evidence into commitment",
+  });
+  await activateByKeyboard(
+    page,
+    decisionForge.getByRole("button", {
+      name: "Generate Decision candidate",
+    }),
+  );
+  await expect(page.getByLabel("Decision title")).toBeEditable();
+  return decisionForge;
+}
+
 test.beforeAll(async () => {
   await mkdir(screenshotDirectory, { recursive: true });
   await mkdir(clipDirectory, { recursive: true });
@@ -402,6 +463,334 @@ test("presentation labels separate authority, provenance, and commit copy", asyn
     flexDirection: "column",
   });
   expect(layout.rowGap).toBeGreaterThan(0);
+});
+
+test("edited exact excerpt is the only private span disclosed", async ({
+  page,
+}) => {
+  const editedExcerpt =
+    "Private context: the regional team is ready to launch.";
+  const excludedBefore = "Regional launch requires a documented approval gate.";
+  const excludedAfter =
+    "Keep the fallback owner private until the staffing review.";
+
+  await openResetFlagship(page);
+  await page.getByLabel("Exact excerpt to preview").fill(editedExcerpt);
+  await page.route("**/api/v1/disclosures/proposals", async (route) => {
+    const request = route.request().postDataJSON() as {
+      assistance?: string;
+    };
+    if (request.assistance === "ai_preferred") {
+      await route.fulfill({
+        body: JSON.stringify(
+          createErrorEnvelope({
+            code: "OPENAI_UNAVAILABLE",
+            correlationId: "correlation_e2e_edited_excerpt_manual_path",
+          }),
+        ),
+        contentType: "application/json",
+        status: 503,
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
+    .click();
+  await page
+    .getByRole("button", { name: "Continue with manual excerpt" })
+    .click();
+  const outgoingPreview = page.getByRole("region", {
+    name: "Review the exact payload",
+  });
+  await expect(outgoingPreview.locator("blockquote")).toHaveText(editedExcerpt);
+  await expect(outgoingPreview).not.toContainText(excludedBefore);
+  await expect(outgoingPreview).not.toContainText(excludedAfter);
+
+  await outgoingPreview.getByRole("button", { name: "Keep private" }).click();
+  await expect(outgoingPreview).toHaveCount(0);
+  await expect(page.locator(".shared-evidence")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Reset staged demo" }).click();
+  await page.getByRole("button", { name: "Confirm meeting reset" }).click();
+  await expect(page.getByText("Meeting reset complete")).toBeVisible();
+  await page.getByLabel("Exact excerpt to preview").fill(editedExcerpt);
+  await page
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
+    .click();
+  await page
+    .getByRole("button", { name: "Continue with manual excerpt" })
+    .click();
+  await expect(outgoingPreview.locator("blockquote")).toHaveText(editedExcerpt);
+
+  await outgoingPreview
+    .getByRole("button", { name: "Approve exact excerpt" })
+    .click();
+  const publishedEvidence = page.locator(".shared-evidence");
+  await expect(publishedEvidence.locator("blockquote")).toHaveText(
+    editedExcerpt,
+  );
+  await expect(publishedEvidence).not.toContainText(excludedBefore);
+  await expect(publishedEvidence).not.toContainText(excludedAfter);
+  await expect(page.getByLabel("Staged private note")).toContainText(
+    excludedAfter,
+  );
+});
+
+test("Retry private assistant recovers without losing the manual fallback", async ({
+  page,
+}) => {
+  await openResetFlagship(page);
+  await uploadAndUsePrivateMarkdown(page, {
+    filename: "private-assistant-retry.md",
+    text: `Private preface. ${FLAGSHIP_EXACT_SNIPPET} Private follow-up.`,
+  });
+  await page
+    .getByLabel("Exact excerpt to preview")
+    .fill(FLAGSHIP_EXACT_SNIPPET);
+  let aiAttempts = 0;
+  await page.route("**/api/v1/disclosures/proposals", async (route) => {
+    const request = route.request().postDataJSON() as {
+      assistance?: string;
+    };
+    if (request.assistance === "ai_preferred") {
+      aiAttempts += 1;
+      if (aiAttempts === 1) {
+        await route.fulfill({
+          body: JSON.stringify(
+            createErrorEnvelope({
+              code: "OPENAI_UNAVAILABLE",
+              correlationId: "correlation_e2e_private_retry",
+            }),
+          ),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
+    }
+    await route.continue();
+  });
+
+  await page
+    .getByRole("button", { name: "Prepare grounded sharing preview" })
+    .click();
+  await expect(
+    page.getByText("Private assistant is temporarily unavailable"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with manual excerpt" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Retry private assistant" }).click();
+
+  const outgoingPreview = page.getByRole("region", {
+    name: "Review the exact payload",
+  });
+  await expect(outgoingPreview.locator("blockquote")).toHaveText(
+    FLAGSHIP_EXACT_SNIPPET,
+  );
+  await expect(outgoingPreview).toContainText("AI suggestion · owner only");
+  expect(aiAttempts).toBe(2);
+});
+
+test("Retry synthesis recovers a candidate and preserves manual fallback evidence", async ({
+  page,
+}) => {
+  await openResetFlagship(page);
+  await approveFlagshipEvidence(page);
+  let synthesisAttempts = 0;
+  await page.route("**/api/v1/decisions/candidates", async (route) => {
+    const request = route.request().postDataJSON() as {
+      assistance?: string;
+    };
+    if (request.assistance === "ai_preferred") {
+      synthesisAttempts += 1;
+      if (synthesisAttempts === 1) {
+        await route.fulfill({
+          body: JSON.stringify(
+            createErrorEnvelope({
+              code: "OPENAI_UNAVAILABLE",
+              correlationId: "correlation_e2e_synthesis_retry",
+            }),
+          ),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
+    }
+    await route.continue();
+  });
+
+  await page
+    .getByRole("button", { name: "Generate Decision candidate" })
+    .click();
+  await expect(
+    page.getByText("Decision synthesis is temporarily unavailable"),
+  ).toBeVisible();
+  await expect(page.locator(".shared-evidence")).toContainText(
+    FLAGSHIP_EXACT_SNIPPET,
+  );
+  await expect(
+    page.getByRole("button", { name: "Edit manual draft" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Retry synthesis" }).click();
+  await expect(page.getByLabel("Decision title")).toBeEditable();
+  await expect(page.locator(".candidate-provenance-primary")).toContainText(
+    "OpenAI suggestion · grounded in shared Evidence",
+  );
+  await expect(
+    page.getByRole("button", { name: "Confirm premise" }),
+  ).toBeVisible();
+  expect(synthesisAttempts).toBe(2);
+});
+
+test("Reject premise opens a human-authored manual alternative", async ({
+  page,
+}) => {
+  await openResetFlagship(page);
+  await approveFlagshipEvidence(page);
+  const decisionForge = await generateFlagshipCandidate(page);
+
+  await decisionForge.getByRole("button", { name: "Reject premise" }).click();
+  const rejection = decisionForge.getByRole("status");
+  await expect(rejection).toContainText("Premise rejected");
+  await expect(rejection).toContainText(
+    "No linked premise, dissent, Action, or Decision was published.",
+  );
+  await rejection
+    .getByRole("button", { name: "Edit a manual alternative" })
+    .click();
+  await expect(decisionForge.locator(".candidate-provenance")).toContainText(
+    "Manual draft · Proposed · Not submitted",
+  );
+  await expect(page.getByLabel("Decision title")).toBeEditable();
+  await page
+    .getByLabel("Decision title")
+    .fill("Human-authored alternative launch");
+  await decisionForge
+    .getByRole("button", { name: "Create human-authored candidate" })
+    .click();
+  await expect(decisionForge.locator(".candidate-provenance")).toContainText(
+    "Human authored",
+  );
+  await expect(page.getByLabel("Decision title")).toHaveValue(
+    "Human-authored alternative launch",
+  );
+  await decisionForge.getByRole("button", { name: "Confirm premise" }).click();
+  await expect(decisionForge.getByRole("status")).toContainText(
+    "Premise, dissent, and Action are now canonical.",
+  );
+});
+
+test("edited dissent Action and monitor persist after commit and reload", async ({
+  browser,
+  page,
+}) => {
+  const retainedDissent =
+    "Legal retains concern about regional rollback ownership.";
+  const boundedAction =
+    "Publish the signed regional approval gate and named rollback owner.";
+  const monitorCondition =
+    "Reopen if approval criteria or rollback ownership changes.";
+
+  await openResetFlagship(page);
+  await approveFlagshipEvidence(page);
+  const decisionForge = await generateFlagshipCandidate(page);
+  await page.getByLabel("Retained dissent").fill(retainedDissent);
+  await page.getByLabel("Bounded Action").fill(boundedAction);
+  await page.getByLabel("Monitor condition").fill(monitorCondition);
+  await decisionForge.getByRole("button", { name: "Confirm premise" }).click();
+  await decisionForge
+    .getByRole("button", { name: "Save Decision draft" })
+    .click();
+  await decisionForge
+    .getByRole("button", { name: "Validate and mark ready" })
+    .click();
+  await decisionForge.getByRole("button", { name: "Commit Decision" }).click();
+  await expect(decisionForge.locator(".committed-decision")).toContainText(
+    "Revision 2 · COMMITTED",
+  );
+
+  await page.reload();
+  const meeting = page
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await meeting.getByRole("button", { name: "Open workspace" }).click();
+  await expect(page.getByText("Revision 2 · COMMITTED")).toBeVisible();
+
+  const participantContext = await browser.newContext();
+  const participantPage = await participantContext.newPage();
+  await participantPage.goto("/");
+  await signIn(participantPage, "Legal", "counterpoint-legal");
+  const participantMeeting = participantPage
+    .getByRole("article")
+    .filter({ hasText: FLAGSHIP_PURPOSE });
+  await participantMeeting
+    .getByRole("button", { name: "Open workspace" })
+    .click();
+  await expect(
+    participantPage.locator(".shared-decision-monitor"),
+  ).toContainText(monitorCondition);
+
+  await page.getByRole("button", { name: "Create shared display" }).click();
+  const displayHref = await page
+    .getByRole("link", { name: "Open display" })
+    .getAttribute("href");
+  expect(displayHref).not.toBeNull();
+  const displayPage = await participantContext.newPage();
+  await displayPage.goto(displayHref ?? "about:blank");
+  await expect(displayPage.locator(".display-actions")).toContainText(
+    boundedAction,
+  );
+  await expect(displayPage.locator(".display-dissent")).toContainText(
+    retainedDissent,
+  );
+  await participantContext.close();
+});
+
+test("Download JSON emits a safe parseable current Decision export", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const { committedDecision } = await driveFlagshipToAtRisk(page);
+  await committedDecision
+    .getByRole("button", { name: "Prepare Decision JSON export" })
+    .click();
+  const downloadLink = committedDecision.getByRole("link", {
+    name: /Download JSON/u,
+  });
+  await expect(downloadLink).toContainText("2 revisions");
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    downloadLink.click(),
+  ]);
+  const filename = download.suggestedFilename();
+  expect(filename).toMatch(/^descant-decision[_-][0-9a-z-]+\.json$/iu);
+  expect(filename).not.toMatch(/[\\/]/u);
+  const downloadedPath = await download.path();
+  expect(downloadedPath).not.toBeNull();
+  const exported = DecisionJsonExportResponseSchema.parse(
+    JSON.parse(await readFile(downloadedPath ?? "", "utf8")) as unknown,
+  );
+  expect(exported.decision.status).toBe("AT_RISK");
+  expect(exported.revisions).toHaveLength(2);
+  expect(exported.revisions.at(-1)?.revisionId).toBe(
+    exported.decision.activeRevisionId,
+  );
+  expect(exported.auditEntries.map(({ eventType }) => eventType)).toEqual(
+    expect.arrayContaining([
+      "DecisionDrafted",
+      "DecisionMarkedReady",
+      "DecisionCommitted",
+      "MonitoringStarted",
+      "AssumptionInvalidationSuggested",
+      "DecisionMarkedAtRisk",
+    ]),
+  );
 });
 
 test("OpenAI failure preserves manual Decision, audit, and export paths", async ({

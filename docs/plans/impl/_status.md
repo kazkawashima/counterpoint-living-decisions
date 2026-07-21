@@ -1483,3 +1483,36 @@ judge-enabled follow-up are recorded in the section below.
   the private-judge Connect and revision 3 walkthrough. Later release slices
   remain the timed rehearsal, deferred hosted C5, and explicit
   public/tag/submission fixation.
+
+## 2026-07-22 Flagship reliability completion audit
+
+- Realtime failures now retain a redacted boundary stage and durable text;
+  projection recovery is single-flight with bounded backoff and pauses after a
+  Cloudflare 1102 until one explicit retry. AI workflow wrappers are removed
+  from substantive Decision copy, no-op revision 3 is rejected, and the shared
+  display follows the implemented Decision lifecycle without exposing its raw
+  event cursor.
+- The Flagship inventory records the reachable workspace controls by state,
+  including dynamic Connect, Cancel, Disconnect, retry, BYOK, usage, manual
+  text, and push-to-talk controls. Alternate paths now directly cover exact
+  excerpt editing, Keep private, private-assistant and synthesis retry,
+  premise rejection/manual authoring, edited dissent/Action/monitor
+  persistence, JSON download content, channel isolation, and pending-call
+  cancellation.
+- The final local browser surface passed `30/30` in `6.4m` with `0.0.0.0`
+  server binding. The evidence-only suite separately passed `4/4` and produced
+  18 visually reviewed synthetic screenshots: desktop, mobile, and mobile
+  reduced-motion variants for each of the six changed states. The media
+  manifest records first-party Apache-2.0 provenance and current hashes.
+- Final-tree gates passed: typecheck, lint, production build, unit/integration
+  `901/901`, Cloudflare `140/140`, repository/generated-output secret scan,
+  media-manifest check, formatting, and `git diff --check`.
+- Canonical Production already contains the runtime reliability changes through
+  commit `fd0534a47d5a28a55c9f01ba1df8f8b8cf9529fb`. The final evidence/control
+  audit commit and Retry-button contrast polish still require the explicitly
+  authorized production redeploy. After that deployment, fresh private and
+  shared judge `Connect → Connected → Disconnect` observation remains an owner
+  hosted-evidence step; it is not inferred from synthetic browser coverage.
+- This audit does not close the separately deferred hosted C5 matrix,
+  independent real-provider cost exhaustion, three-minute human rehearsal,
+  repository visibility switch, release tag, or submission action.

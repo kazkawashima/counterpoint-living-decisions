@@ -183,4 +183,15 @@ test("facilitator can reset the guided flagship while participants cannot", asyn
     participantPage.getByRole("button", { name: "Confirm meeting reset" }),
   ).toHaveCount(0);
   await participantContext.close();
+
+  await page.getByRole("button", { name: "← Meetings" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your assigned meetings" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("article")
+      .filter({ hasText: flagshipPurpose })
+      .getByRole("button", { name: "Open workspace" }),
+  ).toBeVisible();
 });

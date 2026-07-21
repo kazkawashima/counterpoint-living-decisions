@@ -1424,6 +1424,28 @@ button:disabled {
   line-height: 1.5;
 }
 
+.projection-recovery {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #ffc1b1;
+}
+
+.projection-recovery button {
+  padding: 0.48rem 0.72rem;
+  border: 1px solid rgba(217, 255, 112, 0.58);
+  color: var(--acid);
+  background: rgba(9, 18, 14, 0.96);
+  cursor: pointer;
+}
+
+.projection-recovery button:hover {
+  border-color: var(--acid);
+  background: rgba(217, 255, 112, 0.08);
+}
+
 .speech-console {
   position: relative;
   display: grid;

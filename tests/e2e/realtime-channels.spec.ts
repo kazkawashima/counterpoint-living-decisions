@@ -2,6 +2,7 @@ import { copyFile, mkdir } from "node:fs/promises";
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
+import { resetFlagshipFixture } from "../helpers/flagship-reset.js";
 import { activateByKeyboard } from "../helpers/keyboard.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/realtime-channels");
@@ -21,6 +22,16 @@ const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
 async function installSyntheticWebRtc(context: BrowserContext) {
   await context.addInitScript(() => {
+    const lifecycle = {
+      peerCloses: 0,
+      peersCreated: 0,
+    };
+    Object.defineProperty(window, "__counterpointSyntheticWebRtcLifecycle", {
+      configurable: true,
+      value: lifecycle,
+      writable: false,
+    });
+
     class SyntheticDataChannel extends EventTarget {
       readyState: RTCDataChannelState = "open";
       static transcriptSequence = 0;
@@ -57,7 +68,13 @@ async function installSyntheticWebRtc(context: BrowserContext) {
       localDescription: RTCSessionDescription | null = null;
       remoteDescription: RTCSessionDescription | null = null;
 
+      constructor() {
+        super();
+        lifecycle.peersCreated += 1;
+      }
+
       close(): void {
+        lifecycle.peerCloses += 1;
         this.connectionState = "closed";
         this.dispatchEvent(new Event("connectionstatechange"));
       }
@@ -156,6 +173,298 @@ test.afterEach(async ({ page }) => {
   if (await removeKey.isVisible().catch(() => false)) {
     await removeKey.click();
     await expect(page.getByText("Facilitator BYOK · tab only")).toBeVisible();
+  }
+  await resetFlagshipFixture(page.request);
+});
+
+test("Cancel cleans a held connection attempt and stops reconnecting", async ({
+  baseURL,
+  browser,
+}) => {
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1440 },
+  });
+  await installSyntheticWebRtc(context);
+
+  const meetingId = "meeting-global-ai-rollout";
+  let directProviderRequests = 0;
+  let managedStartRequests = 0;
+  let managedTerminateRequests = 0;
+  let releaseHeldStart: (() => void) | undefined;
+  const heldStart = new Promise<void>((resolve) => {
+    releaseHeldStart = resolve;
+  });
+  let releaseHeldReconnect: (() => void) | undefined;
+  const heldReconnect = new Promise<void>((resolve) => {
+    releaseHeldReconnect = resolve;
+  });
+
+  await context.route(
+    "https://api.openai.com/v1/realtime/calls",
+    async (route) => {
+      directProviderRequests += 1;
+      await route.abort();
+    },
+  );
+  await context.route("**/api/v1/meetings/*/realtime/access", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        correlationId: "correlation-cancel-access",
+        mode: "judgeManaged",
+        usageSummary: "hidden",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await context.route(
+    "**/api/v1/meetings/*/realtime/calls**",
+    async (route) => {
+      const url = new URL(route.request().url());
+      const input = route.request().postDataJSON() as {
+        channel?: "private" | "shared";
+        managedCallId?: string;
+        meetingId: string;
+      };
+
+      if (url.pathname.endsWith("/terminate")) {
+        managedTerminateRequests += 1;
+        expect(input.managedCallId).toMatch(
+          /^managed-call-cancel-(?:proof|reconnect)$/u,
+        );
+        await route.fulfill({
+          body: JSON.stringify({
+            correlationId: "correlation-cancel-terminate",
+            managedCallId: input.managedCallId,
+            meetingId,
+            terminated: true,
+          }),
+          contentType: "application/json",
+          status: 200,
+        });
+        return;
+      }
+
+      managedStartRequests += 1;
+      expect(input.channel).toBe("private");
+      expect(input.meetingId).toBe(meetingId);
+      if (managedStartRequests === 1) {
+        await heldStart;
+        await route.fulfill({
+          body: JSON.stringify({
+            channel: "private",
+            correlationId: "correlation-cancel-held-start",
+            managedCallId: "managed-call-cancel-proof",
+            meetingId,
+            model: "gpt-realtime-2.1",
+            sdpAnswer:
+              "v=0\r\no=counterpoint 4 4 IN IP4 127.0.0.1\r\ns=Cancel synthetic answer\r\nt=0 0\r\n",
+          }),
+          contentType: "application/json",
+          status: 201,
+        });
+        return;
+      }
+
+      if (managedStartRequests === 3) {
+        await heldReconnect;
+        await route.fulfill({
+          body: JSON.stringify({
+            channel: "private",
+            correlationId: "correlation-cancel-held-reconnect",
+            managedCallId: "managed-call-cancel-reconnect",
+            meetingId,
+            model: "gpt-realtime-2.1",
+            sdpAnswer:
+              "v=0\r\no=counterpoint 5 5 IN IP4 127.0.0.1\r\ns=Cancel reconnect answer\r\nt=0 0\r\n",
+          }),
+          contentType: "application/json",
+          status: 201,
+        });
+        return;
+      }
+
+      await route.fulfill({
+        body: JSON.stringify({
+          code: "REALTIME_UNAVAILABLE",
+          correlationId: "correlation-cancel-reconnect",
+          details: {},
+          message: "Realtime is temporarily unavailable.",
+          retryable: true,
+        }),
+        contentType: "application/json",
+        status: 503,
+      });
+    },
+  );
+
+  const page = await context.newPage();
+  try {
+    await page.goto(baseURL ?? "/");
+    await signIn(page, "Product", "counterpoint-product");
+    const privateCard = page
+      .getByRole("article")
+      .filter({ hasText: "Private agent" });
+
+    await privateCard.getByRole("button", { name: "Connect" }).click();
+    await expect(
+      privateCard.getByText("Connecting", { exact: true }),
+    ).toBeVisible();
+    await expect.poll(() => managedStartRequests).toBe(1);
+    await privateCard.getByRole("button", { name: "Cancel" }).click();
+    await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
+    await expect(
+      privateCard.getByRole("button", { name: "Connect" }),
+    ).toBeVisible();
+
+    releaseHeldStart?.();
+    await expect.poll(() => managedTerminateRequests).toBe(1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const trackedWindow = window as unknown as {
+            __counterpointSyntheticWebRtcLifecycle: {
+              peerCloses: number;
+              peersCreated: number;
+            };
+          };
+          return trackedWindow.__counterpointSyntheticWebRtcLifecycle;
+        }),
+      )
+      .toEqual({ peerCloses: 1, peersCreated: 1 });
+    await expect(
+      privateCard.getByText("Connected", { exact: true }),
+    ).toHaveCount(0);
+    await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
+
+    await privateCard.getByRole("button", { name: "Connect" }).click();
+    await expect(
+      privateCard.getByText("Retry 1 / 3", { exact: true }),
+    ).toBeVisible();
+    await expect.poll(() => managedStartRequests).toBe(3);
+    await privateCard.getByRole("button", { name: "Cancel" }).click();
+    await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
+    releaseHeldReconnect?.();
+    await expect.poll(() => managedTerminateRequests).toBe(2);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const trackedWindow = window as unknown as {
+            __counterpointSyntheticWebRtcLifecycle: {
+              peerCloses: number;
+              peersCreated: number;
+            };
+          };
+          return trackedWindow.__counterpointSyntheticWebRtcLifecycle;
+        }),
+      )
+      .toEqual({ peerCloses: 3, peersCreated: 3 });
+    await page.waitForTimeout(600);
+    expect(managedStartRequests).toBe(3);
+    expect(directProviderRequests).toBe(0);
+    await expect(
+      privateCard.getByText("Connected", { exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    releaseHeldStart?.();
+    releaseHeldReconnect?.();
+    await context.close();
+  }
+});
+
+test("Shared to Private selector keeps owner-private text out of the room transcript", async ({
+  baseURL,
+  browser,
+}) => {
+  const productContext = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1440 },
+  });
+  const legalContext = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1280 },
+  });
+  let providerRequests = 0;
+  for (const context of [productContext, legalContext]) {
+    await context.route("https://api.openai.com/**", async (route) => {
+      providerRequests += 1;
+      await route.abort();
+    });
+  }
+
+  const productPage = await productContext.newPage();
+  const legalPage = await legalContext.newPage();
+  try {
+    await productPage.goto(baseURL ?? "/");
+    await signIn(productPage, "Product", "counterpoint-product");
+    await legalPage.goto(baseURL ?? "/");
+    await signIn(legalPage, "Legal", "counterpoint-legal");
+
+    const productSpeech = productPage.getByRole("region", {
+      name: "Explicit speech controls",
+    });
+    const legalSpeech = legalPage.getByRole("region", {
+      name: "Explicit speech controls",
+    });
+    const productPrivate = productSpeech.getByRole("button", {
+      name: /Private · owner only/u,
+    });
+    const productShared = productSpeech.getByRole("button", {
+      name: /Shared · room/u,
+    });
+    const legalShared = legalSpeech.getByRole("button", {
+      name: /Shared · room/u,
+    });
+
+    await productShared.click();
+    await legalShared.click();
+    await expect(productShared).toHaveAttribute("aria-pressed", "true");
+    await expect(productPrivate).toHaveAttribute("aria-pressed", "false");
+    await expect(legalShared).toHaveAttribute("aria-pressed", "true");
+
+    await productPrivate.click();
+    await expect(productPrivate).toHaveAttribute("aria-pressed", "true");
+    await expect(productShared).toHaveAttribute("aria-pressed", "false");
+
+    const privateText =
+      "Synthetic private selector proof that never enters the room transcript.";
+    const legalProjectionAfterSend = legalPage.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .endsWith("/api/v1/meetings/meeting-global-ai-rollout/projection") &&
+        response.status() === 200,
+    );
+    await productSpeech.getByLabel("Equivalent text command").fill(privateText);
+    await productSpeech.getByRole("button", { name: "Send privately" }).click();
+    await expect(
+      productSpeech.getByText(`Sent privately · ${privateText} · text-only`),
+    ).toBeVisible();
+
+    const productTranscript = productSpeech.getByRole("complementary", {
+      name: "Recent utterances",
+    });
+    await expect(
+      productTranscript.getByText("Your private transcript"),
+    ).toBeVisible();
+    await expect(
+      productTranscript.getByText(privateText, { exact: true }),
+    ).toBeVisible();
+
+    await legalProjectionAfterSend;
+    const legalTranscript = legalSpeech.getByRole("complementary", {
+      name: "Recent utterances",
+    });
+    await expect(
+      legalTranscript.getByText("Shared room transcript"),
+    ).toBeVisible();
+    await expect(
+      legalTranscript.getByText(privateText, { exact: true }),
+    ).toHaveCount(0);
+    expect(providerRequests).toBe(0);
+  } finally {
+    await Promise.all([productContext.close(), legalContext.close()]);
   }
 });
 
