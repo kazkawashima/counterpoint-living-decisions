@@ -8,6 +8,10 @@ private credential.
 
 - Production judge URL:
   <https://counterpoint-living-decisions-production.gs2safari.workers.dev>
+- Do not use the legacy host
+  <https://counterpoint-living-decisions.gs2safari.workers.dev>. It serves an
+  older `Counterpoint` deployment and is not the judge-managed Production
+  route.
 - Preview/manual fallback URL:
   <https://counterpoint-living-decisions-preview.gs2safari.workers.dev>
 - Use the private submission Testing Instructions for the judge credential.
@@ -22,6 +26,10 @@ private credential.
 2. Enter the private judge identity in the User ID field and sign in. The
    judge identity is not one of the public synthetic role buttons.
 3. In the meeting list, choose **Open workspace** for the seeded Flagship.
+   In the live-channel area, confirm that **Judge-managed access** and
+   **Ready** are shown. If the page instead asks for **Facilitator BYOK**, the
+   wrong identity or legacy host is being used; do not paste a key, return to
+   the Production URL above and sign in as `judge`.
 4. In the Private area, review **Staged private note**. Nothing is shared by
    viewing it.
 5. Choose **Prepare grounded sharing preview**. The server-funded judge route

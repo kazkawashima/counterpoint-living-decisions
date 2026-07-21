@@ -1297,6 +1297,14 @@ judge-enabled follow-up are recorded in the section below.
 - The owner confirmed the private `judge` login again from a clean browser
   after the canonical Production D1 correction. No credential value was
   recorded.
+- A live browser comparison found that the previously shared bare Workers
+  host, `counterpoint-living-decisions.gs2safari.workers.dev`, still serves an
+  older `Counterpoint` deployment. The canonical judge URL is the explicit
+  `counterpoint-living-decisions-production.gs2safari.workers.dev` origin;
+  its judge session must show `Judge-managed access` / `Ready`. A public
+  `Product` session intentionally shows `Facilitator BYOK`, so that button
+  state is not evidence of a broken judge route and no provider key should be
+  entered for the judge walkthrough.
 - This closes the ordinary-user manual continuity repair, but does not close
   the full hosted C5 matrix, independent cost-limit proof, timed human
   rehearsal, or owner-controlled public visibility switch.

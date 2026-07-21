@@ -11,6 +11,10 @@ visible in the logged-out submission/gallery view.
 - URL: <https://counterpoint-living-decisions-preview.gs2safari.workers.dev>
 - Production judge URL (private handoff only):
   <https://counterpoint-living-decisions-production.gs2safari.workers.dev>
+- Legacy-host warning: do not use
+  <https://counterpoint-living-decisions.gs2safari.workers.dev>. It serves an
+  older `Counterpoint` deployment and does not provide the current
+  judge-managed Production path.
 - Category: Work & Productivity
 - Story: synthetic Flagship, `Work & Productivity — Global AI Product Rollout`
 - Data: all meeting notes, identities, evidence, events, and decisions are
@@ -26,6 +30,10 @@ visible in the logged-out submission/gallery view.
 - The production URL uses the server-funded judge route only for the exact
   private judge identity. Do not put that identity or password in this public
   file; provide them through the private Testing Instructions field only.
+- After opening the seeded room, the Realtime section must show
+  `Judge-managed access` and `Ready`. `Facilitator BYOK` means the public
+  `Product` identity or the wrong host is in use; do not enter a provider key
+  for the judge walkthrough.
 
 ## One path through the product
 
