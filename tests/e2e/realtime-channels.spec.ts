@@ -151,6 +151,14 @@ test.beforeAll(async () => {
   await mkdir(judgeUsageScreenshotDirectory, { recursive: true });
 });
 
+test.afterEach(async ({ page }) => {
+  const removeKey = page.getByRole("button", { name: "Remove key" });
+  if (await removeKey.isVisible().catch(() => false)) {
+    await removeKey.click();
+    await expect(page.getByText("Facilitator BYOK · tab only")).toBeVisible();
+  }
+});
+
 test("projection polling is single-flight and backs off after retryable failures", async ({
   baseURL,
   page,
