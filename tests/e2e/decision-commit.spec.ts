@@ -299,8 +299,9 @@ test("OpenAI failure preserves manual Decision, audit, and export paths", async 
       await route.fulfill({
         body: JSON.stringify(
           createErrorEnvelope({
-            code: "OPENAI_UNAVAILABLE",
-            correlationId: "correlation_e2e_a8_openai_unavailable",
+            code: "USAGE_LIMIT_REACHED",
+            correlationId: "correlation_e2e_decision_usage_limit",
+            details: { limit: "meeting" },
           }),
         ),
         contentType: "application/json",
@@ -316,6 +317,9 @@ test("OpenAI failure preserves manual Decision, audit, and export paths", async 
     .click();
   await expect(
     page.getByText("Decision synthesis is temporarily unavailable"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("The meeting usage limit has been reached."),
   ).toBeVisible();
   await expect(
     page.getByText("Approved Evidence remains intact"),

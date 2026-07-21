@@ -116,7 +116,8 @@ function isAiRecoveryError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     (error.code === "OPENAI_UNAVAILABLE" ||
-      error.code === "JUDGE_MODE_FORBIDDEN")
+      error.code === "JUDGE_MODE_FORBIDDEN" ||
+      error.code === "USAGE_LIMIT_REACHED")
   );
 }
 

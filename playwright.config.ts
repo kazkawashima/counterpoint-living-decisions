@@ -6,8 +6,8 @@ function reachableHost(): string {
   return process.env.E2E_HOST ?? "127.0.0.2";
 }
 
-const webPort = 5173;
-const apiPort = 8787;
+const webPort = Number(process.env.E2E_WEB_PORT ?? "5173");
+const apiPort = Number(process.env.E2E_API_PORT ?? "8787");
 const runtimeSuffix = String(process.pid);
 
 export default defineConfig({
@@ -54,8 +54,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${String(apiPort)}/health`,
     },
     {
-      command:
-        "npm run dev --workspace @counterpoint/web -- --port 5173 --strictPort",
+      command: `npm run dev --workspace @counterpoint/web -- --port ${String(webPort)} --strictPort`,
       reuseExistingServer: false,
       timeout: 120_000,
       url: `http://127.0.0.1:${String(webPort)}`,
