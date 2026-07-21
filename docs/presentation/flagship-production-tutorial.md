@@ -75,9 +75,12 @@ private credential.
 
 If `Private assistant is temporarily unavailable` appears, choose **Continue
 with manual excerpt**, then continue with the exact excerpt, human Decision
-draft, validation, commit, staged event, review, and export. If a prior take
-left the Flagship in a later state, use **Reset staged demo** from the
-facilitator workspace and restart from step 4.
+draft, validation, commit, staged event, review, and export. In the production
+ordinary-user boundary, the same guarded condition may instead read `This
+action is unavailable in judge mode`; the manual excerpt button remains the
+intended recovery and no judge credential is exposed. If a prior take left the
+Flagship in a later state, use **Reset staged demo** from the facilitator
+workspace and restart from step 4.
 
 ## Evidence and presentation hygiene
 
