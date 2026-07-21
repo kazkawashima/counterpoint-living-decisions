@@ -18,6 +18,11 @@ visible in the logged-out submission/gallery view.
 - Access: no BYOK or local setup should be required for a judge; use the
   private credential handoff supplied with the submission if the hosted login
   asks for one.
+- Production judge login: do not choose the public `Product`, `Safety`, or
+  other identity buttons. In the login form, replace the `User ID` value with
+  `judge` and enter the private judge password supplied through the handoff.
+  `counterpoint-product` and the other public demo passwords are not judge
+  credentials.
 - The production URL uses the server-funded judge route only for the exact
   private judge identity. Do not put that identity or password in this public
   file; provide them through the private Testing Instructions field only.
