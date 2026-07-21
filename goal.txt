@@ -129,10 +129,12 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - 6つの変更状態は合成データのみで18枚を保存し、Apache-2.0のfirst-party provenanceと
   hashをmanifestへ記録した。Cloudflare 1102時のRetryボタンはcontrastを修正し、
   computed-style assertionと画像目視の両方で確認した。
-- このsliceの残りは、明示承認済みのfinal production redeployと、その後のprivate/shared
-  judge `Connect → Connected → Disconnect` のowner観測だけである。後者はsynthetic E2Eから
-  完了推定しない。hosted C5、独立cost実測、3分人間リハーサル、public切替、tag、submissionは
-  引き続き別gateとして未完了に保つ。
+- final tree `2616150` は明示承認済みのguarded workflowでcanonical Productionへ
+  deploy済みで、security matrix `335/335`、Cloudflare `140/140`、migration、strict
+  deploy、remote smoke、provider-free Flagship smokeが成功した。このsliceに残るのは
+  private/shared judge `Connect → Connected → Disconnect` のowner観測だけであり、synthetic
+  E2Eから完了推定しない。hosted C5、独立cost実測、3分人間リハーサル、public切替、tag、
+  submissionは引き続き別gateとして未完了に保つ。
 
 ## 完了条件 A — 名称変更
 

@@ -1509,12 +1509,14 @@ judge-enabled follow-up are recorded in the section below.
   media-manifest check, formatting, and `git diff --check`.
 - The verified local implementation and evidence were committed as `b9edab0`
   (`fix: complete flagship reliability audit`).
-- Canonical Production already contains the runtime reliability changes through
-  commit `fd0534a47d5a28a55c9f01ba1df8f8b8cf9529fb`. The final evidence/control
-  audit commit and Retry-button contrast polish still require the explicitly
-  authorized production redeploy. After that deployment, fresh private and
-  shared judge `Connect → Connected → Disconnect` observation remains an owner
-  hosted-evidence step; it is not inferred from synthetic browser coverage.
+- Canonical Production now contains the complete verified tree at commit
+  `26161502952deb3f5203a22d54001a008b9b6016`. The guarded deployment reran
+  security matrix `335/335` and Cloudflare `140/140`, applied forward D1
+  migrations, deployed strictly, and passed root/health/readiness/auth plus the
+  authenticated provider-free Flagship smoke and final reset. Fresh private
+  and shared judge `Connect → Connected → Disconnect` observation remains an
+  owner hosted-evidence step; it is not inferred from synthetic browser
+  coverage.
 - This audit does not close the separately deferred hosted C5 matrix,
   independent real-provider cost exhaustion, three-minute human rehearsal,
   repository visibility switch, release tag, or submission action.
