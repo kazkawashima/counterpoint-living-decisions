@@ -18,6 +18,7 @@ import {
   StructuredAiBillingAccumulator,
   type StructuredAiBilling,
 } from "./structured-ai-billing.js";
+import { normalizeDecisionCandidateCopy } from "./decision-copy.js";
 
 export const DECISION_SYNTHESIS_OPERATION = "shared_decision_synthesis";
 export const DECISION_SYNTHESIS_SCHEMA_VERSION = "1";
@@ -134,6 +135,7 @@ const SHARED_DECISION_INSTRUCTIONS = [
   "You cannot confirm premises, commit a Decision, publish evidence, call tools, or alter meeting state.",
   "Reference only supplied evidence IDs and choose only a supplied participant ID as Action owner.",
   "Return one premise, one retained dissent, one bounded Action, an outcome, and a monitor condition.",
+  "Do not put provenance or workflow status phrases such as AI-Proposed or pending facilitator confirmation inside title or outcome; the UI labels provenance separately.",
   "The result is advisory and must remain clearly labeled as AI-proposed until facilitator confirmation.",
 ].join("\n");
 
@@ -218,14 +220,14 @@ export class DeterministicSharedDecisionModel implements SharedDecisionModel {
         monitorCondition:
           "Reopen if the approval gate, staffing plan, or applicable regulation changes.",
         outcome:
-          "Proceed with regional launch only after the documented approval gate is satisfied.",
+          "AI‑proposed outcome pending facilitator confirmation: regional launch proceeds only through a documented approval gate.",
         premise: {
           evidenceReferenceIds: [evidence.evidenceId],
           statement: "Regional launch requires a documented approval gate.",
         },
         reason:
           "The shared evidence establishes a gating condition and a bounded follow-up Action.",
-        title: "Conditional regional launch",
+        title: "AI‑Proposed: Establish Regional Launch Approval Gate",
       },
       responseModel: "deterministic-shared-decision",
       usage: {
@@ -448,7 +450,7 @@ function validateOutput(
       true,
     );
   }
-  return parsed.data;
+  return normalizeDecisionCandidateCopy(parsed.data);
 }
 
 function addUsage(

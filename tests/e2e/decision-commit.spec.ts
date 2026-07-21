@@ -230,6 +230,38 @@ test.beforeAll(async () => {
   await mkdir(degradedClipDirectory, { recursive: true });
 });
 
+test("keeps AI provenance separate from candidate and committed prose", async ({
+  baseURL,
+  page,
+}) => {
+  await page.goto(baseURL ?? "/");
+  const { committedDecision, decisionForge } =
+    await driveFlagshipToAtRisk(page);
+  const workflowStatusCopy =
+    /AI[-\u2010\u2011 ]proposed|pending facilitator confirmation/iu;
+
+  await expect(
+    decisionForge.getByText("AI proposed", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Decision title")).toHaveValue(
+    "Establish Regional Launch Approval Gate",
+  );
+  await expect(page.getByLabel("Outcome")).toHaveValue(
+    "Regional launch proceeds only through a documented approval gate.",
+  );
+  await expect(page.getByLabel("Decision title")).not.toHaveValue(
+    workflowStatusCopy,
+  );
+  await expect(page.getByLabel("Outcome")).not.toHaveValue(workflowStatusCopy);
+  await expect(committedDecision.locator("h3")).toHaveText(
+    "Establish Regional Launch Approval Gate",
+  );
+  await expect(committedDecision.locator("h3 + p")).toHaveText(
+    "Regional launch proceeds only through a documented approval gate.",
+  );
+  await expect(committedDecision).not.toContainText(workflowStatusCopy);
+});
+
 test("OpenAI failure preserves manual Decision, audit, and export paths", async ({
   baseURL,
   browser,
@@ -579,7 +611,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   const committedDecision = decisionForge.locator(".committed-decision");
   await expect(
     facilitatorPage.getByRole("heading", {
-      name: "Conditional regional launch",
+      name: "Establish Regional Launch Approval Gate",
     }),
   ).toBeVisible();
   await expect(committedDecision).toContainText("Revision 2 · COMMITTED");

@@ -4,6 +4,11 @@ export {
   type StructuredAiTokenUsage,
 } from "./structured-ai-billing.js";
 export {
+  normalizeDecisionCandidateCopy,
+  type DecisionCandidateCopy,
+  type NormalizedDecisionCandidateCopy,
+} from "./decision-copy.js";
+export {
   DEFAULT_OPENAI_MODEL,
   PRIVATE_DISCLOSURE_OPERATION,
   PRIVATE_DISCLOSURE_MAX_ATTEMPTS,
