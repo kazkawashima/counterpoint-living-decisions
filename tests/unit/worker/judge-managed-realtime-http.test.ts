@@ -97,6 +97,9 @@ function fixture(): Fixture {
     claimStart() {
       return Promise.resolve("claimed");
     },
+    releaseStart() {
+      return Promise.resolve("released");
+    },
     create(ownership) {
       ownerships.created = ownership;
       return Promise.resolve("created");

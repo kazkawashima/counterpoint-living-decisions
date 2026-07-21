@@ -258,6 +258,49 @@ export class D1ManagedRealtimeCallOwnershipRepository {
       : "conflict";
   }
 
+  async releaseStart(
+    claim: ManagedRealtimeStartClaim,
+  ): Promise<"released" | "unavailable"> {
+    requireSha256Fingerprint(claim.startKeyHash, "startKeyHash");
+    requireSha256Fingerprint(claim.requestFingerprint, "requestFingerprint");
+    requireOpaque(claim.managedCallId, "managedCallId");
+    requireEpoch(claim.createdAtEpoch, "createdAtEpoch");
+    const result = await this.#database
+      .withSession("first-primary")
+      .prepare(
+        `
+          DELETE FROM judge_managed_realtime_start_claims
+          WHERE start_key_hash = ?
+            AND request_fingerprint = ?
+            AND managed_call_id = ?
+            AND created_at_epoch = ?
+            AND NOT EXISTS (
+              SELECT 1
+              FROM judge_managed_realtime_calls
+              WHERE managed_call_id = ?
+                AND status = 'active'
+            )
+        `,
+      )
+      .bind(
+        claim.startKeyHash,
+        claim.requestFingerprint,
+        claim.managedCallId,
+        claim.createdAtEpoch,
+        claim.managedCallId,
+      )
+      .run();
+    if (result.meta.changes === 1) {
+      return "released";
+    }
+    if (result.meta.changes === 0) {
+      return "unavailable";
+    }
+    throw new Error(
+      "Managed Realtime start release changed an unexpected row count",
+    );
+  }
+
   async create(
     ownership: ManagedRealtimeCallOwnership,
   ): Promise<"created" | "unavailable"> {

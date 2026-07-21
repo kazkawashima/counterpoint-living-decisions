@@ -482,7 +482,7 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     }
   });
 
-  it("reaches the real Durable Object and releases its reservation when the DO secret is absent", async () => {
+  it("releases a failed start claim so the same idempotency key can retry", async () => {
     await seedFixture();
     const environment: Env = {
       ...workerEnv(fakeControllerNamespace()),
@@ -550,10 +550,37 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       )
       .bind(MEETING_ID, JUDGE_USER_ID)
       .first<Record<string, unknown>>();
-    expect(claim).not.toBeNull();
-    expect(claim).not.toHaveProperty("sdp_offer");
-    expect(claim).not.toHaveProperty("provider_call_id");
-    expect(JSON.stringify(claim)).not.toContain("m=audio");
+    expect(claim).toBeNull();
+
+    const retry = await createWorkerHandler().fetch!(
+      request(
+        `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        {
+          channel: "private",
+          idempotencyKey: "managed-worker-real-do-fail-closed",
+          meetingId: MEETING_ID,
+          sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+        },
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(retry.status).toBe(503);
+    await expect(jsonBody(retry)).resolves.toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+    });
+
+    const retryReservations = await env.DB.withSession("first-primary")
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM judge_usage_reservations
+          WHERE account_id = ? AND meeting_id = ? AND status = 'released'
+        `,
+      )
+      .bind(JUDGE_USER_ID, MEETING_ID)
+      .first<{ readonly count: number }>();
+    expect(retryReservations?.count).toBe(2);
 
     await env.DB.batch([
       env.DB.prepare(

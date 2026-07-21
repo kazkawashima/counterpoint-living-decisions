@@ -1,0 +1,128 @@
+# 2026-07-22 production runtime incidents
+
+Status: Realtime remediation under verification  
+Scope: canonical Production Worker and the seeded Flagship meeting  
+Public data policy: this record contains no credentials, bearer tokens, SDP,
+private meeting content, provider call IDs, or raw fingerprints.
+
+## Summary
+
+Two independent production defects affected the judge path:
+
+1. projection polling repeatedly exceeded the Cloudflare Worker CPU limit and
+   temporarily made login return 503;
+2. a failed managed Realtime start was automatically retried with its original
+   idempotency key, but the Worker retained the failed start claim and returned
+   409 `CONFLICT` instead of retrying the provider operation.
+
+The React application did not execute on the Worker or directly consume its
+CPU budget. It scheduled projection reads in the browser. Each read invoked an
+unbounded server-side event replay, so the polling frequency amplified the
+Worker defect.
+
+## Incident 1 — projection replay exceeded Worker CPU
+
+### Evidence
+
+- Production tail showed one projection request per second followed by
+  `Exceeded CPU Limit`; login then surfaced 503.
+- D1 contained 486 historical meeting events. The latest demo reset was at
+  position 486, so the active projection contained no later events, but every
+  request still loaded and replayed the entire history.
+- Production smoke and reset runs had accumulated history without reducing the
+  cost of the next replay.
+
+### Root cause
+
+The role-projection path rebuilt state from all meeting events, including every
+event before the latest completed demo reset. Browser polling made this
+unbounded server-side work recur every second. React was only the request
+scheduler; the CPU-heavy operation was TypeScript event replay in the Worker.
+
+### Remediation
+
+Commit `ac2c88e` selects only events after the latest completed reset and
+rebases their positions into the contiguous one-based sequence expected by the
+domain replay. After deployment, production tail changed from repeated CPU
+errors to `Ok` for projection, login, and the provider-free smoke path.
+
+### Prevention
+
+- Keep reset-aware replay covered at the production query boundary, including
+  position continuity.
+- Treat polling rate and per-request replay size as separate budgets.
+- Do not use provider-free reset smoke as an unlimited production history
+  generator without checking replay cost.
+
+## Incident 2 — Realtime failure was masked by a 409 retry conflict
+
+### Evidence
+
+- On each affected Connect action, the first request created a start claim, a
+  usage reservation, and a managed-call ownership row. The call was then
+  terminated and its reservation released in the same second.
+- The browser retried about two seconds later with the same idempotency key.
+  The retained claim converted that retry to 409
+  `MANAGED_REALTIME_START_ALREADY_CLAIMED`.
+- Recent production D1 rows were terminal and released, not active or charged.
+  The visible 409 was therefore a secondary failure after a retryable provider
+  start failure, not a concurrency limit or the USD 25 cap.
+- A local live smoke using a real browser-generated media-only SDP, the local
+  standard API key, and `gpt-realtime-2.1` succeeded. The canonical Production
+  Worker contains an `OPENAI_API_KEY_JUDGE` secret name, but Cloudflare secrets
+  are write-only and their value cannot be compared with the locally verified
+  key.
+
+### Root cause
+
+The client and server implemented contradictory retry contracts:
+
+- the browser deliberately reused one start key after a retryable connection
+  failure to avoid duplicate provider work;
+- the Worker retained the start claim after it had terminated the ownership and
+  released the reservation;
+- the Worker treated the matching retry as a conflict rather than a safe retry.
+
+This hid the original provider failure behind a permanent-looking 409. The
+remaining provider-start difference is production-only configuration or
+runtime: the same adapter, model, and browser SDP succeed locally. The
+production secret value must therefore be overwritten from the locally
+verified key instead of inferred from the presence of its secret name.
+
+### Remediation design
+
+- Release a start claim only after the failed operation's ownership is no
+  longer active. Match the claim key, request fingerprint, managed call ID, and
+  creation time so cleanup cannot delete another attempt's claim.
+- Preserve claims for successful or ambiguously active calls. Those replays
+  must remain conflicts to prevent duplicate provider work and billing.
+- Allow the same idempotency key to claim a new attempt after confirmed cleanup.
+- Synchronize canonical Production `OPENAI_API_KEY_JUDGE` from the exact local
+  key that passed the live Realtime smoke immediately before deployment.
+
+### Why existing tests missed it
+
+The browser-controller unit test expected retry keys to be reused, while the
+Worker test separately expected a matching retained claim to return 409. The
+tests proved both halves independently but never composed the failure-cleanup-
+retry sequence through real D1 and a real Durable Object. Provider mocks also
+defaulted to successful starts, so they did not exercise this contradiction.
+
+## Mandatory verification before the next production deployment
+
+1. RED/GREEN Cloudflare regression: provider start fails, ownership and
+   reservation terminate, failed claim disappears, and the same key reaches a
+   second provider attempt instead of 409.
+2. Existing successful-start replay remains deduplicated and does not reserve
+   or bill twice.
+3. Managed Realtime unit tests, full Cloudflare pool, browser Realtime E2E,
+   typecheck, lint, build, and security verification pass locally.
+4. Live local media-only Realtime smoke succeeds with the key that will be
+   written to the production secret.
+5. Only then: write the secret, deploy once, and verify in a clean judge browser
+   that Connect reaches `Connected`, Disconnect terminates, and a second Connect
+   also reaches `Connected` without 409.
+
+Until step 5 is observed, hosted judge Realtime remains unverified even if all
+local gates are green. Manual text and durable meeting state remain the safe
+fallback.

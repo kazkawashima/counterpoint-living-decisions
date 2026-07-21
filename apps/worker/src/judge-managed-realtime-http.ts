@@ -32,6 +32,9 @@ export interface JudgeManagedRealtimeOwnershipRepository {
   claimStart(
     claim: ManagedRealtimeStartClaim,
   ): Promise<ManagedRealtimeStartClaimResult>;
+  releaseStart(
+    claim: ManagedRealtimeStartClaim,
+  ): Promise<"released" | "unavailable">;
   create(
     ownership: ManagedRealtimeCallOwnership,
   ): Promise<"created" | "unavailable">;
@@ -243,6 +246,7 @@ async function startManagedCall(input: {
   let owner: ManagedRealtimeCallOwner | undefined;
   let controller: JudgeManagedRealtimeControllerStub | undefined;
   let controllerRequestStarted = false;
+  let claimedStart: ManagedRealtimeStartClaim | undefined;
   try {
     const managedCallId = `managed-${crypto.randomUUID()}`;
     const startKeyHash = await sha256Fingerprint(
@@ -267,7 +271,7 @@ async function startManagedCall(input: {
         sdpFingerprint,
       ]),
     );
-    const claim = await input.dependencies.ownerships.claimStart({
+    const startClaim: ManagedRealtimeStartClaim = {
       createdAtEpoch: nowEpoch,
       expiresAtEpoch: nowEpoch + JUDGE_REALTIME_RESERVATION_TTL_SECONDS,
       managedCallId,
@@ -277,7 +281,8 @@ async function startManagedCall(input: {
       sessionId: authorization.authorization.sessionId,
       startKeyHash,
       userId: authorization.authorization.userId,
-    });
+    };
+    const claim = await input.dependencies.ownerships.claimStart(startClaim);
     if (claim === "replayed") {
       return apiErrorResponse("CONFLICT", input.correlationId, {
         reason: "MANAGED_REALTIME_START_ALREADY_CLAIMED",
@@ -291,6 +296,7 @@ async function startManagedCall(input: {
     if (claim !== "claimed") {
       return apiErrorResponse("REALTIME_UNAVAILABLE", input.correlationId);
     }
+    claimedStart = startClaim;
 
     const reservation = await input.dependencies.usage.reserve(
       {
@@ -301,6 +307,9 @@ async function startManagedCall(input: {
       JUDGE_REALTIME_RESERVED_USAGE,
     );
     if (reservation.kind === "denied") {
+      await input.dependencies.ownerships
+        .releaseStart(claimedStart)
+        .catch(() => "unavailable");
       return apiErrorResponse("USAGE_LIMIT_REACHED", input.correlationId, {
         limit: reservation.limit,
       });
@@ -324,6 +333,9 @@ async function startManagedCall(input: {
       await input.dependencies.usage
         .release(reservationId)
         .catch(() => undefined);
+      await input.dependencies.ownerships
+        .releaseStart(claimedStart)
+        .catch(() => "unavailable");
       return apiErrorResponse("REALTIME_UNAVAILABLE", input.correlationId);
     }
 
@@ -352,6 +364,9 @@ async function startManagedCall(input: {
         internalResponse.status !== 429,
         nowEpoch,
       );
+      await input.dependencies.ownerships
+        .releaseStart(claimedStart)
+        .catch(() => "unavailable");
       return apiErrorResponse(
         errorForInternalCode(internalBody),
         input.correlationId,
@@ -391,6 +406,11 @@ async function startManagedCall(input: {
           .release(reservationId)
           .catch(() => undefined);
       }
+    }
+    if (claimedStart !== undefined) {
+      await input.dependencies.ownerships
+        .releaseStart(claimedStart)
+        .catch(() => "unavailable");
     }
     return apiErrorResponse("REALTIME_UNAVAILABLE", input.correlationId);
   }
