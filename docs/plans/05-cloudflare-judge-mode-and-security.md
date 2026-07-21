@@ -361,24 +361,25 @@ recognizes common provider credentials and private keys, skips ignored local
 secret files, and reports only the path and rule name rather than the detected
 value. API provider failures, Realtime state/errors, structured logs, and
 protocol envelopes each carry synthetic secret/private canaries that are
-asserted absent. C5 remains open only for rerunning these shared contracts
-against hosted Worker routes after API parity. The hosted Worker flagship now
-has authenticated external-host coverage through `AT_RISK`, facilitator
-`REVIEW_REQUIRED`, Action hold, reconsideration task creation, deterministic
-preview evaluation, participant denial, and reset/replay with cleared
-collections. The full C5 matrix still requires an approved hosted provider and
-deployment boundary before it can be claimed as hosted evidence.
+asserted absent. C5 remains open for rerunning these shared contracts against
+the deployed production Worker. The hosted Worker flagship now has
+authenticated external-host coverage through `AT_RISK`, facilitator
+`REVIEW_REQUIRED`, Action hold, reconsideration task creation, provider-backed
+evaluation, participant denial, and reset/replay with cleared collections.
+The operator confirmed the provider-backed Flagship path, but that smoke is not
+a claim that the full C5 matrix or cost-limit exhaustion proof has passed
+remotely.
 
 ### C6 — Hosted deployment path
 
 - [x] Add preview and production deployment commands.
 - [x] Add manually approved main deployment workflow.
-- [x] Run D1/DO migrations safely for the approved Preview deployment;
-      production migration remains a separate release gate.
+- [x] Run D1/DO migrations safely for the approved Preview and production
+      deployments.
 - [x] Add health/readiness and post-deploy flagship smoke.
-- [x] Record the approved Preview commit/configuration in
-      [`docs/deployments/preview-2026-07-21.md`](../deployments/preview-2026-07-21.md);
-      production remains un-deployed.
+- [x] Record the approved Preview and production commit/configuration in
+      [`docs/deployments/preview-2026-07-21.md`](../deployments/preview-2026-07-21.md)
+      and [`docs/deployments/production-2026-07-21.md`](../deployments/production-2026-07-21.md).
 - [x] Write rollback and judge-secret shutdown runbooks.
 
 C6 preparation notes:
@@ -401,17 +402,18 @@ C6 preparation notes:
   Preview additionally enables the Flagship-only, provider-free
   `staged-demo-rule-v1` through `DEMO_STORY_MODE`; it creates no provider call,
   Secret use, or usage reservation. Production rendering forces that flag off,
-  so this is a synthetic preview story rather than production judge enablement.
-- The approved Preview deployment record contains the commit, target, Worker
-  name, origin host, rendered config hash, migration boundary, named bindings,
-  safety flags, and credential-free verification summary. The private status
-  hash remains in ignored runner state; production has no deployment record
-  until its separate approval gate runs.
+  so this remains a synthetic preview story; production judge enablement is
+  recorded separately.
+- The approved Preview and production deployment records contain the commit,
+  target, Worker name, origin host, rendered config hash, migration boundary,
+  named bindings, safety flags, and credential-free verification summary. The
+  private deployment status hashes remain in ignored runner state.
 - Rollback is binary-only and forward-schema-compatible; no D1 or Durable
   Object down migration is permitted. Judge shutdown revokes provider access
   and deletes the Worker Secret without reading or logging its value.
-- No production resource, migration, deployment, Secret, or repository
-  visibility was changed by the Preview closeout.
+- The Preview closeout did not change production resources, Secrets, or
+  repository visibility. The later explicitly approved production deployment
+  and judge Secret registration are recorded separately.
 
 ## Browser verification
 
