@@ -818,7 +818,7 @@ test("facilitator commits a grounded Decision that participants can revisit", as
     .getByRole("status")
     .filter({ hasText: "Human review required" });
   await expect(invalidationReviewStatus).toBeVisible();
-  await expect(invalidationReviewStatus).toContainText("AI inferred");
+  await expect(invalidationReviewStatus).toContainText("OpenAI suggestion");
   await expect(
     facilitatorPage.getByText("REVIEW_REQUIRED has not been confirmed"),
   ).toBeVisible();
