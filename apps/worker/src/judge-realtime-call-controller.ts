@@ -10,11 +10,13 @@ import {
   MAX_OPENAI_REALTIME_SDP_BYTES,
   OpenAiManagedRealtimeCallConnector,
   OpenAiManagedRealtimeCallTerminator,
+  OpenAiRealtimeCallError,
   OpenAiRealtimeSidebandConnector,
   emptyOpenAiRealtimeUsageState,
   parseOpenAiRealtimeCompletedTranscription,
   recordOpenAiRealtimeServerEvent,
   type OpenAiRealtimeUsageState,
+  type OpenAiManagedRealtimeFailureReason,
 } from "@counterpoint/adapters-openai";
 import type {
   ManagedRealtimeCallConnector,
@@ -312,7 +314,11 @@ export class JudgeRealtimeCallLifecycle {
         readonly sdpAnswer: string;
       }
     | { readonly kind: "conflict" }
-    | { readonly kind: "unavailable" }
+    | {
+        readonly kind: "unavailable";
+        readonly providerStatus?: number;
+        readonly reason?: OpenAiManagedRealtimeFailureReason;
+      }
   > {
     if (this.#startInProgress) {
       return { kind: "conflict" };
@@ -335,7 +341,11 @@ export class JudgeRealtimeCallLifecycle {
         readonly sdpAnswer: string;
       }
     | { readonly kind: "conflict" }
-    | { readonly kind: "unavailable" }
+    | {
+        readonly kind: "unavailable";
+        readonly providerStatus?: number;
+        readonly reason?: OpenAiManagedRealtimeFailureReason;
+      }
   > {
     if ((await this.#storage.get()) !== undefined) {
       return { kind: "conflict" };
@@ -440,7 +450,7 @@ export class JudgeRealtimeCallLifecycle {
         model: call.model,
         sdpAnswer: call.sdpAnswer,
       };
-    } catch {
+    } catch (error) {
       const stored = await this.#storage.get().catch(() => undefined);
       if (stored === undefined) {
         if (acceptedCallId !== undefined) {
@@ -477,7 +487,15 @@ export class JudgeRealtimeCallLifecycle {
         }
       }
       await this.terminate().catch(() => undefined);
-      return { kind: "unavailable" };
+      return error instanceof OpenAiRealtimeCallError
+        ? {
+            kind: "unavailable",
+            ...(error.providerStatus === undefined
+              ? {}
+              : { providerStatus: error.providerStatus }),
+            reason: error.reason,
+          }
+        : { kind: "unavailable" };
     }
   }
 
@@ -1068,7 +1086,19 @@ export class JudgeRealtimeCallController extends DurableObject<JudgeRealtimeBind
       }
       const result = await lifecycle.start(parsed);
       if (this.#startRequestCancelled || result.kind === "unavailable") {
-        return jsonResponse({ code: "REALTIME_UNAVAILABLE" }, 503);
+        return jsonResponse(
+          {
+            code: "REALTIME_UNAVAILABLE",
+            ...(result.kind !== "unavailable" ||
+            result.providerStatus === undefined
+              ? {}
+              : { providerStatus: result.providerStatus }),
+            ...(result.kind !== "unavailable" || result.reason === undefined
+              ? {}
+              : { reason: result.reason }),
+          },
+          503,
+        );
       }
       if (result.kind === "conflict") {
         return jsonResponse({ code: "CALL_ALREADY_STARTED" }, 409);

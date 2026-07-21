@@ -63,6 +63,14 @@ export interface JudgeManagedRealtimeHttpDependencies extends JudgeManagedAuthor
 
 type ManagedOperation = "start" | "turn" | "transcript" | "terminate";
 
+const SAFE_REALTIME_FAILURE_REASONS = new Set([
+  "OFFER_REJECTED",
+  "PROVIDER_REJECTED",
+  "PROVIDER_LOCATION_INVALID",
+  "PROVIDER_SDP_INVALID",
+  "PROVIDER_UNAVAILABLE",
+]);
+
 interface InternalStartedResponse {
   readonly channel: RealtimeChannel;
   readonly kind: "started";
@@ -147,6 +155,33 @@ function errorForInternalCode(
     return "VALIDATION_FAILED";
   }
   return "REALTIME_UNAVAILABLE";
+}
+
+function safeRealtimeFailureDetails(
+  value: unknown,
+): { readonly providerStatus?: number; readonly reason: string } | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.reason !== "string" ||
+    !SAFE_REALTIME_FAILURE_REASONS.has(value.reason)
+  ) {
+    return undefined;
+  }
+  const providerStatus = value.providerStatus;
+  if (
+    providerStatus !== undefined &&
+    (!Number.isInteger(providerStatus) ||
+      Number(providerStatus) < 100 ||
+      Number(providerStatus) > 599)
+  ) {
+    return undefined;
+  }
+  return {
+    ...(providerStatus === undefined
+      ? {}
+      : { providerStatus: Number(providerStatus) }),
+    reason: value.reason,
+  };
 }
 
 async function readInternalBody(response: Response): Promise<unknown> {
@@ -370,6 +405,7 @@ async function startManagedCall(input: {
       return apiErrorResponse(
         errorForInternalCode(internalBody),
         input.correlationId,
+        safeRealtimeFailureDetails(internalBody),
       );
     }
     return apiJsonResponse(

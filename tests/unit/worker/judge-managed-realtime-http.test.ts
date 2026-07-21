@@ -423,4 +423,49 @@ describe("Worker managed Realtime HTTP boundary", () => {
     });
     expect(fixtureValue.usage.reserve).toHaveBeenCalledTimes(1);
   });
+
+  it("preserves only a safe unaccepted-provider failure reason", async () => {
+    const fixtureValue = fixture();
+    fixtureValue.controller.fetch = vi.fn((input) => {
+      const path = new URL(
+        input instanceof Request ? input.url : String(input),
+      ).pathname;
+      return Promise.resolve(
+        path === "/start"
+          ? Response.json(
+              {
+                code: "REALTIME_UNAVAILABLE",
+                providerStatus: 401,
+                reason: "PROVIDER_REJECTED",
+              },
+              { status: 503 },
+            )
+          : Response.json({ kind: "terminated" }),
+      );
+    });
+
+    const response = await handleJudgeManagedRealtimeHttp({
+      correlationId: "correlation-managed-provider-rejected",
+      dependencies: fixtureValue.dependencies,
+      meetingId: MEETING_ID,
+      operation: "start",
+      request: request({
+        channel: "private",
+        idempotencyKey: "managed-start-provider-rejected",
+        meetingId: MEETING_ID,
+        sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+      }),
+    });
+
+    expect(response.status).toBe(503);
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      code: "REALTIME_UNAVAILABLE",
+      details: {
+        providerStatus: 401,
+        reason: "PROVIDER_REJECTED",
+      },
+    });
+    expect(JSON.stringify(responseBody)).not.toContain("sk-provider-secret");
+  });
 });

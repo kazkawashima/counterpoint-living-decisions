@@ -6,7 +6,10 @@ import type {
   ManagedRealtimeSidebandObserver,
   UsageRequest,
 } from "@counterpoint/ports";
-import { emptyOpenAiRealtimeUsageState } from "@counterpoint/adapters-openai";
+import {
+  OpenAiRealtimeCallError,
+  emptyOpenAiRealtimeUsageState,
+} from "@counterpoint/adapters-openai";
 import {
   JUDGE_REALTIME_MAX_DURATION_SECONDS,
   JUDGE_REALTIME_RESERVED_COST_USD,
@@ -413,12 +416,21 @@ describe("managed Realtime start input parsing", () => {
 describe("JudgeRealtimeCallLifecycle", () => {
   it("releases the reservation when the provider rejects before accepting a call", async () => {
     const connector: ManagedRealtimeCallConnector = {
-      connect: () => Promise.reject(new Error("provider rejected request")),
+      connect: () =>
+        Promise.reject(
+          new OpenAiRealtimeCallError(
+            "OpenAI managed Realtime call failed",
+            "PROVIDER_REJECTED",
+            401,
+          ),
+        ),
     };
     const fixture = lifecycle({ connector });
 
     await expect(fixture.instance.start(input)).resolves.toEqual({
       kind: "unavailable",
+      providerStatus: 401,
+      reason: "PROVIDER_REJECTED",
     });
 
     expect(fixture.release).toHaveBeenCalledWith(input.reservationId);

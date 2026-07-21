@@ -86,6 +86,7 @@ export {
   OpenAiRealtimeCallError,
   isMediaOnlyOpenAiRealtimeSdp,
   type OpenAiManagedRealtimeCallConnectorOptions,
+  type OpenAiManagedRealtimeFailureReason,
 } from "./realtime-calls.js";
 export {
   GPT_REALTIME_2_1_PRICING_VERSION,

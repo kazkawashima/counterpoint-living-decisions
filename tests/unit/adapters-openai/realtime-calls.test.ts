@@ -205,6 +205,10 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
       .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(OpenAiRealtimeCallError);
+    expect(failure).toMatchObject({
+      providerStatus: undefined,
+      reason: "PROVIDER_LOCATION_INVALID",
+    });
     expect(String(failure)).toContain("invalid call location");
     expect(String(failure)).not.toContain(standardApiKey);
   });
@@ -217,9 +221,9 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
       Promise.resolve(responseWithLocation(answer)),
     );
 
-    await expect(connector.connect(request)).rejects.toThrow(
-      "invalid SDP answer",
-    );
+    await expect(connector.connect(request)).rejects.toMatchObject({
+      reason: "PROVIDER_SDP_INVALID",
+    });
   });
 
   it("rejects an SDP answer over the byte limit without returning it", async () => {
@@ -331,6 +335,10 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
         .catch((error: unknown) => error);
 
       expect(failure).toBeInstanceOf(OpenAiRealtimeCallError);
+      expect(failure).toMatchObject({
+        providerStatus: status,
+        reason: "PROVIDER_REJECTED",
+      });
       expect(String(failure)).toContain(String(status));
       expect(failure).not.toHaveProperty("cause");
       expect(String(failure)).not.toContain(standardApiKey);
@@ -357,6 +365,10 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
       .catch((caught: unknown) => caught);
 
     expect(failure).toBeInstanceOf(OpenAiRealtimeCallError);
+    expect(failure).toMatchObject({
+      providerStatus: undefined,
+      reason: "PROVIDER_UNAVAILABLE",
+    });
     expect(failure).not.toHaveProperty("cause");
     expect(String(failure)).not.toContain(standardApiKey);
     expect((failure as Error).stack).not.toContain(standardApiKey);
@@ -419,7 +431,7 @@ describe("OpenAiManagedRealtimeCallConnector", () => {
       connector.connect(
         value as Parameters<OpenAiManagedRealtimeCallConnector["connect"]>[0],
       ),
-    ).rejects.toThrow("call request is invalid");
+    ).rejects.toMatchObject({ reason: "OFFER_REJECTED" });
     expect(fetch).not.toHaveBeenCalled();
   });
 

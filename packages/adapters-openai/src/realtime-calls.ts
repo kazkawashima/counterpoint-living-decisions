@@ -29,8 +29,19 @@ export interface OpenAiManagedRealtimeCallConnectorOptions {
   readonly fetch?: FetchLike;
 }
 
+export type OpenAiManagedRealtimeFailureReason =
+  | "OFFER_REJECTED"
+  | "PROVIDER_REJECTED"
+  | "PROVIDER_LOCATION_INVALID"
+  | "PROVIDER_SDP_INVALID"
+  | "PROVIDER_UNAVAILABLE";
+
 export class OpenAiRealtimeCallError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly reason: OpenAiManagedRealtimeFailureReason,
+    readonly providerStatus?: number,
+  ) {
     super(message);
     this.name = "OpenAiRealtimeCallError";
   }
@@ -76,6 +87,7 @@ function callIdFrom(location: string | null): string {
   if (callId === undefined || callId.length > MAX_CALL_ID_LENGTH) {
     throw new OpenAiRealtimeCallError(
       "OpenAI Realtime returned an invalid call location",
+      "PROVIDER_LOCATION_INVALID",
     );
   }
   return callId;
@@ -89,6 +101,7 @@ async function readBoundedSdp(response: Response): Promise<string> {
   ) {
     throw new OpenAiRealtimeCallError(
       "OpenAI Realtime returned an invalid SDP content type",
+      "PROVIDER_SDP_INVALID",
     );
   }
   const contentLength = response.headers.get("content-length");
@@ -99,6 +112,7 @@ async function readBoundedSdp(response: Response): Promise<string> {
   ) {
     throw new OpenAiRealtimeCallError(
       "OpenAI Realtime returned an oversized SDP answer",
+      "PROVIDER_SDP_INVALID",
     );
   }
 
@@ -122,6 +136,7 @@ async function readBoundedSdp(response: Response): Promise<string> {
         await reader.cancel();
         throw new OpenAiRealtimeCallError(
           "OpenAI Realtime returned an oversized SDP answer",
+          "PROVIDER_SDP_INVALID",
         );
       }
       answer += decoder.decode(chunk.value, { stream: true });
@@ -134,6 +149,7 @@ async function readBoundedSdp(response: Response): Promise<string> {
     }
     throw new OpenAiRealtimeCallError(
       "OpenAI Realtime returned an invalid SDP answer",
+      "PROVIDER_SDP_INVALID",
     );
   }
 }
@@ -170,6 +186,7 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       ) {
         throw new OpenAiRealtimeCallError(
           "OpenAI Realtime call request is invalid",
+          "OFFER_REJECTED",
         );
       }
       if (
@@ -180,6 +197,7 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       ) {
         throw new OpenAiRealtimeCallError(
           "OpenAI Realtime call request is invalid",
+          "OFFER_REJECTED",
         );
       }
 
@@ -219,6 +237,8 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       if (!response.ok) {
         throw new OpenAiRealtimeCallError(
           `OpenAI Realtime call creation failed with status ${String(response.status)}`,
+          "PROVIDER_REJECTED",
+          response.status,
         );
       }
 
@@ -228,6 +248,7 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       if (sdpAnswer.trim().length === 0 || sdpAnswer.includes(this.#apiKey)) {
         throw new OpenAiRealtimeCallError(
           "OpenAI Realtime returned an invalid SDP answer",
+          "PROVIDER_SDP_INVALID",
         );
       }
 
@@ -243,6 +264,7 @@ export class OpenAiManagedRealtimeCallConnector implements ManagedRealtimeCallCo
       }
       throw new OpenAiRealtimeCallError(
         "OpenAI Realtime call creation was unavailable",
+        "PROVIDER_UNAVAILABLE",
       );
     }
   }
@@ -271,7 +293,10 @@ export class OpenAiManagedRealtimeCallTerminator implements ManagedRealtimeCallT
         !REALTIME_CALL_ID_PATTERN.test(callId) ||
         callId.length > MAX_CALL_ID_LENGTH
       ) {
-        throw new OpenAiRealtimeCallError("OpenAI Realtime call ID is invalid");
+        throw new OpenAiRealtimeCallError(
+          "OpenAI Realtime call ID is invalid",
+          "OFFER_REJECTED",
+        );
       }
       const response = await this.#fetch(
         `${OPENAI_REALTIME_CALLS_URL}/${callId}/hangup`,
@@ -284,6 +309,8 @@ export class OpenAiManagedRealtimeCallTerminator implements ManagedRealtimeCallT
       if (!response.ok) {
         throw new OpenAiRealtimeCallError(
           `OpenAI Realtime hangup failed with status ${String(response.status)}`,
+          "PROVIDER_REJECTED",
+          response.status,
         );
       }
     } catch (error) {
@@ -292,6 +319,7 @@ export class OpenAiManagedRealtimeCallTerminator implements ManagedRealtimeCallT
       }
       throw new OpenAiRealtimeCallError(
         "OpenAI Realtime hangup was unavailable",
+        "PROVIDER_UNAVAILABLE",
       );
     }
   }
