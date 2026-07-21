@@ -1342,3 +1342,31 @@ judge-enabled follow-up are recorded in the section below.
   around pre-billable limits and managed-route idempotency. It does not claim
   the hosted C5 matrix or independent real-provider USD 25 exhaustion proof;
   those remain release gates.
+
+## 2026-07-21 production UI review P0 implementation
+
+- The Cloudflare Worker now routes `POST /api/v1/decisions/review-resolution`
+  through the same application resolution boundary as Node. Recommit,
+  supersede, and reject retain facilitator authorization, D1 append-only
+  history, idempotency, canonical references, and visible-position projection.
+- The hosted-Worker integration was extended past `REVIEW_REQUIRED` and now
+  appends committed revision 3; `tests/cloudflare/worker-flagship-http.test.ts`
+  passed `14/14`. The full Decision browser scenario passed `1/1` and proves
+  the Flagship stays at stage 5 before resolution and shows completion only
+  after the revised Decision is committed.
+- Managed Realtime preserves a redacted API envelope's `retryable` flag and
+  details. A non-retryable generation limit now moves directly to durable text
+  fallback, keeps the original `USAGE_LIMIT_REACHED` cause visible, explains
+  that a connection reserves three generations, and sends no second start
+  request. The focused controller suite passed `14/14`; the browser scenario
+  passed `1/1` and captured synthetic evidence at
+  `docs/media/screenshots/judge-usage/2026-07-21-judge-realtime-generation-limit-desktop.png`.
+- Typecheck and lint pass. The media was visually reviewed as synthetic and
+  credential-free; its Apache-2.0 provenance is recorded in the generated
+  manifest.
+- The full release baseline passed after the slice: build, repository/generated
+  secret scan, security matrix `302/302`, and Cloudflare pool `142/142`.
+- Canonical Production has not yet been redeployed with this slice. The next
+  boundary is one explicit production deployment followed by a clean judge
+  recommit and non-billable Realtime limit check; do not claim the hosted P0s
+  closed before that recheck.

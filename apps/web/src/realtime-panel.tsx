@@ -83,7 +83,16 @@ function safeMessage(error: unknown): string {
     return "API key required. Meeting state is preserved; add BYOK or continue in text.";
   }
   if (error instanceof ApiError && error.code === "USAGE_LIMIT_REACHED") {
-    return "Daily judge limit reached. Meeting state and text remain available.";
+    const limit =
+      typeof error.details === "object" &&
+      error.details !== null &&
+      "limit" in error.details &&
+      typeof error.details.limit === "string"
+        ? error.details.limit
+        : undefined;
+    return limit === "generation"
+      ? "Daily judge generation limit reached. A Realtime connection reserves 3 generations. Meeting state and text remain available."
+      : `Daily judge${limit === undefined ? "" : ` ${limit.replaceAll("_", " ")}`} limit reached. Meeting state and text remain available.`;
   }
   return error instanceof ApiError
     ? error.message
@@ -299,7 +308,7 @@ function RealtimeChannelCard({
     state.channel === "private" ? "Private agent" : "Shared room agent";
   const description =
     state.status === "degraded"
-      ? "Realtime unavailable after capped reconnect. Continue in text."
+      ? "Realtime unavailable. Continue in text; the reason is shown below."
       : state.channel === "private"
         ? "A separate owner-only Realtime session."
         : "A separate shared-context Realtime session.";
@@ -1033,8 +1042,9 @@ export function RealtimePanel({
             <>
               <span className="realtime-key-state">Judge-managed access</span>
               <p>
-                Server-owned bounded call. No provider credential enters this
-                browser.
+                Server-owned bounded call. Each connection reserves 3
+                generations and up to 30 seconds. No provider credential enters
+                this browser.
               </p>
               <div className="realtime-key-actions">
                 <span className="realtime-state connected">Ready</span>

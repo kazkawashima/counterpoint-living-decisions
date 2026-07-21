@@ -275,7 +275,7 @@ test("facilitator secures BYOK and connects isolated private/shared WebRTC chann
   await expect(sharedCard.getByText("Connected")).toBeVisible();
   await expect(
     privateCard.getByText(
-      "Realtime unavailable after capped reconnect. Continue in text.",
+      "Realtime unavailable. Continue in text; the reason is shown below.",
     ),
   ).toBeVisible();
   const continuity = page.getByRole("complementary", {
@@ -349,7 +349,9 @@ test("server-owned access switches the browser to a credential-free managed call
   let directProviderRequests = 0;
   let managedHost = "";
   let managedIdempotencyKey = "";
+  let managedStartRequests = 0;
   let managedTurnUtteranceId = "";
+  let denyManagedStart = false;
   let usageExhausted = false;
   let usageHost = "";
   let usageRequests = 0;
@@ -487,6 +489,21 @@ test("server-owned access switches the browser to a credential-free managed call
       expect(input.channel).toBe("private");
       expect(input.sdpOffer).toContain("A6 synthetic offer");
       managedIdempotencyKey = input.idempotencyKey ?? "";
+      managedStartRequests += 1;
+      if (denyManagedStart) {
+        await route.fulfill({
+          body: JSON.stringify({
+            code: "USAGE_LIMIT_REACHED",
+            correlationId: "correlation-managed-generation-limit",
+            details: { limit: "generation" },
+            message: "The meeting usage limit has been reached.",
+            retryable: false,
+          }),
+          contentType: "application/json",
+          status: 429,
+        });
+        return;
+      }
       await route.fulfill({
         body: JSON.stringify({
           channel: "private",
@@ -512,7 +529,7 @@ test("server-owned access switches the browser to a credential-free managed call
   await expect(page.getByText("Judge-managed access")).toBeVisible();
   await expect(
     page.getByText(
-      "Server-owned bounded call. No provider credential enters this browser.",
+      "Server-owned bounded call. Each connection reserves 3 generations and up to 30 seconds. No provider credential enters this browser.",
     ),
   ).toBeVisible();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
@@ -604,8 +621,29 @@ test("server-owned access switches the browser to a credential-free managed call
     animations: "disabled",
     path: `${judgeUsageScreenshotDirectory}/2026-07-20-judge-usage-unavailable-mobile-reduced-motion.png`,
   });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  usageUnavailable = false;
+  await usagePanel.getByRole("button", { name: "Retry usage check" }).click();
+  await expect(usagePanel.getByText("Daily allowance reached")).toBeVisible();
   await privateCard.getByRole("button", { name: "Disconnect" }).click();
   await expect(privateCard.getByText("Off", { exact: true })).toBeVisible();
+  const startsBeforeDenial = managedStartRequests;
+  denyManagedStart = true;
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(privateCard.getByText("Text fallback")).toBeVisible();
+  await expect(
+    page
+      .getByRole("alert")
+      .getByText(
+        "Daily judge generation limit reached. A Realtime connection reserves 3 generations. Meeting state and text remain available.",
+      ),
+  ).toBeVisible();
+  await page.waitForTimeout(1_200);
+  expect(managedStartRequests).toBe(startsBeforeDenial + 1);
+  await dock.screenshot({
+    animations: "disabled",
+    path: `${judgeUsageScreenshotDirectory}/2026-07-21-judge-realtime-generation-limit-desktop.png`,
+  });
   await page.getByRole("button", { name: "Reset staged demo" }).click();
   await page
     .locator(".reset-confirmation")

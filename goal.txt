@@ -101,6 +101,15 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   `docs/plans/ui-feedback-2026-07-21.md` に記録した。submission-criticalなprojector
   canvas拡張と、直前のFlagship通し手順・3分用ナレーションを
   `docs/presentation/flagship-production-tutorial.md` に反映した。reel制作自体はgoal外のまま。
+- 2026-07-21のproduction UI reviewで、Cloudflare Workerに
+  `POST /api/v1/decisions/review-resolution` が配線されておらず、revision 3のrecommitが
+  503になるP0を確認した。Workerへrecommit / supersede / rejectの3解決を実装し、
+  Cloudflare統合14/14とDecision browser E2Eでrevision 3および正しい完了表示を確認した。
+  canonical Productionへの再デプロイとhosted再確認は未完了。
+- 同reviewで、managed Realtimeの非retryableな`USAGE_LIMIT_REACHED`を自動再試行し、
+  後続のidempotency conflictで原因を隠すP0を確認した。browser API errorの
+  `retryable`/detailsを保持し、generation上限は1回でtext fallbackへ移り、3-generation
+  reservationと元の理由を表示するよう修正した。unit 14/14とbrowser E2E 1/1が成功した。
 
 ## 完了条件 A — 名称変更
 
@@ -141,6 +150,9 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] OpenAI disabled、provider障害、judge cap到達のいずれでも、既存のroom状態、
       手動excerpt、Decision編集、history、JSON exportを保持する。
 - [x] Flagship resetは対象meetingだけを初期状態へ戻し、再実行して同じ価値弧を再生できる。
+- [ ] `REVIEW_REQUIRED`からhuman resolutionを実行し、recommitではrevision 3をappendして
+      history/audit/exportへ反映する。ローカルWorker・browser証拠は完了し、canonical
+      Productionへのdeployとhosted再確認を残す。
 - [ ] 初見の通し実演を約3分以内に収める。facilitatorとsynthetic participantが、
       micまたは同じdurable endpointのmanual text、private-agentのstaged cue、exact
       excerpt承認、human Decision commit、staged event、AT_RISK→REVIEW_REQUIRED、
@@ -187,6 +199,8 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       `USAGE_LIMIT_REACHED` と手動継続を返す。
 - [x] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、
       meeting越境、session/owner差替え、終了競合をテストし、二重課金しない。
+- [x] managed Realtime startが非retryableなusage limitを返した場合は自動再試行せず、
+      元のlimit理由と予約量を表示して、meeting stateと手動text経路を維持する。
 
 ### 公開前の証明
 

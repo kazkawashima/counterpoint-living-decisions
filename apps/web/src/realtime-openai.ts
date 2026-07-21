@@ -170,6 +170,18 @@ export class OpenAiRealtimeConnectionError extends Error {
   }
 }
 
+function isPermanentConnectionFailure(
+  error: unknown,
+): error is Error & { readonly code: string; readonly retryable: false } {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    "retryable" in error &&
+    error.retryable === false
+  );
+}
+
 function createBrowserPeerConnection(): RealtimePeerConnection {
   const peer = new RTCPeerConnection();
   const audioElement = document.createElement("audio");
@@ -476,8 +488,11 @@ export async function connectOpenAiRealtime(
         }
       },
     };
-  } catch {
+  } catch (cause) {
     close();
+    if (isPermanentConnectionFailure(cause)) {
+      throw cause;
+    }
     throw new OpenAiRealtimeConnectionError();
   }
 }
@@ -615,8 +630,11 @@ export async function connectManagedOpenAiRealtime(
         }
       },
     };
-  } catch {
+  } catch (cause) {
     close();
+    if (isPermanentConnectionFailure(cause)) {
+      throw cause;
+    }
     throw new OpenAiRealtimeConnectionError();
   }
 }
@@ -840,9 +858,13 @@ class DefaultOpenAiRealtimeController implements OpenAiRealtimeController {
       this.#setState("connected", 0);
       this.#scheduleIdleClose();
       this.#handlePeerStateChange(connection, generation);
-    } catch {
+    } catch (cause) {
       if (this.#isCurrent(generation)) {
-        this.#scheduleReconnect(generation);
+        if (isPermanentConnectionFailure(cause)) {
+          this.#setState("degraded", 0);
+        } else {
+          this.#scheduleReconnect(generation);
+        }
       }
     }
   }

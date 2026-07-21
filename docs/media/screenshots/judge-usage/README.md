@@ -17,6 +17,12 @@ reservation, provider, credential, or decision-content identifiers.
 4. `2026-07-20-judge-usage-unavailable-mobile-reduced-motion.png` — 390×844
    retryable meter failure. New paid work is described as fail-closed without
    implying that meeting state or manual text is unavailable.
+5. `2026-07-21-judge-realtime-generation-limit-desktop.png` — 1440×900
+   synthetic judge workspace. A managed Realtime
+   start receives a non-retryable generation limit, preserves the exact cause,
+   performs no automatic retry, and keeps durable text available. The nearby
+   access copy states that one connection reserves three generations and up to
+   30 seconds.
 
 The committed browser test generates every capture, verifies a same-origin
 external-style API hostname, exercises explicit refresh, and proves that
@@ -24,5 +30,5 @@ sensitive identifiers are absent from the rendered panel. Reel production is
 deferred until the hosted product path is viewable; these images are
 development evidence only.
 
-Capture date: 2026-07-20. Feature slice: judge rolling-24-hour usage
-visibility.
+Capture dates: 2026-07-20–2026-07-21. Feature slice: judge rolling-24-hour
+usage visibility and non-retryable managed-call denial.

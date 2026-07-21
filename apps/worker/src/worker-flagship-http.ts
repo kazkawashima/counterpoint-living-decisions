@@ -15,6 +15,8 @@ import {
   proposeDisclosure,
   registerPrivateTextSource,
   rejectDisclosure,
+  rejectDecision,
+  recommitDecision,
   resetDemoMeeting,
   revokeDisplayToken,
   markDecisionReady,
@@ -24,6 +26,7 @@ import {
   reviewInvalidation,
   saveDecisionDraft,
   startDecisionMonitoring,
+  supersedeDecision,
   resolveMeetingAuthorization,
   userAuthorizationContext,
   type DisclosureDependencies,
@@ -31,6 +34,7 @@ import {
   type DecisionCandidateDependencies,
   type DecisionCandidateFailure,
   type DecisionFailure,
+  type DecisionReviewResolutionFailure,
   type ExternalEventDependencies,
   type InvalidationEvaluationDependencies,
   type InvalidationEvaluationView,
@@ -149,6 +153,8 @@ import {
   RevokeDisplayTokenResponseSchema,
   ReviewInvalidationRequestSchema,
   ReviewInvalidationResponseSchema,
+  ResolveDecisionReviewRequestSchema,
+  ResolveDecisionReviewResponseSchema,
   SharedDisplayProjectionResponseSchema,
   type CommitDecisionRequest,
   type CaptureUtteranceRequest,
@@ -166,6 +172,7 @@ import {
   type SynthesizeSharedDecisionRequest,
   type RegisterPrivateTextSourceFixtureRequest,
   type ReviewInvalidationRequest,
+  type ResolveDecisionReviewRequest,
   type RevokeDisplayTokenRequest,
 } from "@counterpoint/protocol";
 
@@ -228,6 +235,7 @@ export type WorkerFlagshipOperation =
   | "inject-demo-regulatory-change"
   | "issue-display-token"
   | "review-invalidation"
+  | "resolve-decision-review"
   | "revoke-display-token"
   | "reset-demo";
 
@@ -803,6 +811,22 @@ function invalidationReviewFailureResponse(
       : apiErrorResponse("VALIDATION_FAILED", correlationId);
 }
 
+function decisionReviewResolutionFailureResponse(
+  correlationId: string,
+  failure: DecisionReviewResolutionFailure,
+) {
+  return failure.code === "CONFLICT"
+    ? apiErrorResponse("CONFLICT", correlationId, {
+        actualPosition: failure.actualPosition,
+        expectedPosition: failure.expectedPosition,
+      })
+    : failure.code === "FORBIDDEN" ||
+        failure.code === "IDEMPOTENCY_CONFLICT" ||
+        failure.code === "INVALID_STATE_TRANSITION"
+      ? apiErrorResponse(failure.code, correlationId)
+      : apiErrorResponse("VALIDATION_FAILED", correlationId);
+}
+
 function utteranceFailureResponse(
   correlationId: string,
   failure: UtteranceFailure,
@@ -1267,6 +1291,7 @@ export async function handleWorkerFlagshipHttp(input: {
   let injectDemoRegulatoryChangeRequest:
     InjectDemoRegulatoryChangeRequest | undefined;
   let reviewInvalidationRequest: ReviewInvalidationRequest | undefined;
+  let resolveDecisionReviewRequest: ResolveDecisionReviewRequest | undefined;
   let resetDemoRequest: FacilitatorDemoResetRequest | undefined;
   let registerTextSourceRequest:
     RegisterPrivateTextSourceFixtureRequest | undefined;
@@ -1601,6 +1626,16 @@ export async function handleWorkerFlagshipHttp(input: {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
     reviewInvalidationRequest = parsed.data;
+    meetingId = parsed.data.meetingId;
+  }
+  if (operation === "resolve-decision-review") {
+    const parsed = ResolveDecisionReviewRequestSchema.safeParse(
+      await readJson(request),
+    );
+    if (!parsed.success) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    resolveDecisionReviewRequest = parsed.data;
     meetingId = parsed.data.meetingId;
   }
   if (operation === "reset-demo") {
@@ -2360,6 +2395,111 @@ export async function handleWorkerFlagshipHttp(input: {
               },
             },
       ),
+      200,
+      correlationId,
+    );
+  }
+
+  if (operation === "resolve-decision-review") {
+    if (resolveDecisionReviewRequest === undefined) {
+      return apiErrorResponse("VALIDATION_FAILED", correlationId);
+    }
+    const commonInput = {
+      correlationId,
+      decisionId: resolveDecisionReviewRequest.decisionId,
+      expectedPosition: await dependencies.events.position(meetingId),
+      idempotencyKey: resolveDecisionReviewRequest.idempotencyKey,
+      meetingId,
+    };
+    const visibleResultPosition = async (position: number) => {
+      const records = await dependencies.events.load(meetingId);
+      return visiblePosition(
+        records.map(({ event, position: globalPosition }) => ({
+          ...event,
+          position: meetingPosition(globalPosition),
+        })),
+        resolved.authorization.participantId,
+        position,
+      );
+    };
+
+    if (resolveDecisionReviewRequest.resolution === "recommit_revision") {
+      const result = await recommitDecision(
+        dependencies.decisions,
+        resolved.authorization,
+        {
+          ...commonInput,
+          changeReason: resolveDecisionReviewRequest.changeReason,
+          explicitCommit: true,
+          monitorCondition: resolveDecisionReviewRequest.monitorCondition,
+          outcome: resolveDecisionReviewRequest.outcome,
+          title: resolveDecisionReviewRequest.title,
+        },
+      );
+      if (result.kind === "failed") {
+        return decisionReviewResolutionFailureResponse(correlationId, result);
+      }
+      return apiJsonResponse(
+        ResolveDecisionReviewResponseSchema.parse({
+          correlationId: result.correlationId,
+          decision: decisionView(result.decision, result.revision.createdAt),
+          meetingId,
+          position: await visibleResultPosition(result.position),
+          resolution: "recommit_revision",
+          revision: decisionRevisionView(result.revision),
+        }),
+        200,
+        correlationId,
+      );
+    }
+
+    if (resolveDecisionReviewRequest.resolution === "supersede_decision") {
+      const result = await supersedeDecision(
+        dependencies.decisions,
+        resolved.authorization,
+        {
+          ...commonInput,
+          replacementDecisionId:
+            resolveDecisionReviewRequest.replacementDecisionId,
+        },
+      );
+      if (result.kind === "failed") {
+        return decisionReviewResolutionFailureResponse(correlationId, result);
+      }
+      return apiJsonResponse(
+        ResolveDecisionReviewResponseSchema.parse({
+          correlationId: result.correlationId,
+          decision: decisionView(result.decision, dependencies.clock.now()),
+          meetingId,
+          position: await visibleResultPosition(result.position),
+          replacementDecisionId: result.replacementDecisionId,
+          resolution: "supersede_decision",
+        }),
+        200,
+        correlationId,
+      );
+    }
+
+    const result = await rejectDecision(
+      dependencies.decisions,
+      resolved.authorization,
+      {
+        ...commonInput,
+        reason: resolveDecisionReviewRequest.reason,
+      },
+    );
+    if (result.kind === "failed") {
+      return decisionReviewResolutionFailureResponse(correlationId, result);
+    }
+    return apiJsonResponse(
+      ResolveDecisionReviewResponseSchema.parse({
+        correlationId: result.correlationId,
+        decision: decisionView(result.decision, dependencies.clock.now()),
+        meetingId,
+        position: await visibleResultPosition(result.position),
+        reason: result.reason,
+        resolution: "reject_decision",
+      }),
       200,
       correlationId,
     );

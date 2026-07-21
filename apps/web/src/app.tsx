@@ -3158,11 +3158,15 @@ function WorkspaceShell({
   }
   if (sharedInvalidation?.review !== undefined) {
     completedStage = 5;
-    currentStage = undefined;
-    stageCue =
-      (sharedDecision?.activeRevision ?? 0) > 2
-        ? "Human review is resolved. Revision history and current state remain exportable."
-        : "Human review is recorded. The Action hold and reconsideration task are now shared.";
+    const reviewResolved =
+      (sharedDecision?.status === "COMMITTED" &&
+        (sharedDecision.activeRevision ?? 0) > 2) ||
+      sharedDecision?.status === "SUPERSEDED" ||
+      sharedDecision?.status === "REJECTED";
+    currentStage = reviewResolved ? undefined : 5;
+    stageCue = reviewResolved
+      ? "Human review is resolved. Revision history and current state remain exportable."
+      : "Human review is recorded. Resolve this Decision to complete the Flagship arc.";
   }
 
   return (

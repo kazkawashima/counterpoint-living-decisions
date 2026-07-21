@@ -316,11 +316,19 @@ export interface StoredSession {
 
 export class ApiError extends Error {
   readonly code: string;
+  readonly details: unknown;
+  readonly retryable: boolean;
 
-  constructor(code: string, message: string) {
+  constructor(
+    code: string,
+    message: string,
+    options: { readonly details?: unknown; readonly retryable?: boolean } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
+    this.details = options.details ?? {};
+    this.retryable = options.retryable ?? false;
   }
 }
 
@@ -424,7 +432,10 @@ async function request(
   if (!response.ok) {
     const error = ErrorEnvelopeSchema.safeParse(body);
     if (error.success) {
-      throw new ApiError(error.data.code, error.data.message);
+      throw new ApiError(error.data.code, error.data.message, {
+        details: error.data.details,
+        retryable: error.data.retryable,
+      });
     }
     throw new ApiError("REQUEST_FAILED", "The request could not be completed.");
   }
@@ -496,7 +507,10 @@ export async function downloadPrivateArtifact(
     const body = await responseJson(response);
     const error = ErrorEnvelopeSchema.safeParse(body);
     throw error.success
-      ? new ApiError(error.data.code, error.data.message)
+      ? new ApiError(error.data.code, error.data.message, {
+          details: error.data.details,
+          retryable: error.data.retryable,
+        })
       : new ApiError("REQUEST_FAILED", "The artifact could not be downloaded.");
   }
   const disposition = response.headers.get("content-disposition") ?? "";

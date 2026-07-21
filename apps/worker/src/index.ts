@@ -535,54 +535,59 @@ export function createWorkerHandler(
                                             "/api/v1/decisions/invalidation-review"
                                         ? "review-invalidation"
                                         : request.method === "POST" &&
-                                            flagshipDemoResetRoute !== null
-                                          ? "reset-demo"
+                                            url.pathname ===
+                                              "/api/v1/decisions/review-resolution"
+                                          ? "resolve-decision-review"
                                           : request.method === "POST" &&
-                                              flagshipDisplayTokenIssueRoute !==
-                                                null
-                                            ? "issue-display-token"
+                                              flagshipDemoResetRoute !== null
+                                            ? "reset-demo"
                                             : request.method === "POST" &&
-                                                flagshipDisplayTokenRevokeRoute !==
+                                                flagshipDisplayTokenIssueRoute !==
                                                   null
-                                              ? "revoke-display-token"
+                                              ? "issue-display-token"
                                               : request.method === "POST" &&
-                                                  url.pathname ===
-                                                    "/api/v1/meetings"
-                                                ? "create-meeting"
-                                                : request.method === "GET" &&
-                                                    flagshipDecisionHistoryRoute !==
-                                                      null
-                                                  ? "decision-history"
+                                                  flagshipDisplayTokenRevokeRoute !==
+                                                    null
+                                                ? "revoke-display-token"
+                                                : request.method === "POST" &&
+                                                    url.pathname ===
+                                                      "/api/v1/meetings"
+                                                  ? "create-meeting"
                                                   : request.method === "GET" &&
-                                                      flagshipDecisionExportRoute !==
+                                                      flagshipDecisionHistoryRoute !==
                                                         null
-                                                    ? "decision-export"
+                                                    ? "decision-history"
                                                     : request.method ===
                                                           "GET" &&
-                                                        flagshipDecisionAuditRoute !==
+                                                        flagshipDecisionExportRoute !==
                                                           null
-                                                      ? "decision-audit"
+                                                      ? "decision-export"
                                                       : request.method ===
                                                             "GET" &&
-                                                          flagshipDisplayProjectionRoute !==
+                                                          flagshipDecisionAuditRoute !==
                                                             null
-                                                        ? "display-projection"
+                                                        ? "decision-audit"
                                                         : request.method ===
                                                               "GET" &&
-                                                            url.pathname ===
-                                                              "/api/v1/meetings"
-                                                          ? "meetings"
+                                                            flagshipDisplayProjectionRoute !==
+                                                              null
+                                                          ? "display-projection"
                                                           : request.method ===
                                                                 "GET" &&
-                                                              flagshipProjectionRoute !==
-                                                                null
-                                                            ? "projection"
+                                                              url.pathname ===
+                                                                "/api/v1/meetings"
+                                                            ? "meetings"
                                                             : request.method ===
                                                                   "GET" &&
-                                                                flagshipCollectionOperation !==
-                                                                  undefined
-                                                              ? flagshipCollectionOperation
-                                                              : undefined;
+                                                                flagshipProjectionRoute !==
+                                                                  null
+                                                              ? "projection"
+                                                              : request.method ===
+                                                                    "GET" &&
+                                                                  flagshipCollectionOperation !==
+                                                                    undefined
+                                                                ? flagshipCollectionOperation
+                                                                : undefined;
       if (flagshipOperation !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string | undefined;

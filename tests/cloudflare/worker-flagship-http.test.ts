@@ -30,6 +30,7 @@ import {
   SynthesizeSharedDecisionResponseSchema,
   MarkDecisionReadyResponseSchema,
   ReviewInvalidationResponseSchema,
+  ResolveDecisionReviewResponseSchema,
   RevokeDisplayTokenResponseSchema,
   SharedDisplayProjectionResponseSchema,
   StartDecisionMonitoringResponseSchema,
@@ -930,13 +931,58 @@ describe("Cloudflare Worker hosted flagship API", () => {
       },
     });
 
+    const resolutionResponse = await handler.fetch!(
+      workerRequest(
+        new Request("https://203.0.113.7/api/v1/decisions/review-resolution", {
+          body: JSON.stringify({
+            changeReason:
+              "The staged regulatory change requires a revised approval gate.",
+            decisionId: reviewBody.decision.decisionId,
+            expectedPosition: reviewBody.position,
+            idempotencyKey: "worker-flagship-review-resolution",
+            meetingId: FLAGSHIP_MEETING_ID,
+            monitorCondition: {
+              description:
+                "Confirm the revised approval gate before launch resumes.",
+            },
+            outcome:
+              "Pause launch until the revised approval gate is satisfied.",
+            resolution: "recommit_revision",
+            title: "Revised conditional rollout",
+          }),
+          headers: { ...authorization, "content-type": "application/json" },
+          method: "POST",
+        }),
+      ),
+      workerEnv(),
+      {} as ExecutionContext,
+    );
+    expect(resolutionResponse.status).toBe(200);
+    const resolutionBody = ResolveDecisionReviewResponseSchema.parse(
+      await json(resolutionResponse),
+    );
+    expect(resolutionBody).toMatchObject({
+      decision: {
+        activeRevision: 3,
+        status: "COMMITTED",
+      },
+      resolution: "recommit_revision",
+      revision: {
+        snapshot: {
+          status: "COMMITTED",
+          title: "Revised conditional rollout",
+        },
+        version: 3,
+      },
+    });
+
     const resetResponse = await handler.fetch!(
       workerRequest(
         new Request(
           `https://203.0.113.7/api/v1/meetings/${FLAGSHIP_MEETING_ID}/demo/reset`,
           {
             body: JSON.stringify({
-              expectedPosition: reviewBody.position,
+              expectedPosition: resolutionBody.position,
               idempotencyKey: "worker-flagship-demo-reset",
               meetingId: FLAGSHIP_MEETING_ID,
             }),

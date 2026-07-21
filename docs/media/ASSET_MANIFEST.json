@@ -23,7 +23,7 @@
       "sha256": "7f6de9c47c8c5ada11133c30c76368a58894342e15fe85d97146ff1c62dea214"
     },
     {
-      "bytes": 9737155,
+      "bytes": 9791087,
       "mediaType": "video/webm",
       "path": "docs/media/clips/decision-commit/2026-07-19-candidate-to-commit.webm",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -31,10 +31,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "83bbaa51eede96155836e6c9c251fb7af6e187a3674e9f220773212383123aa2"
+      "sha256": "07ebd940b922af146f39c0b6701059d84ef57674803535915942d60de12c7892"
     },
     {
-      "bytes": 9737155,
+      "bytes": 9791087,
       "mediaType": "video/webm",
       "path": "docs/media/clips/decision-resolution/2026-07-19-review-required-to-recommit.webm",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -42,7 +42,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "83bbaa51eede96155836e6c9c251fb7af6e187a3674e9f220773212383123aa2"
+      "sha256": "07ebd940b922af146f39c0b6701059d84ef57674803535915942d60de12c7892"
     },
     {
       "bytes": 3172207,
@@ -199,7 +199,7 @@
       "sha256": "04719081523d6641204fdac33fbd3704bcbe904a31f27fc3b3adb3d87ba00333"
     },
     {
-      "bytes": 1434642,
+      "bytes": 1439650,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/assumption-invalidation/2026-07-19-at-risk-facilitator-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -207,7 +207,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "37fe2e9ab2a2430af3f6e296282ee82c3068e60cba5646db95f3f932bb9ba87c"
+      "sha256": "2ea106fa81bba3d661fbec0b5fa4592268da82f5679e4805a1edfdd4d20b1e38"
     },
     {
       "bytes": 446836,
@@ -232,7 +232,7 @@
       "sha256": "f8efbef6fd2053871974115c388baa31e63b194a818e50cf7a75b5c6ba6db0dd"
     },
     {
-      "bytes": 1025874,
+      "bytes": 1025152,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-ai-candidate-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -240,10 +240,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "c4dafaab5e8ae39264711186dfc9bca01cef87d235a1b14378779f9d973a107b"
+      "sha256": "c3a39a3bbf86e58ac1a8941fbda3e01eb3fa50b83d7dce19c06b0f5fab3e4b7d"
     },
     {
-      "bytes": 1118154,
+      "bytes": 1117479,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-committed-decision-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -251,10 +251,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "d81b0e94f1ebdedbaecf010b4d967b4ae791f25307250433ef062b2b97f28c70"
+      "sha256": "52bd6bed84c04019dad643d1b1b92f1e21d50ca1742dd26f463cd48f6725d9f0"
     },
     {
-      "bytes": 746383,
+      "bytes": 745958,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-committed-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -262,10 +262,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "43adc7d4df4a92344389381c41dc5397210d8f0bf318986957f09bef2b4be013"
+      "sha256": "dc8bbda13eba1d8899264ee94369f02173afacfde190ad5d2fee30cec7d45acc"
     },
     {
-      "bytes": 1059169,
+      "bytes": 1058484,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-human-ready-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -273,10 +273,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "b821e24ac8741049860e3b374193ea4c2af71acea0bfcc0c38cb9c3ed6d00796"
+      "sha256": "664a684ed5403d1396e7b9cda1894e3a52bbffdf82d172474a55dd8d657a8507"
     },
     {
-      "bytes": 1130436,
+      "bytes": 1129734,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-monitoring-active-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -284,10 +284,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "0704a551d018b792ae85023148129f35b92f7ff5d57e5ab5c5b32dd570410c49"
+      "sha256": "ad0ba9c8f5d29875bdbcf7f08ddbb0253972e5b69fc0f5c371401986f262c6e9"
     },
     {
-      "bytes": 970972,
+      "bytes": 970378,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-commit/2026-07-19-participant-committed-shared.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -295,10 +295,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "60ab64ecab5c3406d0db74760aaa9f2ee37af6bda70e7ce45531d09293c10a39"
+      "sha256": "dbe44af1c610ed69e9391e1cae9facad15984ff74177bbda0f845525552df3b3"
     },
     {
-      "bytes": 970801,
+      "bytes": 970182,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-participant-recommitted-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -306,10 +306,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "6e32c1e3a2dd3cc39211ccf98ec1ad175b15d67ae470658621d00eb7a788ad4c"
+      "sha256": "15cfe4a4d66471546b4f7cbd04fa44a31730711039ed7ef8d6f72e23cf0f5605"
     },
     {
-      "bytes": 746383,
+      "bytes": 745958,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-participant-terminal-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -317,10 +317,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "43adc7d4df4a92344389381c41dc5397210d8f0bf318986957f09bef2b4be013"
+      "sha256": "dc8bbda13eba1d8899264ee94369f02173afacfde190ad5d2fee30cec7d45acc"
     },
     {
-      "bytes": 1216027,
+      "bytes": 1215820,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-recommit-comparison-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -328,10 +328,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "193f9fbcdd24eb0c22d6ba6dec7684a061dd39d15717c4a60f96ecabe4c7beaf"
+      "sha256": "756881bca018afafcf7ba94010795c3933d43986290ebbc883ee29de503eb8c0"
     },
     {
-      "bytes": 1182430,
+      "bytes": 1182238,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-recommit-success-history-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -339,10 +339,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "2ec6b469b35767450509599bd117e45fc071d4f07d4ab4f67fb454edd8de0af2"
+      "sha256": "d55ee01e32cbbea18a38417384dabdf765e95a425871bf16bdeff092d6f60782"
     },
     {
-      "bytes": 1216655,
+      "bytes": 1216452,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-19-resolution-options-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -350,7 +350,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "4b45cb5d397aca622e7946450df7ad98e469cff93caff93ba1c735d9336ed93a"
+      "sha256": "0b4ae8daf30239a7fb1b33e53a1064ac656acc1573462e4784be992de340535f"
     },
     {
       "bytes": 1247635,
@@ -375,7 +375,7 @@
       "sha256": "8cd6a746ef0e9859e59e34b457231ffd8b62e04bbe95612867cbe314220afa8a"
     },
     {
-      "bytes": 1210577,
+      "bytes": 1210424,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-20-recommit-title-required-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -383,10 +383,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "62d056cd34bf65b8c31b33fbc57585764a71d8e6cdb0c07a378cb668419fe688"
+      "sha256": "2e3dce183b11c6ad54bfdb3268f11fb9dd5f393bd7357c7771674e4d49f5c668"
     },
     {
-      "bytes": 1178451,
+      "bytes": 1178149,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-20-rejection-reason-required-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -394,10 +394,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "3b0ec9e68eaa1ab3af91081a59a94353cb5ffcd2ad27760687bdab8cb5b1246d"
+      "sha256": "282f10516ba78ca406e9d9972a8261943e67eb13c7a19250643955f11622e649"
     },
     {
-      "bytes": 1193179,
+      "bytes": 1193130,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-resolution/2026-07-20-replacement-id-required-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -405,7 +405,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "2040d64a11b5615c7c2d6a29fab7a238966de96b8847cb7a3ddd9a8fe616319b"
+      "sha256": "ddbae84f0a97da3e6b81b6bc8145601a1930e24fbfae61ec284762a7c1e40836"
     },
     {
       "bytes": 1238455,
@@ -430,7 +430,7 @@
       "sha256": "2275443be585ed6d75d946fcfda05490296d8f3e995728fecd73edc4d7381f65"
     },
     {
-      "bytes": 1434642,
+      "bytes": 1439650,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-review/2026-07-19-facilitator-review-workbench-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -438,7 +438,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "37fe2e9ab2a2430af3f6e296282ee82c3068e60cba5646db95f3f932bb9ba87c"
+      "sha256": "2ea106fa81bba3d661fbec0b5fa4592268da82f5679e4805a1edfdd4d20b1e38"
     },
     {
       "bytes": 529650,
@@ -452,7 +452,7 @@
       "sha256": "1b187ca5f275906934f28885dd92b02c18d2d8cef212632d3c6f72445b2fab2c"
     },
     {
-      "bytes": 1436081,
+      "bytes": 1440569,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-review/2026-07-19-reason-required-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -460,10 +460,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "6ee8d5c8774ec64c7eaa38e079ba8271a91cb4062c83e762c525bb0e9c70500c"
+      "sha256": "5dfc621fcbb5fc89215a6a07bc412ee20deb8df8f64150cb3fe8775ff5b0a34f"
     },
     {
-      "bytes": 1349874,
+      "bytes": 1350025,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/decision-review/2026-07-19-review-required-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -471,7 +471,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "f79bd1506b7321a337305863e988b2bb6df5af9757d4b0754f038e7b3962f293"
+      "sha256": "3e297506718908aaab168250a6786ebf7041ced28ef4da4123d7d1d779e377f6"
     },
     {
       "bytes": 403438,
@@ -606,7 +606,7 @@
       "sha256": "1792e9dbcd8130fceda874b1b9b0a03865280563a0d1b2c45d2137466505d739"
     },
     {
-      "bytes": 43415,
+      "bytes": 44978,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-available-desktop-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -614,10 +614,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "5137ae730f8b7dbc2d61c6a6779209500c8c22e7ebbb080f4b99ad1a317df0d2"
+      "sha256": "9065801715ee14cb9257ffde98927818a45dba591bccab20736e6b16c664b777"
     },
     {
-      "bytes": 41392,
+      "bytes": 43412,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-exhausted-desktop-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -625,10 +625,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "68a3243ee5e4e5ad01c1418fce82aa46eeb2502d91f4e08fece4077031389716"
+      "sha256": "5b0c710a2b50d9297c344ebd365ed71af90e29b8c49b5fdd5a961c6487e06926"
     },
     {
-      "bytes": 40231,
+      "bytes": 41136,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-exhausted-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -636,10 +636,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "c15f4b3bbe9cf91a7faf9794354ac63f59377967d622581e24b09ce121061b71"
+      "sha256": "e983d44e96ec5669b0677e8585e9701b7c3c15d7b296225c907b4ea72dbd651b"
     },
     {
-      "bytes": 15338,
+      "bytes": 15225,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/judge-usage/2026-07-20-judge-usage-unavailable-mobile-reduced-motion.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -647,7 +647,18 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "d99878b2cb09d8e9b84d6ccaa84f8c582be74249537d59cda82e7df64fe62cd7"
+      "sha256": "5461fd762873496750d2b0d9b550c5a2f159984c900463228f7495073cd77766"
+    },
+    {
+      "bytes": 468329,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/judge-usage/2026-07-21-judge-realtime-generation-limit-desktop.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "165aae50b85c93e09f201cd62d3005286807e16ce3152c2c2626dec42a7b85ae"
     },
     {
       "bytes": 132692,
@@ -848,7 +859,7 @@
       "sha256": "97ee22aa54c9af04c1051c5596201e9bb0acb55353853ec00575e62dd54cff2d"
     },
     {
-      "bytes": 359033,
+      "bytes": 456909,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/realtime-channels/2026-07-20-judge-managed-connected-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -856,10 +867,10 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "a016c850fc0428b5e157a7fb9a8bdf5d29930022ab7c105445bc838b84c916cf"
+      "sha256": "13bd29037663cd50d9c4e3b485d94721bd155cec5c9a00d70f566d6038fcacc7"
     },
     {
-      "bytes": 288782,
+      "bytes": 326644,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/realtime-channels/2026-07-20-judge-managed-connected-mobile.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -867,7 +878,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "fd11d0df10fad106a547a85051d47e362e93a3c882fccaeedbe4ee797ec8b48b"
+      "sha256": "626016112eb2b728aaa3fa0468c729e5fbee97fcff86962f50555f14dd2f6661"
     },
     {
       "bytes": 707031,
@@ -881,7 +892,7 @@
       "sha256": "c6c07e74924fff08bf56c23c773724271da1a05ecaca85f75a3a908f987f7887"
     },
     {
-      "bytes": 970801,
+      "bytes": 970182,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/regulatory-event/2026-07-19-participant-event-received-desktop.png",
       "creator": "Descant project via committed Playwright browser scenario",
@@ -889,7 +900,7 @@
       "origin": "First-party Descant UI capture generated from synthetic fixtures",
       "syntheticData": true,
       "thirdPartyMedia": false,
-      "sha256": "6e32c1e3a2dd3cc39211ccf98ec1ad175b15d67ae470658621d00eb7a788ad4c"
+      "sha256": "15cfe4a4d66471546b4f7cbd04fa44a31730711039ed7ef8d6f72e23cf0f5605"
     },
     {
       "bytes": 264120,

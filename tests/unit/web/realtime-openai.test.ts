@@ -308,6 +308,28 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(terminateCall).toHaveBeenCalledWith("managed-call-synthetic");
   });
 
+  it("preserves a permanent managed-call denial for the UI", async () => {
+    const peer = new FakePeer();
+    const denial = Object.assign(new Error("Synthetic judge limit reached"), {
+      code: "USAGE_LIMIT_REACHED",
+      retryable: false,
+    });
+
+    const failure = await connectManagedOpenAiRealtime({
+      awaitTranscript: () =>
+        Promise.resolve({ transcript: "must not be reached" }),
+      beginTurn: () => Promise.resolve(),
+      channel: "private",
+      createCall: () => Promise.reject(denial),
+      idempotencyKey: "managed-permanent-denial",
+      peerFactory: () => peer,
+      terminateCall: () => Promise.resolve(),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBe(denial);
+    expect(peer.closed).toBe(true);
+  });
+
   it("publishes a connecting-to-connected state sequence", async () => {
     const { controller } = setupController();
     const states: OpenAiRealtimeState[] = [];
@@ -453,6 +475,29 @@ describe("OpenAI Realtime browser lifecycle", () => {
       status: "degraded",
       textFallbackAvailable: true,
     });
+    controller.close();
+  });
+
+  it("does not retry a permanent managed-call denial", async () => {
+    const denial = Object.assign(new Error("Synthetic judge limit reached"), {
+      code: "USAGE_LIMIT_REACHED",
+      retryable: false,
+    });
+    const connect = vi.fn(() => Promise.reject(denial));
+    const controller = createOpenAiRealtimeController({
+      channel: "private",
+      connect,
+      retryDelaysMs: [250, 500, 1_000],
+    });
+
+    await controller.connect();
+    expect(controller.getState()).toMatchObject({
+      reconnectAttempt: 0,
+      status: "degraded",
+      textFallbackAvailable: true,
+    });
+    await vi.runAllTimersAsync();
+    expect(connect).toHaveBeenCalledTimes(1);
     controller.close();
   });
 

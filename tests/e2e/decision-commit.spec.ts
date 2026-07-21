@@ -706,6 +706,12 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await expect(committedDecision).toContainText(
     "REVIEW_REQUIRED · Human confirmed",
   );
+  await expect(
+    facilitatorPage.locator(".flagship-cue").getByText("Current stage 5 of 5"),
+  ).toBeVisible();
+  await expect(
+    facilitatorPage.locator(".flagship-cue").getByText("Flagship arc complete"),
+  ).toHaveCount(0);
   const resolutionWorkbench = facilitatorPage.getByRole("region", {
     name: "Resolve Decision review",
   });
@@ -897,6 +903,9 @@ test("facilitator commits a grounded Decision that participants can revisit", as
   await activateByKeyboard(facilitatorPage, resolutionSubmit);
   const resolutionStatus = resolutionWorkbench.getByRole("status");
   await expect(resolutionStatus).toContainText("Revision 3 is now active");
+  await expect(
+    facilitatorPage.locator(".flagship-cue").getByText("Flagship arc complete"),
+  ).toBeVisible();
   await expect(
     facilitatorPage.locator(".audit-line").getByText("RevisionCommitted"),
   ).toBeVisible();
