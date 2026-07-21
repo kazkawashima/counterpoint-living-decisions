@@ -80,6 +80,7 @@ import type {
   MeetingRecord,
   ParticipantAssignment,
   PasswordVerifier,
+  SessionRecord,
   SessionRepository,
   SessionTokenIssuer,
   UsageDecision,
@@ -187,6 +188,9 @@ export interface WorkerFlagshipHttpDependencies {
   readonly identities: IdentityRepository;
   readonly ids: IdGenerator;
   readonly meetings: MeetingRepository;
+  readonly onSessionLogout?: (
+    session: Pick<SessionRecord, "sessionId" | "userId">,
+  ) => Promise<void>;
   readonly facilitatorUserIds?: ReadonlySet<string>;
   readonly passwords: PasswordVerifier;
   readonly sessions: SessionRepository;
@@ -1372,6 +1376,15 @@ export async function handleWorkerFlagshipHttp(input: {
       return apiErrorResponse("VALIDATION_FAILED", correlationId);
     }
     await logout(dependencies, authenticated.bearerToken);
+    try {
+      await dependencies.onSessionLogout?.({
+        sessionId: authenticated.session.sessionId,
+        userId: authenticated.session.userId,
+      });
+    } catch {
+      // Durable authentication revocation is authoritative. Transient meeting
+      // credential cleanup is best effort and also expires independently.
+    }
     return apiJsonResponse(
       LogoutResponseSchema.parse({
         correlationId,

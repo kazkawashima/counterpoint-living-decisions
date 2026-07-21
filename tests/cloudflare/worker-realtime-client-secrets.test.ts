@@ -22,6 +22,8 @@ const ORDINARY_USER_ID = "ordinary-worker-c3";
 const FACILITATOR_USER_ID = "facilitator-worker-c3";
 const JUDGE_BEARER = "judge-worker-bearer-token-c3";
 const ORDINARY_BEARER = "ordinary-worker-bearer-token-c3";
+const FACILITATOR_BEARER = "facilitator-worker-bearer-token-c3";
+const SECOND_FACILITATOR_BEARER = "facilitator-worker-second-bearer-token-c3";
 const STANDARD_KEY = "sk-standard-worker-secret-never-exposed-c3";
 
 type WorkerRequest = Parameters<
@@ -123,6 +125,22 @@ async function seedJudgeFixture(): Promise<void> {
     tokenHash: await tokens.digest(ORDINARY_BEARER),
     userId: ORDINARY_USER_ID,
   });
+  await sessions.put({
+    absoluteExpiresAt,
+    createdAt: now.toISOString(),
+    lastActivityAt: now.toISOString(),
+    sessionId: "session-worker-facilitator-c3",
+    tokenHash: await tokens.digest(FACILITATOR_BEARER),
+    userId: FACILITATOR_USER_ID,
+  });
+  await sessions.put({
+    absoluteExpiresAt,
+    createdAt: now.toISOString(),
+    lastActivityAt: now.toISOString(),
+    sessionId: "session-worker-facilitator-second-c3",
+    tokenHash: await tokens.digest(SECOND_FACILITATOR_BEARER),
+    userId: FACILITATOR_USER_ID,
+  });
 }
 
 function request(bearerToken: string): WorkerRequest {
@@ -143,6 +161,140 @@ function request(bearerToken: string): WorkerRequest {
 }
 
 describe("Cloudflare Worker judge-managed Realtime client secrets", () => {
+  it("reports an unknown API route truthfully instead of blaming artifact storage", async () => {
+    const response = await createWorkerHandler().fetch!(
+      new Request(
+        "https://counterpoint.test/api/v1/definitely-not-a-route",
+      ) as unknown as WorkerRequest,
+      workerEnv({}),
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ROUTE_NOT_FOUND",
+      retryable: false,
+    });
+  });
+
+  it("persists an ordinary facilitator BYOK lease only in the meeting coordinator lifecycle", async () => {
+    await seedJudgeFixture();
+    const configuredEnv = workerEnv({ JUDGE_USER_ID });
+    const handler = createWorkerHandler();
+    const meetingPath = `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}`;
+    const call = (path: string, method: string, body?: unknown) =>
+      handler.fetch!(
+        new Request(`https://counterpoint.test${path}`, {
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          headers: {
+            authorization: `Bearer ${FACILITATOR_BEARER}`,
+            ...(body === undefined
+              ? {}
+              : { "content-type": "application/json" }),
+          },
+          method,
+        }) as unknown as WorkerRequest,
+        configuredEnv,
+        {} as ExecutionContext,
+      );
+
+    const before = await call(`${meetingPath}/realtime/access`, "GET");
+    expect(before.status).toBe(200);
+    await expect(before.json()).resolves.toMatchObject({ mode: "unavailable" });
+
+    const configured = await call(`${meetingPath}/byok`, "PUT", {
+      apiKey: STANDARD_KEY,
+      meetingId: MEETING_ID,
+    });
+    expect(configured.status).toBe(201);
+    const configuredText = await configured.clone().text();
+    await expect(configured.json()).resolves.toMatchObject({
+      configured: true,
+      keySource: "byok",
+      meetingId: MEETING_ID,
+    });
+    expect(configuredText).not.toContain(STANDARD_KEY);
+
+    const active = await call(`${meetingPath}/realtime/access`, "GET");
+    expect(active.status).toBe(200);
+    await expect(active.json()).resolves.toMatchObject({
+      mode: "facilitatorProvided",
+    });
+
+    const heartbeat = await call(`${meetingPath}/byok/heartbeat`, "POST", {
+      meetingId: MEETING_ID,
+    });
+    expect(heartbeat.status).toBe(200);
+    await expect(heartbeat.json()).resolves.toMatchObject({ active: true });
+
+    const cleared = await call(`${meetingPath}/byok`, "DELETE", {
+      meetingId: MEETING_ID,
+    });
+    expect(cleared.status).toBe(200);
+    await expect(cleared.json()).resolves.toMatchObject({ cleared: true });
+
+    const after = await call(`${meetingPath}/realtime/access`, "GET");
+    expect(after.status).toBe(200);
+    await expect(after.json()).resolves.toMatchObject({ mode: "unavailable" });
+  });
+
+  it("clears a meeting BYOK lease on logout so another facilitator session can own it", async () => {
+    await seedJudgeFixture();
+    const configuredEnv = workerEnv({ JUDGE_USER_ID });
+    const handler = createWorkerHandler();
+    const meetingPath = `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}`;
+    const configure = (bearer: string, apiKey: string) =>
+      handler.fetch!(
+        new Request(`https://counterpoint.test${meetingPath}/byok`, {
+          body: JSON.stringify({ apiKey, meetingId: MEETING_ID }),
+          headers: {
+            authorization: `Bearer ${bearer}`,
+            "content-type": "application/json",
+          },
+          method: "PUT",
+        }) as unknown as WorkerRequest,
+        configuredEnv,
+        {} as ExecutionContext,
+      );
+
+    expect((await configure(FACILITATOR_BEARER, STANDARD_KEY)).status).toBe(
+      201,
+    );
+    const logout = await handler.fetch!(
+      new Request("https://counterpoint.test/api/v1/logout", {
+        body: JSON.stringify({}),
+        headers: {
+          authorization: `Bearer ${FACILITATOR_BEARER}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }) as unknown as WorkerRequest,
+      configuredEnv,
+      {} as ExecutionContext,
+    );
+    expect(logout.status).toBe(200);
+
+    const replacement = await configure(
+      SECOND_FACILITATOR_BEARER,
+      "sk-synthetic-replacement-key-never-returned",
+    );
+    expect(replacement.status).toBe(201);
+
+    const cleared = await handler.fetch!(
+      new Request(`https://counterpoint.test${meetingPath}/byok`, {
+        body: JSON.stringify({ meetingId: MEETING_ID }),
+        headers: {
+          authorization: `Bearer ${SECOND_FACILITATOR_BEARER}`,
+          "content-type": "application/json",
+        },
+        method: "DELETE",
+      }) as unknown as WorkerRequest,
+      configuredEnv,
+      {} as ExecutionContext,
+    );
+    expect(cleared.status).toBe(200);
+  });
+
   it("keeps direct judge client-secret issuance disabled so usage control cannot be bypassed", async () => {
     await seedJudgeFixture();
     const configuredEnv = workerEnv({

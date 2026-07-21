@@ -20,20 +20,15 @@ import {
   handleIssueRealtimeClientSecretHttp,
   handleRealtimeAccessHttp,
 } from "@counterpoint/http-api";
-import type {
-  MeetingApiKeyLease,
-  MeetingApiKeyLeaseConfigureResult,
-  MeetingApiKeyLeaseMutationResult,
-  MeetingApiKeyLeaseStore,
-} from "@counterpoint/ports";
 import {
   CURRENT_PROTOCOL_VERSION,
   HealthResponseSchema,
   ReadinessResponseSchema,
-  createErrorEnvelope,
 } from "@counterpoint/protocol";
 
 import type { MeetingCoordinator } from "./meeting-coordinator.js";
+import { MeetingCoordinatorApiKeyLeaseStore } from "./meeting-api-key-leases.js";
+import { handleMeetingByokHttp } from "./meeting-byok-http.js";
 import { resolveJudgeIpReservationInput } from "./judge-ip-reservation.js";
 import { createJudgeRealtimeUsageLimiter } from "./judge-realtime-call-controller.js";
 import { handleJudgeManagedRealtimeHttp } from "./judge-managed-realtime-http.js";
@@ -138,26 +133,6 @@ interface DependencyProbe {
 interface MigrationRow {
   readonly name: string;
 }
-
-const unavailableLeases: MeetingApiKeyLeaseStore = {
-  clear(): Promise<MeetingApiKeyLeaseMutationResult> {
-    return Promise.resolve({ kind: "missing" });
-  },
-  clearBySession(): Promise<void> {
-    return Promise.resolve();
-  },
-  configure(): Promise<MeetingApiKeyLeaseConfigureResult> {
-    return Promise.reject(
-      new Error("Worker BYOK configuration route is not available"),
-    );
-  },
-  findByMeeting(): Promise<MeetingApiKeyLease | undefined> {
-    return Promise.resolve(undefined);
-  },
-  heartbeat(): Promise<MeetingApiKeyLeaseMutationResult> {
-    return Promise.resolve({ kind: "missing" });
-  },
-};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, {
@@ -400,23 +375,6 @@ async function readinessResponse(env: Env): Promise<Response> {
     status: ready ? "ready" : "not_ready",
   });
   return jsonResponse(body, ready ? 200 : 503);
-}
-
-function apiParityPendingResponse(): Response {
-  const correlationId = crypto.randomUUID();
-  return Response.json(
-    createErrorEnvelope({
-      code: "ARTIFACT_STORAGE_UNAVAILABLE",
-      correlationId,
-    }),
-    {
-      headers: {
-        ...JSON_HEADERS,
-        "x-correlation-id": correlationId,
-      },
-      status: 503,
-    },
-  );
 }
 
 export function createWorkerHandler(
@@ -747,6 +705,19 @@ export function createWorkerHandler(
                     judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
                   },
                 }),
+            onSessionLogout: async ({ sessionId, userId }) => {
+              const assignedMeetings = await new D1MeetingRepository(
+                env.DB,
+              ).listAssigned(userId);
+              await Promise.allSettled(
+                assignedMeetings.map(({ meetingId: assignedMeetingId }) =>
+                  new MeetingCoordinatorApiKeyLeaseStore(
+                    assignedMeetingId,
+                    meetingCoordinatorFor(env, assignedMeetingId),
+                  ).clearBySession(sessionId),
+                ),
+              );
+            },
             ...judgeStructuredAi,
           },
           ...(meetingId === undefined ? {} : { meetingId }),
@@ -758,6 +729,10 @@ export function createWorkerHandler(
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/client-secrets$/u.exec(
           url.pathname,
         );
+      const meetingByokRoute =
+        /^\/api\/v1\/meetings\/([^/]+)\/byok(?:\/(heartbeat))?$/u.exec(
+          url.pathname,
+        );
       const realtimeAccessRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/realtime\/access$/u.exec(url.pathname);
       const managedRealtimeCallRoute =
@@ -766,6 +741,55 @@ export function createWorkerHandler(
         );
       const judgeUsageRoute =
         /^\/api\/v1\/meetings\/([^/]+)\/judge\/usage$/u.exec(url.pathname);
+      const meetingByokOperation =
+        request.method === "PUT" &&
+        meetingByokRoute !== null &&
+        meetingByokRoute[2] === undefined
+          ? "configure"
+          : request.method === "POST" && meetingByokRoute?.[2] === "heartbeat"
+            ? "heartbeat"
+            : request.method === "DELETE" &&
+                meetingByokRoute !== null &&
+                meetingByokRoute[2] === undefined
+              ? "clear"
+              : undefined;
+      if (
+        meetingByokOperation !== undefined &&
+        meetingByokRoute?.[1] !== undefined
+      ) {
+        const correlationId = crypto.randomUUID();
+        let meetingId: string;
+        try {
+          meetingId = decodeURIComponent(meetingByokRoute[1]);
+        } catch {
+          return apiErrorResponse("VALIDATION_FAILED", correlationId);
+        }
+        const clock = { now: () => new Date().toISOString() };
+        const tokens = new WebCryptoSessionTokenIssuer();
+        const allowlistedJudgeUserId = judgeUserId(env);
+        return handleMeetingByokHttp({
+          correlationId,
+          dependencies: {
+            authorizationPolicy:
+              allowlistedJudgeUserId === undefined
+                ? {}
+                : {
+                    judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
+                  },
+            clock,
+            leases: new MeetingCoordinatorApiKeyLeaseStore(
+              meetingId,
+              meetingCoordinatorFor(env, meetingId),
+            ),
+            meetings: new D1MeetingRepository(env.DB),
+            sessions: new D1SessionRepository(env.DB),
+            tokens,
+          },
+          meetingId,
+          operation: meetingByokOperation,
+          request,
+        });
+      }
       if (request.method === "GET" && judgeUsageRoute?.[1] !== undefined) {
         const correlationId = crypto.randomUUID();
         let meetingId: string;
@@ -816,6 +840,10 @@ export function createWorkerHandler(
           return apiErrorResponse("VALIDATION_FAILED", correlationId);
         }
         const clock = { now: () => new Date().toISOString() };
+        const leases = new MeetingCoordinatorApiKeyLeaseStore(
+          meetingId,
+          meetingCoordinatorFor(env, meetingId),
+        );
         return handleRealtimeAccessHttp({
           correlationId,
           dependencies: {
@@ -831,7 +859,7 @@ export function createWorkerHandler(
               clock,
               judgeManagedAvailable: judgeManagedRealtimeRouteEnabled(env),
               judgeUsageSummaryAvailable: true,
-              leases: unavailableLeases,
+              leases,
             },
             sessions: new D1SessionRepository(env.DB),
             tokens,
@@ -917,6 +945,11 @@ export function createWorkerHandler(
         } catch {
           return apiErrorResponse("VALIDATION_FAILED", correlationId);
         }
+        const clock = { now: () => new Date().toISOString() };
+        const leases = new MeetingCoordinatorApiKeyLeaseStore(
+          meetingId,
+          meetingCoordinatorFor(env, meetingId),
+        );
         return handleIssueRealtimeClientSecretHttp({
           correlationId,
           dependencies: {
@@ -926,15 +959,15 @@ export function createWorkerHandler(
                 : {
                     judgeManagedAiUserIds: new Set([allowlistedJudgeUserId]),
                   },
-            clock: { now: () => new Date().toISOString() },
+            clock,
             judgeByokIssuerFactory: (apiKey) =>
               new OpenAiManagedRealtimeClientSecretIssuer({ apiKey }),
             meetings: new D1MeetingRepository(env.DB),
             realtimeSecrets: {
-              clock: { now: () => new Date().toISOString() },
+              clock,
               hashSafetyIdentifier: (value) => tokens.digest(value),
               issuer: new OpenAiRealtimeClientSecretIssuer(),
-              leases: unavailableLeases,
+              leases,
             },
             sessions: new D1SessionRepository(env.DB),
             tokens,
@@ -944,7 +977,7 @@ export function createWorkerHandler(
         });
       }
       if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-        return apiParityPendingResponse();
+        return apiErrorResponse("ROUTE_NOT_FOUND", crypto.randomUUID());
       }
       return env.ASSETS.fetch(request);
     },

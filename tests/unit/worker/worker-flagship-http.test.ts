@@ -794,6 +794,42 @@ async function responseBody(
 }
 
 describe("Worker private-disclosure boundary", () => {
+  it("revokes transient meeting credentials after the durable session logout", async () => {
+    const fixtureValue = await fixture();
+    const revoked = vi.fn(() => Promise.resolve());
+    const onSessionLogout = vi.fn(() => Promise.resolve());
+    const response = await handleWorkerFlagshipHttp({
+      correlationId: "correlation-worker-logout",
+      dependencies: {
+        ...fixtureValue.dependencies,
+        onSessionLogout,
+        sessions: {
+          ...fixtureValue.dependencies.sessions,
+          revoke: revoked,
+        },
+      },
+      operation: "logout",
+      request: new Request("https://counterpoint.test/api/v1/logout", {
+        body: JSON.stringify({}),
+        headers: {
+          authorization: `Bearer ${BEARER}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(revoked).toHaveBeenCalledWith(SESSION_ID, NOW);
+    expect(onSessionLogout).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+    });
+    expect(revoked.mock.invocationCallOrder[0]).toBeLessThan(
+      onSessionLogout.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it.each(["evidence", "decisions"] as const)(
     "does not read private source bodies for the shared %s list",
     async (operation) => {

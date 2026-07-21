@@ -7,6 +7,7 @@ export const ERROR_CODES = [
   "SESSION_EXPIRED",
   "FORBIDDEN",
   "MEETING_NOT_FOUND",
+  "ROUTE_NOT_FOUND",
   "VALIDATION_FAILED",
   "CONFLICT",
   "IDEMPOTENCY_CONFLICT",
@@ -49,6 +50,10 @@ export const ERROR_CODE_REGISTRY = {
   },
   MEETING_NOT_FOUND: {
     message: "The meeting was not found.",
+    retryable: false,
+  },
+  ROUTE_NOT_FOUND: {
+    message: "The API route was not found.",
     retryable: false,
   },
   VALIDATION_FAILED: {

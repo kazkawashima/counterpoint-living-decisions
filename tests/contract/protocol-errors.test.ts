@@ -13,8 +13,8 @@ import {
 } from "@counterpoint/protocol";
 
 describe("safe protocol error contract", () => {
-  it("registers all 21 stable machine codes", () => {
-    expect(ERROR_CODES).toHaveLength(21);
+  it("registers all 22 stable machine codes", () => {
+    expect(ERROR_CODES).toHaveLength(22);
     expect(Object.keys(ERROR_CODE_REGISTRY)).toEqual([...ERROR_CODES]);
 
     for (const code of ERROR_CODES) {
@@ -42,6 +42,7 @@ describe("safe protocol error contract", () => {
     expect(isRetryableErrorCode("SHARED_FLOOR_BUSY")).toBe(true);
     expect(isRetryableErrorCode("INVALID_STATE_TRANSITION")).toBe(false);
     expect(isRetryableErrorCode("VALIDATION_FAILED")).toBe(false);
+    expect(isRetryableErrorCode("ROUTE_NOT_FOUND")).toBe(false);
 
     expect(
       ErrorEnvelopeSchema.safeParse({
