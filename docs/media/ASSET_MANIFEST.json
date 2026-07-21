@@ -1112,6 +1112,17 @@
       "sha256": "2513faf380706ecec141b0698b5e9e55fb8fbc4b888a665798ca606f3051d176"
     },
     {
+      "bytes": 179715,
+      "mediaType": "image/png",
+      "path": "docs/media/screenshots/realtime-recovery/2026-07-22-microphone-permission-recovery.png",
+      "creator": "Descant project via committed Playwright browser scenario",
+      "license": "Apache-2.0",
+      "origin": "First-party Descant UI capture generated from synthetic fixtures; no microphone audio or browser device detail is present",
+      "syntheticData": true,
+      "thirdPartyMedia": false,
+      "sha256": "c468f4fdca29a4ebf749f67924d1a2a8911ca27578e0ef455f6b68bb65e48493"
+    },
+    {
       "bytes": 306537,
       "mediaType": "image/png",
       "path": "docs/media/screenshots/realtime-recovery/2026-07-22-worker-byok-both-connected.png",

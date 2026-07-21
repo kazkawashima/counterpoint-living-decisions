@@ -13,6 +13,13 @@ export type RealtimeManagedFailureReason =
   | "PROVIDER_REJECTED"
   | "PROVIDER_SDP_INVALID"
   | "PROVIDER_UNAVAILABLE";
+export type RealtimeMediaFailureReason =
+  | "MICROPHONE_NOT_FOUND"
+  | "MICROPHONE_PERMISSION_DENIED"
+  | "MICROPHONE_TRACK_ATTACH_FAILED"
+  | "MICROPHONE_UNAVAILABLE";
+export type RealtimeFailureReason =
+  RealtimeManagedFailureReason | RealtimeMediaFailureReason;
 export type OpenAiRealtimeStatus =
   "off" | "connecting" | "connected" | "reconnecting" | "degraded";
 
@@ -185,7 +192,7 @@ export class RealtimeConnectionStageError extends Error {
     readonly stage: RealtimeFailureStage,
     message: string,
     readonly retryable = true,
-    readonly safeReason?: RealtimeManagedFailureReason,
+    readonly safeReason?: RealtimeFailureReason,
   ) {
     super(message);
     this.name = "RealtimeConnectionStageError";
@@ -220,6 +227,32 @@ function safeManagedFailureReason(
     return undefined;
   }
   return error.details.reason as RealtimeManagedFailureReason;
+}
+
+function safeMediaFailureReason(
+  error: unknown,
+): RealtimeMediaFailureReason | undefined {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("name" in error) ||
+    typeof error.name !== "string"
+  ) {
+    return undefined;
+  }
+  switch (error.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "MICROPHONE_PERMISSION_DENIED";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "MICROPHONE_NOT_FOUND";
+    case "AbortError":
+    case "NotReadableError":
+      return "MICROPHONE_UNAVAILABLE";
+    default:
+      return undefined;
+  }
 }
 
 function isPermanentConnectionFailure(
@@ -615,10 +648,12 @@ export async function connectOpenAiRealtime(
         let stream: RealtimeMediaStream;
         try {
           stream = await mediaFactory();
-        } catch {
+        } catch (cause) {
           throw new RealtimeConnectionStageError(
             "media",
             "Microphone setup failed.",
+            true,
+            safeMediaFailureReason(cause),
           );
         }
         const track = stream.getAudioTracks()[0];
@@ -629,6 +664,8 @@ export async function connectOpenAiRealtime(
           throw new RealtimeConnectionStageError(
             "media",
             "Microphone setup failed.",
+            true,
+            "MICROPHONE_NOT_FOUND",
           );
         }
         track.enabled = false;
@@ -646,6 +683,8 @@ export async function connectOpenAiRealtime(
           throw new RealtimeConnectionStageError(
             "media",
             "Microphone setup failed.",
+            true,
+            "MICROPHONE_TRACK_ATTACH_FAILED",
           );
         }
       },
@@ -814,10 +853,12 @@ export async function connectManagedOpenAiRealtime(
         let stream: RealtimeMediaStream;
         try {
           stream = await mediaFactory();
-        } catch {
+        } catch (cause) {
           throw new RealtimeConnectionStageError(
             "media",
             "Microphone setup failed.",
+            true,
+            safeMediaFailureReason(cause),
           );
         }
         const track = stream.getAudioTracks()[0];
@@ -828,6 +869,8 @@ export async function connectManagedOpenAiRealtime(
           throw new RealtimeConnectionStageError(
             "media",
             "Microphone setup failed.",
+            true,
+            "MICROPHONE_NOT_FOUND",
           );
         }
         track.enabled = false;
@@ -842,6 +885,8 @@ export async function connectManagedOpenAiRealtime(
           throw new RealtimeConnectionStageError(
             "media",
             "Microphone setup failed.",
+            true,
+            "MICROPHONE_TRACK_ATTACH_FAILED",
           );
         }
         try {

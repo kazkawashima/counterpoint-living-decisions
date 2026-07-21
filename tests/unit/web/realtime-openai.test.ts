@@ -425,6 +425,7 @@ describe("OpenAI Realtime browser lifecycle", () => {
     expect(failure).toMatchObject({
       code: "REALTIME_CONNECT_FAILED",
       message: "Microphone setup failed.",
+      safeReason: "MICROPHONE_TRACK_ATTACH_FAILED",
       stage: "media",
     });
     expect(String(failure)).not.toContain("cleanup detail");
@@ -458,6 +459,68 @@ describe("OpenAI Realtime browser lifecycle", () => {
     });
     expect(String(failure)).not.toContain("hardware identifier");
   });
+
+  it("preserves an allowlisted microphone permission reason for recovery", async () => {
+    const peer = new FakePeer();
+    const connection = await connectOpenAiRealtime({
+      clientSecret: "ek_ephemeral_only",
+      fetch: successfulFetch(),
+      mediaFactory: () =>
+        Promise.reject(
+          new DOMException(
+            "private browser permission detail",
+            "NotAllowedError",
+          ),
+        ),
+      peerFactory: () => peer,
+    });
+
+    const failure = await connection
+      .startPushToTalk()
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "REALTIME_CONNECT_FAILED",
+      message: "Microphone setup failed.",
+      retryable: true,
+      safeReason: "MICROPHONE_PERMISSION_DENIED",
+      stage: "media",
+    });
+    expect(JSON.stringify(failure)).not.toContain(
+      "private browser permission detail",
+    );
+  });
+
+  it.each([
+    ["SecurityError", "MICROPHONE_PERMISSION_DENIED"],
+    ["NotFoundError", "MICROPHONE_NOT_FOUND"],
+    ["OverconstrainedError", "MICROPHONE_NOT_FOUND"],
+    ["NotReadableError", "MICROPHONE_UNAVAILABLE"],
+    ["AbortError", "MICROPHONE_UNAVAILABLE"],
+  ] as const)(
+    "classifies %s without exposing browser microphone detail",
+    async (name, safeReason) => {
+      const peer = new FakePeer();
+      const connection = await connectOpenAiRealtime({
+        clientSecret: "ek_ephemeral_only",
+        fetch: successfulFetch(),
+        mediaFactory: () =>
+          Promise.reject(new DOMException("private device detail", name)),
+        peerFactory: () => peer,
+      });
+
+      const failure = await connection
+        .startPushToTalk()
+        .catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        code: "REALTIME_CONNECT_FAILED",
+        safeReason,
+        stage: "media",
+      });
+      expect(JSON.stringify(failure)).not.toContain("private device detail");
+    },
+  );
 
   it("preserves a media failure through the controller push-to-talk boundary", async () => {
     const peer = new FakePeer();
@@ -1222,6 +1285,7 @@ describe("OpenAI Realtime browser lifecycle", () => {
       code: "REALTIME_CONNECT_FAILED",
       message: "Microphone setup failed.",
       retryable: true,
+      safeReason: "MICROPHONE_NOT_FOUND",
       stage: "media",
     });
     expect(peer.closed).toBe(false);

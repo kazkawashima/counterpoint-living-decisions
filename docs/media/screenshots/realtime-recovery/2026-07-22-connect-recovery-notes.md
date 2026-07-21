@@ -35,3 +35,14 @@ credentials. No production API key or private user content is present.
   Worker with synthetic browser credentials and SDP
 - Branch/change: `codex/flagship-reliability`, Task 3/4 Worker BYOK and browser
   recovery integration
+
+## `2026-07-22-microphone-permission-recovery.png`
+
+- Change: preserve an allowlisted browser microphone failure reason instead of
+  collapsing every media failure into one generic message
+- State: judge-funded Private agent remains connected after a synthetic denied
+  microphone request; the UI explains how to allow the site permission and
+  retry without exposing browser or device details
+- Viewport: 1440 × 900 desktop, reduced motion
+- Source: `tests/e2e/realtime-channels.spec.ts`, synthetic Node browser fixture
+- Branch/change: `codex/flagship-reliability`, microphone recovery classification

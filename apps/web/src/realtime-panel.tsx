@@ -33,6 +33,7 @@ import {
   connectOpenAiRealtime,
   createOpenAiRealtimeController,
   RealtimeConnectionStageError,
+  type RealtimeFailureReason,
   type OpenAiRealtimeChannel,
   type OpenAiRealtimeController,
   type OpenAiRealtimeState,
@@ -96,6 +97,17 @@ const managedFailureReasonMessage = {
   PROVIDER_UNAVAILABLE:
     "Realtime provider could not be reached. Text remains available; retry.",
 } as const;
+const failureReasonMessage: Readonly<Record<RealtimeFailureReason, string>> = {
+  ...managedFailureReasonMessage,
+  MICROPHONE_NOT_FOUND:
+    "No microphone was found. Connect or select an input device, then hold to speak again.",
+  MICROPHONE_PERMISSION_DENIED:
+    "Microphone permission is blocked. Allow it in browser site settings, then hold to speak again.",
+  MICROPHONE_TRACK_ATTACH_FAILED:
+    "The microphone could not join this Realtime session. Disconnect and reconnect the channel, then try again.",
+  MICROPHONE_UNAVAILABLE:
+    "The microphone is busy or unavailable. Close other tabs or apps using it, then hold to speak again.",
+};
 
 function managedFailureDetail(error: ApiError): string | undefined {
   if (
@@ -116,7 +128,7 @@ function managedFailureDetail(error: ApiError): string | undefined {
 function safeMessage(error: unknown): string {
   if (error instanceof RealtimeConnectionStageError) {
     if (error.safeReason !== undefined) {
-      return managedFailureReasonMessage[error.safeReason];
+      return failureReasonMessage[error.safeReason];
     }
     return connectionStageMessage[error.stage];
   }
@@ -654,11 +666,7 @@ export function RealtimePanel({
         );
       } else {
         setSpeechState("error");
-        setSpeechStatus(
-          cause instanceof DOMException && cause.name === "NotAllowedError"
-            ? "Microphone permission was denied. Nothing was recorded; use text."
-            : safeMessage(cause),
-        );
+        setSpeechStatus(safeMessage(cause));
       }
     }
   }

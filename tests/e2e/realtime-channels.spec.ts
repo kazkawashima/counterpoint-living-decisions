@@ -23,8 +23,11 @@ const realtimeRecoveryScreenshotDirectory = evidenceDirectory(
 );
 const standardApiKey = "sk-synthetic-e2e-standard-key-never-exposed";
 
-async function installSyntheticWebRtc(context: BrowserContext) {
-  await context.addInitScript(() => {
+async function installSyntheticWebRtc(
+  context: BrowserContext,
+  microphoneFailureName?: string,
+) {
+  await context.addInitScript((failureName) => {
     const lifecycle = {
       peerCloses: 0,
       peersCreated: 0,
@@ -133,12 +136,16 @@ async function installSyntheticWebRtc(context: BrowserContext) {
       configurable: true,
       value: {
         getUserMedia: () =>
-          Promise.resolve({
-            getAudioTracks: () => [syntheticTrack()],
-          }),
+          failureName === undefined
+            ? Promise.resolve({
+                getAudioTracks: () => [syntheticTrack()],
+              })
+            : Promise.reject(
+                new DOMException("Synthetic private detail", failureName),
+              ),
       },
     });
-  });
+  }, microphoneFailureName);
 }
 
 async function signIn(page: Page, identity: string, password: string) {
@@ -975,6 +982,87 @@ test("server-funded judge access uses ephemeral direct WebRTC for private and sh
   });
   expect(directProviderRequests).toBe(3);
   expect(managedCallRequests).toBe(0);
+  await context.close();
+});
+
+test("keeps judge Realtime connected and explains blocked microphone recovery", async ({
+  baseURL,
+  browser,
+}) => {
+  const context = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { height: 900, width: 1440 },
+  });
+  await installSyntheticWebRtc(context, "NotAllowedError");
+  const meetingId = "meeting-global-ai-rollout";
+
+  await context.route("**/api/v1/meetings/*/realtime/access", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        correlationId: "correlation-microphone-access",
+        mode: "judgeManaged",
+        usageSummary: "hidden",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await context.route(
+    "**/api/v1/meetings/*/realtime/client-secrets",
+    async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({
+          channel: "private",
+          clientSecret: "ek_synthetic_permission_recovery",
+          correlationId: "correlation-permission-recovery",
+          expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          keySource: "judgeManaged",
+          meetingId,
+          model: "gpt-realtime-2.1",
+        }),
+        contentType: "application/json",
+        status: 201,
+      });
+    },
+  );
+  await context.route(
+    "https://api.openai.com/v1/realtime/calls",
+    async (route) => {
+      await route.fulfill({
+        body: "v=0\r\no=openai 5 5 IN IP4 127.0.0.1\r\ns=Permission recovery synthetic answer\r\nt=0 0\r\n",
+        contentType: "application/sdp",
+        status: 200,
+      });
+    },
+  );
+
+  const page = await context.newPage();
+  await page.goto(baseURL ?? "/");
+  await signIn(page, "Product", "counterpoint-product");
+  const privateCard = page
+    .getByRole("article")
+    .filter({ hasText: "Private agent" });
+  await privateCard.getByRole("button", { name: "Connect" }).click();
+  await expect(
+    privateCard.getByText("Connected", { exact: true }),
+  ).toBeVisible();
+
+  const speechControls = page.getByRole("region", {
+    name: "Explicit speech controls",
+  });
+  await speechControls
+    .getByRole("button", { name: /Hold to speak privately/u })
+    .press("Space");
+  await expect(speechControls.getByRole("alert")).toContainText(
+    "Microphone permission is blocked. Allow it in browser site settings, then hold to speak again.",
+  );
+  await expect(
+    privateCard.getByText("Connected", { exact: true }),
+  ).toBeVisible();
+  await speechControls.screenshot({
+    animations: "disabled",
+    path: `${realtimeRecoveryScreenshotDirectory}/2026-07-22-microphone-permission-recovery.png`,
+  });
   await context.close();
 });
 

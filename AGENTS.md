@@ -126,6 +126,12 @@ configuration.
   internal D1 idempotency/fingerprint fields, which are a different contract.
   Keep RED/GREEN coverage at the Worker-to-Durable-Object boundary and in the
   OpenAI adapter so an overlength identifier is rejected before provider work.
+- Browser microphone failures must retain only an allowlisted recovery reason
+  across the Realtime controller boundary. Do not collapse permission denial,
+  missing input devices, busy devices, and track-attachment failures into one
+  unactionable message, and never expose raw DOMException text or device
+  details. A media failure must leave the connected channel reusable so the
+  user can correct browser settings and retry without reconnecting.
 - This invariant exists because production commit `ff46f37` was first deployed
   without the two judge-mode render inputs. That deployment preserved the
   secret names but rendered both judge routes disabled and omitted

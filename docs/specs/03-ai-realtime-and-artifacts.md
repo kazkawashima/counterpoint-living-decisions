@@ -124,6 +124,11 @@ input system, not conferencing.
 - Private speech should use a headset.
 - A one-person multi-tab demo activates a microphone in only one tab.
 - Text input is always present and produces equivalent domain commands.
+- Browser media failures expose only an allowlisted recovery category:
+  permission blocked, input device missing, input device unavailable, or
+  Realtime track attachment failed. Raw browser and device details remain
+  private, and a failed microphone request does not disconnect an otherwise
+  healthy channel so the user can correct the setting and retry.
 
 Connections are established when needed and closed after inactivity. Shared
 event reception does not automatically trigger generation in every private

@@ -1587,3 +1587,21 @@ judge-enabled follow-up are recorded in the section below.
   Shared room agent successfully. The judge ephemeral Realtime recovery slice
   is complete; hosted C5 and the timed three-minute rehearsal remain separate
   goal gates.
+
+## 2026-07-22 Microphone recovery classification
+
+- Hosted testing reached a healthy judge Realtime connection but the first
+  push-to-talk attempt rendered only `Microphone setup failed.`. Investigation
+  found that the Realtime adapter caught the browser DOMException and discarded
+  its reason before the panel's permission-specific branch, making that branch
+  unreachable.
+- The browser boundary now retains only four allowlisted recovery categories:
+  permission blocked, input missing, input unavailable, and track attachment
+  failed. Raw browser/device text remains redacted, the Realtime channel stays
+  connected after media failure, and the UI tells the user how to correct the
+  setting and retry.
+- RED/GREEN evidence covers the adapter classification and the judge direct
+  browser path. The focused unit suite passes `54/54`; the browser E2E proves a
+  synthetic `NotAllowedError` becomes the site-permission recovery message
+  while Private agent remains `Connected`. Synthetic visual evidence is saved
+  under `docs/media/screenshots/realtime-recovery/`.
