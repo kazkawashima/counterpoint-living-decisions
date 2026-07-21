@@ -31,9 +31,9 @@ as the production judge password.
    Cloudflare Worker Secrets. Do not put either value in `vars`, `.env`,
    `.dev.vars`, GitHub files, D1, R2, Durable Object state, browser payloads,
    or logs.
-4. Verify the USD 25 rolling-24-hour application hard cap and all account,
-   IP, meeting, concurrency, generation, token, and Realtime-second limits
-   before allowing a provider request.
+4. Verify the USD 25 rolling-24-hour application hard cap before allowing a
+   provider request. Account, IP, meeting, concurrency, generation, token, and
+   Realtime-second counters are not independent judge locks.
 5. Test judge login and the Flagship from a clean browser context without
    BYOK; test an ordinary user in another context and confirm judge routes are
    denied.

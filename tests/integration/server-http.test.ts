@@ -788,7 +788,7 @@ describe("Node HTTP flagship shell", () => {
       expect.objectContaining({
         meetingId: "meeting-global-ai-rollout",
         participantId: "participant-safety",
-        purpose: "Work & Productivity — Global AI Product Rollout",
+        purpose: "Global AI Product Rollout",
         role: "participant",
       }),
     ]);
@@ -1691,7 +1691,7 @@ describe("Node HTTP flagship shell", () => {
     expect(projection).toMatchObject({
       meeting: {
         meetingId,
-        purpose: "Work & Productivity — Global AI Product Rollout",
+        purpose: "Global AI Product Rollout",
       },
       shared: { position: 1 },
     });
@@ -1793,7 +1793,7 @@ describe("Node HTTP flagship shell", () => {
     });
     expect(JSON.stringify(wrongMeetingBody)).not.toContain("shared");
     expect(JSON.stringify(wrongMeetingBody)).not.toContain(
-      "Work & Productivity — Global AI Product Rollout",
+      "Global AI Product Rollout",
     );
 
     clock.advance(DISPLAY_TOKEN_TTL_MS - 1);
@@ -1818,7 +1818,7 @@ describe("Node HTTP flagship shell", () => {
     });
     expect(JSON.stringify(expiryBody)).not.toContain("shared");
     expect(JSON.stringify(expiryBody)).not.toContain(
-      "Work & Productivity — Global AI Product Rollout",
+      "Global AI Product Rollout",
     );
   });
 

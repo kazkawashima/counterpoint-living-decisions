@@ -1,7 +1,7 @@
 # Grounded Decision commitment reel notes
 
 All captures use the explicitly labeled synthetic flagship story
-`Work & Productivity — Global AI Product Rollout`. The private note, shared
+`Global AI Product Rollout`. The private note, shared
 Evidence, model output, participant identities, and Decision content are demo
 fixtures; no user data or production credential appears in the material.
 

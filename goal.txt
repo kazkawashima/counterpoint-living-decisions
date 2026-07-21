@@ -27,7 +27,7 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - Worker側には judge allowlist、別HMACによるIP擬似化、D1予約台帳、opaque call
   handle、rolling 24時間 USD 25 hard cap、`USAGE_LIMIT_REACHED` の基盤がある。
   現行judgeの予算ロックはこの総額だけで、account/IP/meeting/generation/token/
-  Realtime秒の二次ロックは解除している（同時実行1件だけは技術的安全策）。
+  Realtime秒・同時実行数の二次ロックは解除している。
 - providerのUSD 50 alertは二次警告であり、アプリ側のUSD 25制限の代替ではない。
 - 2026-07-21、managed Realtime/structured AIの再送・並行開始・meeting越境・
   session/owner差替え・終了競合・二重課金防止の対象スイートを再実行し、Cloudflare
@@ -203,8 +203,8 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
       発行にだけ使う。普通のユーザーはjudge keyを選択・継承・利用できず、server-funded
       credentialやprovider call IDはbrowser response/logへ出ない。
 - [x] rolling 24時間 USD 25だけをアプリ側hard capとして強制し、USD 50 provider alertは
-      二次警告として扱う。同時実行1件は技術的安全策として残し、account/IP pseudonym、
-      meeting、Realtime seconds、generation、tokensの二次ロックはjudgeでは適用しない。
+      二次警告として扱う。account/IP pseudonym、meeting、concurrency、Realtime seconds、
+      generation、tokensの二次ロックはjudgeでは適用しない。
       上限到達時は新規server-funded provider requestを出さず、明示的な
       `USAGE_LIMIT_REACHED` と手動継続を返す。
 - [x] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、

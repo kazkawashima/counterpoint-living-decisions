@@ -1,7 +1,7 @@
 # Assumption invalidation reel notes
 
 All material belongs to the explicitly labeled synthetic flagship story
-`Work & Productivity — Global AI Product Rollout`. The regulation, source,
+`Global AI Product Rollout`. The regulation, source,
 jurisdiction, Decision, premise, Action, evidence, and participant identities
 are fixtures. No real customer data, webhook body, prompt, credential, or
 regulation appears in the captures.

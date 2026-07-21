@@ -117,8 +117,8 @@ Reactアプリ内に次の独立した表示面を持つ。
 - 参加者へ標準APIキーを開示しない。
 - judge modeは審査専用ユーザーだけに許可し、一般ユーザーへserver-funded keyを使用させない。
 - judge modeのserver-funded workはrolling 24時間USD 25だけを費用hard lockとする。
-  同時実行1件はライフサイクル安全策として残し、account/IP/meeting/Realtime接続時間/
-  token/generationの二次ロックは適用しない。
+  account/IP/meeting/concurrency/Realtime接続時間/token/generationの二次ロックは
+  適用しない。重複provider workを防ぐidempotencyと所有権検証は維持する。
 - managed Realtime callはサーバー生成のopaque handleだけをブラウザへ返す。
   reservation、provider call ID、participant、session、key sourceは
   サーバー側で結び、各start/turn/transcript/terminate要求ごとに認証、

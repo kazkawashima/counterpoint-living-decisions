@@ -1,7 +1,7 @@
 # Decision review resolution reel notes
 
 All captures use the explicitly labeled synthetic flagship story
-`Work & Productivity — Global AI Product Rollout`. The Decision, regulation,
+`Global AI Product Rollout`. The Decision, regulation,
 revision text, participant identities, audit trail, and export are fixtures.
 No real customer data, credential, webhook, or regulation appears in the
 material.

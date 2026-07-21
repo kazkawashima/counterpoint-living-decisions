@@ -54,7 +54,7 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Demo path" }),
-  ).toContainText("Product → Work & Productivity → Open workspace");
+  ).toContainText("Product → Global AI Product Rollout → Open workspace");
   await page.screenshot({
     animations: "disabled",
     fullPage: true,
@@ -64,9 +64,15 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   await signIn(page, "Safety", "counterpoint-safety");
   await expect(
     page.getByRole("heading", {
-      name: "Work & Productivity — Global AI Product Rollout",
+      name: "Global AI Product Rollout",
     }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Work & Productivity — Global AI Product Rollout",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await expect(page.getByText("Open the seeded room first")).toBeVisible();
   await expect(page.getByText("participant", { exact: true })).toBeVisible();
   expect(apiRequests.length).toBeGreaterThanOrEqual(2);
@@ -170,7 +176,7 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   await signIn(otherPage, "Engineering", "counterpoint-engineering");
   await otherPage
     .getByRole("article")
-    .filter({ hasText: "Work & Productivity — Global AI Product Rollout" })
+    .filter({ hasText: "Global AI Product Rollout" })
     .getByRole("button", { name: "Open workspace" })
     .click();
   await expect(otherPage.getByText("Permission recorded")).toBeVisible();
@@ -184,7 +190,7 @@ test("login, assigned meeting, and private/shared workspace shell", async ({
   await signIn(facilitatorPage, "Product", "counterpoint-product");
   await facilitatorPage
     .getByRole("article")
-    .filter({ hasText: "Work & Productivity — Global AI Product Rollout" })
+    .filter({ hasText: "Global AI Product Rollout" })
     .getByRole("button", { name: "Open workspace" })
     .click();
   await expect(

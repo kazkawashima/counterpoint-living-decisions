@@ -1385,10 +1385,10 @@ judge-enabled follow-up are recorded in the section below.
 ## 2026-07-21 judge budget and optional BYOK recheck
 
 - Judge budget policy is now intentionally simple: the rolling 24-hour USD 25
-  cost ceiling is the only server-funded spend lock. The one-active-call guard
-  remains as a lifecycle safety control; account/IP/meeting/Realtime-second,
-  generation, and token dimensions are unbounded for judge work and are not
-  rendered in the current usage panel.
+  cost ceiling is the only server-funded spend lock. Account/IP/meeting/
+  concurrency/Realtime-second/generation/token dimensions are unbounded for
+  judge work and are not rendered in the current usage panel. Idempotency and
+  ownership checks remain to prevent duplicate provider work.
 - An exact allowlisted judge can optionally choose `Use my key`. The browser
   keeps the personal key in tab-scoped `sessionStorage`; the Worker accepts it
   only on the authenticated Realtime client-secret request, uses it through a
@@ -1420,3 +1420,29 @@ judge-enabled follow-up are recorded in the section below.
 - Neither deferred gate is claimed complete. The reviewer walkthrough remains
   unchecked until its result is returned; repository public visibility also
   remains a separate explicit release action.
+
+## 2026-07-21 flagship title and cost-only Realtime admission
+
+- The seeded room's public title is now `Global AI Product Rollout`; the
+  submission category `Work & Productivity` remains metadata and is no longer
+  prefixed to the room name or login route cue. Forward migration
+  `0013_rename_flagship_meeting.sql` updates only
+  `meeting-global-ai-rollout`, while Node SQLite migration 5 keeps persisted
+  local environments aligned.
+- Judge admission now uses the rolling 24-hour USD 25 total as its only usage
+  lock. Account, IP, meeting, concurrency, Realtime-second, generation, and
+  token dimensions are set to the unbounded compatibility value. Idempotency,
+  authenticated ownership, and exact replay protection remain because they
+  prevent duplicate provider work rather than rationing legitimate use.
+- A short managed Realtime call reserves USD 12 and settles to provider
+  telemetry on termination. The Worker integration proves that private and
+  shared calls can be active together under USD 25; a further start is denied
+  specifically with `limit=cost` once its reservation would cross the ceiling.
+- The browser E2E exposed and fixed a stale-port hazard: Vite now proxies API,
+  health, and readiness requests to `E2E_API_PORT` instead of always using
+  port 8787. The renamed meeting browser path passed `1/1` twice, including
+  evidence capture, and the managed judge Connect path passed `1/1`.
+- Focused Node/contract tests passed `82/82`, focused Cloudflare tests passed
+  `18/18` and `38/38`, the full contract project passed `150/150`, and
+  typecheck, lint, build, Cloudflare configuration, and media-manifest checks
+  passed.

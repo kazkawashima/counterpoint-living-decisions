@@ -35,7 +35,7 @@ const degradedScreenshotDirectory = evidenceDirectory(
   "screenshots/degraded-mode",
 );
 const degradedClipDirectory = evidenceDirectory("clips/degraded-mode");
-const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
+const FLAGSHIP_PURPOSE = "Global AI Product Rollout";
 
 async function signIn(page: Page, identity: string, password: string) {
   await activateByKeyboard(

@@ -583,10 +583,16 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
           remaining: Number.MAX_SAFE_INTEGER - 1,
           used: 1,
         },
-        concurrency: { limit: 1, remaining: 0, used: 1 },
+        concurrency: {
+          limit: Number.MAX_SAFE_INTEGER,
+          remaining: Number.MAX_SAFE_INTEGER - 1,
+          used: 1,
+        },
         costMicroUsd: {
           limit: 25_000_000,
-          remaining: 12_000_000,
+          remaining:
+            25_000_000 -
+            JUDGE_REALTIME_RESERVED_USAGE.estimatedCostUsd * 1_000_000,
           used: JUDGE_REALTIME_RESERVED_USAGE.estimatedCostUsd * 1_000_000,
         },
         generation: {
@@ -655,6 +661,24 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       code: "CONFLICT",
       details: { reason: "MANAGED_REALTIME_START_ALREADY_CLAIMED" },
     });
+    const parallelStart = await handler.fetch!(
+      request(
+        `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls`,
+        {
+          channel: "shared",
+          idempotencyKey: "managed-worker-parallel-channel",
+          meetingId: MEETING_ID,
+          sdpOffer: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+        },
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(parallelStart.status).toBe(201);
+    const parallelStarted = await jsonBody(parallelStart);
+    const parallelManagedCallId = parallelStarted.managedCallId;
+    expect(typeof parallelManagedCallId).toBe("string");
+    expect(parallelManagedCallId).not.toBe(managedCallId);
     const reservationCount = await env.DB.withSession("first-primary")
       .prepare(
         `
@@ -665,7 +689,7 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
       )
       .bind(JUDGE_USER_ID, MEETING_ID)
       .first<{ readonly count: number }>();
-    expect(reservationCount?.count).toBe(1);
+    expect(reservationCount?.count).toBe(2);
 
     const forbiddenUsage = await handler.fetch!(
       getRequest(usagePath),
@@ -755,6 +779,18 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     await expect(jsonBody(terminate)).resolves.toMatchObject({
       terminated: true,
     });
+    const terminateParallel = await handler.fetch!(
+      request(
+        `/api/v1/meetings/${encodeURIComponent(MEETING_ID)}/realtime/calls/${String(parallelManagedCallId)}/terminate`,
+        { managedCallId: parallelManagedCallId, meetingId: MEETING_ID },
+      ),
+      environment,
+      {} as ExecutionContext,
+    );
+    expect(terminateParallel.status).toBe(200);
+    await expect(jsonBody(terminateParallel)).resolves.toMatchObject({
+      terminated: true,
+    });
 
     const reservation = await env.DB.withSession("first-primary")
       .prepare(
@@ -786,6 +822,7 @@ describe("Cloudflare Worker managed Realtime HTTP", () => {
     expect(nextStart.status).toBe(429);
     await expect(jsonBody(nextStart)).resolves.toMatchObject({
       code: "USAGE_LIMIT_REACHED",
+      details: { limit: "cost" },
     });
     await env.DB.batch([
       env.DB.prepare(

@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
 import { activateByKeyboard } from "../helpers/keyboard.js";
 
-const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
+const FLAGSHIP_PURPOSE = "Global AI Product Rollout";
 const screenshotDirectory = evidenceDirectory("screenshots/accessibility");
 
 test.beforeAll(async () => {

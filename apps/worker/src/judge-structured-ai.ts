@@ -18,9 +18,9 @@ const MICRO_USD_PER_USD = 1_000_000;
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 const LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000;
 const PRIVATE_DISCLOSURE_RESERVED_COST_MICRO_USD = 5_500_000;
-// The only rolling budget lock is the USD 25 cost ceiling. The other
-// dimensions remain representable in the protocol but are intentionally
-// unbounded for the judge; concurrency is retained as lifecycle safety.
+// The only judge usage lock is the rolling USD 25 cost ceiling. Every other
+// dimension remains representable for protocol compatibility and telemetry,
+// but is intentionally unbounded for the judge.
 const UNBOUNDED_USAGE_LIMIT = Number.MAX_SAFE_INTEGER;
 const JUDGE_STRUCTURED_AI_INPUT_MAX_BYTES = 64 * 1024;
 const JUDGE_STRUCTURED_AI_CLAIM_LEASE_SECONDS = 120;
@@ -63,7 +63,7 @@ const GPT_5_6_TOKEN_RATES = {
 
 export const JUDGE_GLOBAL_USAGE_LIMITS: JudgeGlobalUsageLimits = {
   accountRequestsPerWindow: UNBOUNDED_USAGE_LIMIT,
-  concurrentReservations: 1,
+  concurrentReservations: UNBOUNDED_USAGE_LIMIT,
   costMicroUsdPerWindow: JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
   generationsPerWindow: UNBOUNDED_USAGE_LIMIT,
   ipRequestsPerWindow: UNBOUNDED_USAGE_LIMIT,

@@ -247,7 +247,7 @@ async function seedFlagshipMeeting(
       createdByUserId: facilitator.userId,
       facilitatorParticipantId: `participant-${facilitator.userId}`,
       meetingId: FLAGSHIP_MEETING_ID,
-      purpose: "Work & Productivity — Global AI Product Rollout",
+      purpose: "Global AI Product Rollout",
     },
     assignments,
   );

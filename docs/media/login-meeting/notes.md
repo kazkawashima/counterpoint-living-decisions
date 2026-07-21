@@ -15,5 +15,6 @@ The clip under `docs/media/clips/login-meeting/` records the bounded explanatory
 motion on the permission path. It is decorative context only: it does not imply
 that any private content crossed the boundary.
 
-Original capture date: 2026-07-19; refreshed 2026-07-20. Feature slice: M2 login, meeting selection, and role
-workspace shell.
+Original capture date: 2026-07-19; refreshed 2026-07-21 after shortening the
+seeded room title to `Global AI Product Rollout`. Feature slice: M2 login,
+meeting selection, and role workspace shell.

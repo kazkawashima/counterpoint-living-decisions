@@ -8,7 +8,7 @@ import {
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
 const MEETING_ID = "meeting-global-ai-rollout";
-const MEETING_PURPOSE = "Work & Productivity — Global AI Product Rollout";
+const MEETING_PURPOSE = "Global AI Product Rollout";
 const reviewScreenshotDirectory = evidenceDirectory(
   "screenshots/decision-review",
 );

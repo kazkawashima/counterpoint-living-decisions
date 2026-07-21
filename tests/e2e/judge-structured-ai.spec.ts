@@ -14,7 +14,7 @@ import {
 import { evidenceDirectory } from "../helpers/evidence-paths.js";
 
 const FLAGSHIP_MEETING_ID = "meeting-global-ai-rollout";
-const FLAGSHIP_PURPOSE = "Work & Productivity — Global AI Product Rollout";
+const FLAGSHIP_PURPOSE = "Global AI Product Rollout";
 const privateAgentCueScreenshotDirectory = evidenceDirectory(
   "screenshots/private-agent-cue",
 );

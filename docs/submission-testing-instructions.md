@@ -16,7 +16,7 @@ visible in the logged-out submission/gallery view.
   older `Counterpoint` deployment and does not provide the current
   judge-managed Production path.
 - Category: Work & Productivity
-- Story: synthetic Flagship, `Work & Productivity — Global AI Product Rollout`
+- Story: synthetic Flagship, `Global AI Product Rollout`
 - Data: all meeting notes, identities, evidence, events, and decisions are
   fictional staged fixtures.
 - Access: no BYOK or local setup should be required for a judge; use the
@@ -38,7 +38,7 @@ visible in the logged-out submission/gallery view.
 ## One path through the product
 
 1. On the logged-out landing screen choose `Product`.
-2. Open the seeded `Work & Productivity — Global AI Product Rollout` meeting.
+2. Open the seeded `Global AI Product Rollout` meeting.
    No room creation or participant setup is needed.
 3. Keep the owner-private note private, then choose `Prepare grounded sharing
 preview`, inspect the exact excerpt, and approve it.

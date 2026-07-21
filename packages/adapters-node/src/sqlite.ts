@@ -214,6 +214,16 @@ const migrations: readonly Migration[] = [
         ON sessions(user_id, revoked_at, last_activity_at);
     `,
   },
+  {
+    version: 5,
+    name: "rename_flagship_meeting",
+    sql: `
+      UPDATE meetings
+      SET purpose = 'Global AI Product Rollout'
+      WHERE meeting_id = 'meeting-global-ai-rollout'
+        AND purpose = 'Work & Productivity — Global AI Product Rollout';
+    `,
+  },
 ];
 
 export const CURRENT_SQLITE_MIGRATION_COUNT = migrations.length;

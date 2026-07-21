@@ -239,7 +239,9 @@ function LoginScreen({
 
           <aside aria-label="Demo path" className="demo-brief">
             <span>Start here</span>
-            <strong>Product → Work &amp; Productivity → Open workspace</strong>
+            <strong>
+              Product → Global AI Product Rollout → Open workspace
+            </strong>
             <p>
               This is a staged, synthetic story. AI is optional; if it is
               unavailable, continue with the manual draft path.

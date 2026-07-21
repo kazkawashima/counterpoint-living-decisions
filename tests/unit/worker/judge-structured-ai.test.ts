@@ -52,7 +52,7 @@ describe("judge structured AI limits", () => {
   it("defines one product-wide rolling usage ceiling and all operation descriptors", () => {
     expect(JUDGE_GLOBAL_USAGE_LIMITS).toEqual({
       accountRequestsPerWindow: Number.MAX_SAFE_INTEGER,
-      concurrentReservations: 1,
+      concurrentReservations: Number.MAX_SAFE_INTEGER,
       costMicroUsdPerWindow: 25_000_000,
       generationsPerWindow: Number.MAX_SAFE_INTEGER,
       ipRequestsPerWindow: Number.MAX_SAFE_INTEGER,

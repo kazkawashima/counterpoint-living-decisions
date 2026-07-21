@@ -45,6 +45,7 @@ const expectedMigrationNames = [
   "0010_judge_managed_ai_operation_claims.sql",
   "0011_judge_managed_ai_operation_lifecycle.sql",
   "0012_judge_usage_active_request_fingerprints.sql",
+  "0013_rename_flagship_meeting.sql",
 ] as const;
 
 const expectedTablesAfterMigration = [
@@ -155,6 +156,23 @@ const expectedTablesAfterMigration = [
     "event_appends",
     "events",
     "judge_managed_ai_operation_claims",
+    "judge_managed_realtime_calls",
+    "judge_managed_realtime_start_claims",
+    "judge_usage_reservations",
+    "meetings",
+    "participant_assignments",
+    "projections",
+    "sessions",
+    "users",
+  ],
+  [
+    "artifact_metadata",
+    "audit_history",
+    "decision_revisions",
+    "event_appends",
+    "events",
+    "judge_managed_ai_operation_claims",
+    "judge_managed_ai_operation_lifecycle",
     "judge_managed_realtime_calls",
     "judge_managed_realtime_start_claims",
     "judge_usage_reservations",
@@ -489,6 +507,59 @@ describe("Cloudflare D1 migrations", () => {
       expect(userTableNames(database)).toEqual(
         expectedTablesAfterMigration.at(-1),
       );
+    } finally {
+      database.close();
+    }
+  });
+
+  it("renames only the seeded flagship meeting purpose", async () => {
+    const migrations = await readMigrations();
+    const renameMigration = migrations.find(
+      ({ name }) => name === "0013_rename_flagship_meeting.sql",
+    );
+    const database = createD1CompatibleDatabase();
+
+    try {
+      if (renameMigration === undefined) {
+        throw new Error("Missing flagship rename migration 0013");
+      }
+      for (const migration of migrations) {
+        if (migration.name === renameMigration.name) {
+          break;
+        }
+        database.exec(migration.sql);
+      }
+      database.exec(`
+        INSERT INTO meetings (
+          meeting_id,
+          code,
+          created_by_user_id,
+          facilitator_participant_id,
+          purpose
+        ) VALUES (
+          'meeting-unrelated',
+          'UNRELATED',
+          'product',
+          'participant-product',
+          'Work & Productivity — Global AI Product Rollout'
+        );
+      `);
+
+      database.exec(renameMigration.sql);
+      database.exec(renameMigration.sql);
+
+      expect(
+        database
+          .prepare("SELECT purpose FROM meetings WHERE meeting_id = ?")
+          .get("meeting-global-ai-rollout"),
+      ).toEqual({ purpose: "Global AI Product Rollout" });
+      expect(
+        database
+          .prepare("SELECT purpose FROM meetings WHERE meeting_id = ?")
+          .get("meeting-unrelated"),
+      ).toEqual({
+        purpose: "Work & Productivity — Global AI Product Rollout",
+      });
     } finally {
       database.close();
     }

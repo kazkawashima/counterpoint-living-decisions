@@ -22,7 +22,7 @@ This tutorial remains the three-minute presentation path.
 - Use the private submission Testing Instructions for the judge credential.
   Never copy that credential into this document, README, video, screenshots,
   or public Devpost fields.
-- The room is the synthetic `Work & Productivity — Global AI Product Rollout`
+- The room is the synthetic `Global AI Product Rollout`
   Flagship. It is not a real meeting and contains no real personal data.
 
 ## Exact operator flow

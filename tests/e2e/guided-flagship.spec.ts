@@ -6,7 +6,7 @@ import { activateByKeyboard } from "../helpers/keyboard.js";
 
 const screenshotDirectory = evidenceDirectory("screenshots/guided-flagship");
 const exactSnippet = "Regional launch requires a documented approval gate.";
-const flagshipPurpose = "Work & Productivity — Global AI Product Rollout";
+const flagshipPurpose = "Global AI Product Rollout";
 
 async function signIn(page: Page, identity: string, password: string) {
   await page.getByRole("button", { name: new RegExp(identity, "iu") }).click();

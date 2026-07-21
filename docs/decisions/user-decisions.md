@@ -51,13 +51,14 @@ crossed without a decision.
   24-hour period** for judge mode.
 - **Provider backstop:** The API-provider budget alert is currently **USD 50**.
   It is an alert, not the product's enforcement boundary.
-- **Derived limits:** Set meeting, concurrent Realtime, Realtime-minute,
-  generation, and token limits conservatively from measured flagship usage so
-  their combined worst case cannot exceed the USD 25 application cap.
+- **Derived limits:** Do not use meeting, concurrent Realtime, Realtime-minute,
+  generation, token, account, or IP counters as independent judge locks. Keep
+  them only where needed for compatibility or telemetry; the USD 25 total is
+  the sole spend lock.
 - **Why:** These limits determine the maximum financial exposure of leaked
   judge credentials.
-- **Blocks:** Independent provider-backed flagship usage evidence, derived
-  secondary-limit review, and the final submission-safety recheck. The current
+- **Blocks:** Independent provider-backed flagship usage evidence and the final
+  submission-safety recheck. The current
   Production judge route already has the fixed USD 25 hard cap and its
   implementation/contract tests; this decision does not require disabling that
   explicitly approved route while the evidence gate remains open.

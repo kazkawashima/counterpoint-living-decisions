@@ -59,12 +59,12 @@ test("Worker SPA serves the hosted flagship through one external-style origin", 
     page.getByRole("heading", { name: "Your assigned meetings" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /Work & Productivity/u }),
+    page.getByRole("heading", { name: "Global AI Product Rollout" }),
   ).toBeVisible();
 
   await page
     .getByRole("article")
-    .filter({ hasText: "Work & Productivity — Global AI Product Rollout" })
+    .filter({ hasText: "Global AI Product Rollout" })
     .getByRole("button", { name: "Open workspace" })
     .click();
   await expect(

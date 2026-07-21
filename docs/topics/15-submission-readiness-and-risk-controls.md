@@ -36,9 +36,9 @@
 2. 通常の`vars`、`.env`、`.dev.vars`、GitHub Actions logへproduction keyを書かない。
 3. judge userの認証後だけ、WorkerがSecretを使ってOpenAI呼び出しまたはRealtime短期secret発行を行う。
 4. standard keyをブラウザ、Durable Object state、D1、R2、監査イベントへ複製しない。
-5. server-funded judge workの費用ロックはrolling 24時間USD 25だけとする。同時実行
-   1件は技術的安全策として残し、account/IP/meeting/Realtime分数/token/generationの
-   二次ロックはjudgeでは適用しない。
+5. server-funded judge workの費用ロックはrolling 24時間USD 25だけとする。
+   account/IP/meeting/concurrency/Realtime分数/token/generationの二次ロックは
+   judgeでは適用しない。重複provider workを防ぐidempotencyは維持する。
 6. Devpostの`Testing Instructions`にcredentialを入力した後、提出プレビューとログアウト状態で一般ユーザーから見えないことを確認する。
 7. 非公開性を確認できない場合は、審査共有済みprivate repositoryまたは運営指定の非公開経路へ案内を置く。
 8. credential漏洩を前提に、利用上限だけで費用上限を保証する。

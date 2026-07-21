@@ -130,7 +130,7 @@ async function signIn(page: Page, identity: string, password: string) {
   ).toBeVisible();
   const flagship = page.getByRole("article").filter({
     has: page.getByRole("heading", {
-      name: "Work & Productivity — Global AI Product Rollout",
+      name: "Global AI Product Rollout",
     }),
   });
   await flagship.getByRole("button", { name: "Open workspace" }).click();
@@ -423,22 +423,44 @@ test("server-owned access switches the browser to a credential-free managed call
       body: JSON.stringify({
         correlationId: `correlation-judge-usage-${String(usageRequests)}`,
         dimensions: {
-          account: { limit: 10, remaining: 9, used: 1 },
-          concurrency: { limit: 1, remaining: 1, used: 0 },
+          account: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER - 1,
+            used: 1,
+          },
+          concurrency: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER,
+            used: 0,
+          },
           costMicroUsd: usageExhausted
             ? { limit: 25_000_000, remaining: 0, used: 25_000_000 }
             : { limit: 25_000_000, remaining: 6_600_000, used: 18_400_000 },
-          generation: usageExhausted
-            ? { limit: 3, remaining: 0, used: 3 }
-            : { limit: 3, remaining: 1, used: 2 },
-          ip: { limit: 10, remaining: 9, used: 1 },
-          meeting: { limit: 10, remaining: 9, used: 1 },
-          realtimeSeconds: usageExhausted
-            ? { limit: 30, remaining: 0, used: 30 }
-            : { limit: 30, remaining: 6, used: 24 },
-          tokens: usageExhausted
-            ? { limit: 1_200_000, remaining: 0, used: 1_200_000 }
-            : { limit: 1_200_000, remaining: 400_000, used: 800_000 },
+          generation: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER - 2,
+            used: 2,
+          },
+          ip: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER - 1,
+            used: 1,
+          },
+          meeting: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER - 1,
+            used: 1,
+          },
+          realtimeSeconds: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER - 24,
+            used: 24,
+          },
+          tokens: {
+            limit: Number.MAX_SAFE_INTEGER,
+            remaining: Number.MAX_SAFE_INTEGER - 800_000,
+            used: 800_000,
+          },
         },
         rollingWindowSeconds: 86_400,
       }),

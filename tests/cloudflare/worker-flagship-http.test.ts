@@ -427,7 +427,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           meetingId: FLAGSHIP_MEETING_ID,
-          purpose: "Work & Productivity — Global AI Product Rollout",
+          purpose: "Global AI Product Rollout",
           role: "facilitator",
         }),
       ]),

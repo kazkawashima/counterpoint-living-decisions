@@ -79,7 +79,7 @@ describe("Node persistence startup and restart", () => {
     const path = join(directory, "nested", "counterpoint.sqlite");
     const owner = track(new NodeSqliteDatabase(path));
 
-    expect(sqliteMigrationCount(owner.database)).toBe(4);
+    expect(sqliteMigrationCount(owner.database)).toBe(5);
     expect(owner.database.prepare("PRAGMA foreign_keys").get()).toMatchObject({
       foreign_keys: 1,
     });
@@ -116,7 +116,7 @@ describe("Node persistence startup and restart", () => {
     ]);
 
     applySqliteMigrations(owner.database);
-    expect(sqliteMigrationCount(owner.database)).toBe(4);
+    expect(sqliteMigrationCount(owner.database)).toBe(5);
   });
 
   it("enforces the fixed identity, meeting, audit, and artifact schema", async () => {

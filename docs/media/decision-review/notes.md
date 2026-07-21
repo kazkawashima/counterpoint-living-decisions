@@ -1,7 +1,7 @@
 # Human invalidation review reel notes
 
 All captures use the explicitly labeled synthetic flagship story
-`Work & Productivity — Global AI Product Rollout`. The regulation, Decision,
+`Global AI Product Rollout`. The regulation, Decision,
 premise, Evidence, Action, facilitator reason, and reconsideration task are
 fixtures. No real customer data, production credential, webhook, or regulation
 appears in the material.

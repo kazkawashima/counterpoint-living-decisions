@@ -1,7 +1,7 @@
 # Regulatory event receipt reel notes
 
 All material is part of the explicitly labeled synthetic flagship story
-`Work & Productivity — Global AI Product Rollout`. The regulatory source,
+`Global AI Product Rollout`. The regulatory source,
 jurisdiction, dates, Decision, and participant identities are fixtures. No
 real webhook secret, payload, customer data, or regulation appears in the
 captures.

@@ -134,9 +134,9 @@ users for a single-person multi-participant demo.
   path, and the server-funded judge path remains the default.
 - Allow judge mode only for the judge account, never for ordinary users.
 - Enforce the rolling USD 25 product ceiling as the only judge spend lock.
-  Retain one active-call guard for lifecycle safety, but do not independently
-  lock judge work on account, IP, meeting, Realtime duration, generation, or
-  token counters.
+  Do not independently lock judge work on account, IP, meeting, concurrency,
+  Realtime duration, generation, or token counters. Retain idempotency and
+  ownership checks that prevent duplicate provider work.
 - Return only a server-generated opaque handle for a managed Realtime call.
   Bind reservation, provider call, participant, session, and key-source
   identity server-side, then re-authenticate and re-resolve meeting assignment,

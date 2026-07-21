@@ -38,8 +38,9 @@ credentials could also be abused for API spend.
    or short-lived Realtime secret issuance.
 4. Do not copy the standard key into the browser, Durable Object state, D1, R2, or audit events.
 5. Use the rolling USD 25 ceiling as the only server-funded judge spend lock.
-   Retain one active-call guard for lifecycle safety; do not independently lock
-   account, IP, meeting, Realtime minutes, generation, or token counters.
+   Do not independently lock account, IP, meeting, concurrency, Realtime
+   minutes, generation, or token counters. Retain idempotency that prevents
+   duplicate provider work.
 6. After entering credentials in Devpost Testing Instructions, verify the
    submission preview and logged-out view do not expose them.
 7. If privacy cannot be confirmed, use an approved private repository or operator channel.
