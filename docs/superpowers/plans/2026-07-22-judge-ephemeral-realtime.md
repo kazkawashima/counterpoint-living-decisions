@@ -106,7 +106,7 @@ Expected: one passing scenario proving private/shared direct Connect and no mana
 - Modify: `docs/plans/impl/_status.md`
 - Modify: `docs/deployments/production-2026-07-22.md`
 
-- [ ] **Step 1: Run relevant and full verification**
+- [x] **Step 1: Run relevant and full verification**
 
 Run, in order:
 
@@ -123,11 +123,11 @@ npx playwright test tests/e2e/realtime-channels.spec.ts --grep "server-funded ju
 
 Expected: every command exits 0.
 
-- [ ] **Step 2: Record the exact recovery boundary**
+- [x] **Step 2: Record the exact recovery boundary**
 
 Update status/deployment docs to state that active judge Realtime uses ephemeral browser WebRTC, the managed sideband and exact USD hard cap are deferred, and structured AI accounting remains unchanged.
 
-- [ ] **Step 3: Commit and push the verified implementation**
+- [x] **Step 3: Commit and push the verified implementation**
 
 ```bash
 git add apps/worker/src/index.ts apps/web/src/realtime-panel.tsx tests/cloudflare/worker-realtime-client-secrets.test.ts tests/e2e/realtime-channels.spec.ts docs/
@@ -135,7 +135,7 @@ git commit -m "fix judge realtime via ephemeral client secret"
 git push origin HEAD:main
 ```
 
-- [ ] **Step 4: Run the guarded production deploy**
+- [x] **Step 4: Run the guarded production deploy**
 
 Load the existing local deployment inputs without printing secrets, render and inspect the production plan, then run `npm run cloudflare:deploy:production`. Stop if judge identity, structured AI, standard judge Secret, or canonical production Worker target is absent.
 

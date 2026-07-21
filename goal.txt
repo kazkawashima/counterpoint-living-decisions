@@ -154,6 +154,19 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
   native `fetch` receiver差もRED testで再現し、client-secret / managed call / sidebandを共通wrapperへ
   修正した。残るのはprivate credentialを持つjudgeによるserver-funded private/shared接続確認だけである。
 
+## 2026-07-22 Judge ephemeral Realtime recovery slice
+
+- provider call受理後のDurable Object sidebandだけが本番で失敗し続け、BYOKのbrowser direct
+  WebRTCはordinary/judgeの双方で成功したため、提出用judge UIを短命client-secret経路へ統一した。
+  Workerはallowlist認可後に`OPENAI_API_KEY_JUDGE`を30秒のchannel-scoped credentialへ交換し、
+  standard key自体はbrowser、D1、R2、DO、ログ、responseへ出さない。
+- no-keyのprivate/shared `Connect → Connected → Disconnect`、optional judge BYOK、managed
+  `/realtime/calls` request 0件をbrowser E2Eで固定した。usage summaryはhiddenとし、direct
+  RealtimeへD1 USD 25 hard capが効くとは主張しない。structured judge AIの既存reservationは維持する。
+- commit `a10c4e1`をmainへpushし、canonical Production Worker version 29へdeploy済み。security
+  `337/337`、Cloudflare `149/149`、remote smoke、active binding監査が成功した。残るのは
+  private credentialを持つjudgeによるprivate/shared owner観測だけである。
+
 ## 完了条件 A — 名称変更
 
 - [x] ユーザーに見える正式表示を `Descant — Living Decisions` に統一する。
@@ -239,14 +252,16 @@ DB上の識別子は移行リスクを避けるため変更しない。歴史資
 - [x] judgeはデフォルトでserver-fundedでBYOK不要。allowlist済みjudgeだけは望む場合に
       自分のキーをこのタブへ入力でき、明示的なHTTPS requestでWorkerが短命client secret
       発行にだけ使う。普通のユーザーはjudge keyを選択・継承・利用できず、server-funded
-      credentialやprovider call IDはbrowser response/logへ出ない。
+      standard keyやprovider call IDはbrowser response/logへ出ない。短命client secretだけは
+      認可済みbrowserへ返し、private/shared direct WebRTCに利用する。
 - [ ] rolling 24時間 USD 25だけをアプリ側hard capとして強制し、USD 50 provider alertは
       二次警告として扱う。account/IP pseudonym、meeting、concurrency、Realtime seconds、
       generation、tokensの二次ロックはjudgeでは適用しない。
       上限到達時は新規server-funded provider requestを出さず、明示的な
       `USAGE_LIMIT_REACHED` と手動継続を返す。start admissionの二次ロック解除は完了したが、
       controller内の30秒・3 response envelopeを、USD 12予約残高に基づくcost-metered
-      terminationへ置き換える作業が残る。
+      terminationへ置き換える作業が残る。提出用のbrowser-direct judge RealtimeはこのD1
+      ledgerを通らないため、sideband修復と独立実測が終わるまでhard-cap達成には数えない。
 - [x] managed realtime/structured AIの各routeについて、同一リクエストの再送、並行開始、
       meeting越境、session/owner差替え、終了競合をテストし、二重課金しない。
 - [x] managed Realtime startが非retryableなusage limitを返した場合は自動再試行せず、

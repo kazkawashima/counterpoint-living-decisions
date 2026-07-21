@@ -9,19 +9,28 @@ judge credentials, provider payloads, SDP, and private source content.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Final deployed commit:
-  `ba9de26eb6b825b22fb0265ca5e736362eaf1eee`
-- 100%-served Worker version: `28`
-  (`f6142697-979f-4354-be5d-6e9b739b34fc`)
+  `a10c4e1308c2b72956dba28d0c2a6e53a3045e1b`
+- 100%-served Worker version: `29`
+  (`d5cb66c5-c3c6-431a-8a73-ffa76d5bf657`)
 - Rendered configuration SHA-256:
   `3fd52990eb6ee0e392375a2715b8e9c96367c790ab8a47ff48654852ed78998e`
 - Deployment status SHA-256:
-  `a2c8e2b90044739f48ba0fda92f2ed79f9e8044a9227ab874f805335009dad72`
+  `bcbcba0cd963c3e9b8893070814575ff539f8726efc1e93494b90dd954157cd1`
 - D1: production binding with forward-only migrations applied
 - R2: production artifact bucket binding
 - Durable Objects: meeting coordination and judge Realtime call control
 
 ## Included reliability changes
 
+- Allowlisted judge Realtime now uses the authorized client-secret endpoint
+  with `OPENAI_API_KEY_JUDGE` inside the Worker and returns only a 30-second,
+  channel-scoped credential. Private and shared Connect use the browser direct
+  WebRTC path already proven by BYOK; the managed sideband path remains dormant
+  rollback code and is not called by the active judge UI.
+- The judge usage summary is hidden for direct Realtime. This deployment does
+  not claim that browser-direct judge calls are enforced by the D1 USD 25 hard
+  cap; server-side call telemetry, forced termination, and exact settlement are
+  deferred. Structured judge AI keeps its existing reservation path.
 - Realtime connection failures retain a safe public boundary stage and keep
   manual text available.
 - Managed Realtime failures carry only five allowlisted safe reasons and an
@@ -66,6 +75,10 @@ judge credentials, provider payloads, SDP, and private source content.
   values.
 - Security matrix passed `337/337`.
 - Cloudflare test pool passed `149/149`.
+- The focused browser RED/GREEN scenario passed `1/1`, proving no-key private
+  and shared `Connect → Connected → Disconnect`, optional tab-local judge BYOK,
+  and zero managed `/realtime/calls` requests. Its visually reviewed synthetic
+  capture is recorded under `docs/media/screenshots/realtime-recovery/`.
 - Target configuration dry-run passed.
 - Forward D1 migrations and strict Worker deployment passed.
 - Remote root, health, and readiness returned `200`; an unauthenticated API
@@ -86,7 +99,9 @@ judge credentials, provider payloads, SDP, and private source content.
   real Wrangler release suite passed `4/4`, and typecheck, lint, format, build,
   and secret scan passed.
 
-Ordinary BYOK Realtime is now verified on the canonical production Worker. A
-fresh owner-observed private and shared server-funded judge
-`Connect → Connected → Disconnect` check remains separate hosted evidence
+Version 29 is the 100%-served canonical production Worker. Root, health,
+readiness, authentication boundary, provider-free Flagship smoke, active route
+flags, judge identity, and Secret-name bindings are verified. A fresh
+owner-observed private and shared server-funded judge
+`Connect → Connected → Disconnect` check remains the final hosted evidence
 because the private judge password is intentionally absent from local files.

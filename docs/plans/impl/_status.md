@@ -1578,5 +1578,9 @@ judge-enabled follow-up are recorded in the section below.
   `/realtime/calls` requests.
 - The synthetic 1440 × 900 connected state was visually reviewed and saved at
   `docs/media/screenshots/realtime-recovery/2026-07-22-judge-ephemeral-private-connected.png`.
-  Production deployment and a clean owner-observed judge cycle remain the only
-  open items in this recovery slice.
+  Commit `a10c4e1308c2b72956dba28d0c2a6e53a3045e1b` was pushed to `main` and
+  deployed as the 100%-served canonical Production Worker version 29. The
+  guarded deploy reran security `337/337`, Cloudflare `149/149`, strict deploy,
+  root/health/readiness/auth, provider-free Flagship smoke, and active binding
+  audit. A clean owner-observed judge private/shared cycle is the only open item
+  in this recovery slice.

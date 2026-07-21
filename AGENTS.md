@@ -107,6 +107,14 @@ configuration.
   gate is the composed browser path through the active Worker version, for both
   judge-managed access and ordinary meeting-scoped BYOK, with safe stage and
   retry behavior verified for failures.
+- For the submission-critical recovery, judge-managed access means an
+  allowlisted judge receives a short-lived client secret from the authorized
+  Worker endpoint and then uses direct browser WebRTC. The active judge UI must
+  not call the Durable Object sideband `/realtime/calls` path until that path is
+  independently repaired. Keep the standard key in the Worker Secret, keep the
+  direct-Realtime usage summary hidden, and do not claim the D1 USD 25 hard cap
+  applies to browser-direct Realtime. A release test must prove no-key private
+  and shared Connect while observing zero managed-call requests.
 - Adapters shared by Node and Cloudflare Workers must not capture Worker Web API
   methods such as `globalThis.fetch` and later invoke them as an object field.
   Call them through a wrapper that preserves the runtime global receiver, and
