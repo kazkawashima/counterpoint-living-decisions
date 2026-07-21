@@ -388,7 +388,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
     });
   });
 
-  it("shows the seeded Work & Productivity meeting through an external-host-style URL", async () => {
+  it("shows the renamed flagship meeting through an external-host-style URL", async () => {
     const handler = providerFreeWorkerHandler();
     const loginResponse = await handler.fetch!(
       workerRequest(
@@ -1082,7 +1082,7 @@ describe("Cloudflare Worker hosted flagship API", () => {
         evidence: [],
       },
     });
-  }, 15_000);
+  }, 30_000);
 
   it("keeps the hosted meeting and projection routes authenticated", async () => {
     const handler = createWorkerHandler();

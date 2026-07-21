@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/vitest-pool-workers/types" />
 
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   D1MeetingRepository,
@@ -273,6 +273,20 @@ async function seedFixture(): Promise<void> {
     userId: "safety",
   });
 }
+
+beforeEach(async () => {
+  await env.DB.batch([
+    env.DB.prepare(
+      "DELETE FROM judge_managed_realtime_start_claims WHERE meeting_id = ? AND user_id = ?",
+    ).bind(MEETING_ID, JUDGE_USER_ID),
+    env.DB.prepare(
+      "DELETE FROM judge_managed_realtime_calls WHERE meeting_id = ? AND user_id = ?",
+    ).bind(MEETING_ID, JUDGE_USER_ID),
+    env.DB.prepare(
+      "DELETE FROM judge_usage_reservations WHERE meeting_id = ? AND account_id = ?",
+    ).bind(MEETING_ID, JUDGE_USER_ID),
+  ]);
+});
 
 async function createOwnedCall(managedCallId: string): Promise<{
   readonly limiter: ReturnType<typeof createJudgeRealtimeUsageLimiter>;
