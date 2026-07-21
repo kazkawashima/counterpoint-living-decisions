@@ -9,13 +9,13 @@ judge credentials, provider payloads, SDP, and private source content.
 - Worker: `counterpoint-living-decisions-production`
 - Origin: `https://counterpoint-living-decisions-production.gs2safari.workers.dev`
 - Final deployed commit:
-  `a10c4e1308c2b72956dba28d0c2a6e53a3045e1b`
-- 100%-served Worker version: `29`
-  (`d5cb66c5-c3c6-431a-8a73-ffa76d5bf657`)
+  `8056d69b55d3ac5ad6664a115e83fc9ce7a13604`
+- 100%-served Worker version: `30`
+  (`4cc5414d-53be-4319-a0fc-b5b42d8d8315`)
 - Rendered configuration SHA-256:
   `3fd52990eb6ee0e392375a2715b8e9c96367c790ab8a47ff48654852ed78998e`
 - Deployment status SHA-256:
-  `bcbcba0cd963c3e9b8893070814575ff539f8726efc1e93494b90dd954157cd1`
+  `fa8549940d408d1e53c2c2edc3e587ed6c630ee5ba03bd0c26f8fff2d70ce777`
 - D1: production binding with forward-only migrations applied
 - R2: production artifact bucket binding
 - Durable Objects: meeting coordination and judge Realtime call control
@@ -33,6 +33,10 @@ judge credentials, provider payloads, SDP, and private source content.
   deferred. Structured judge AI keeps its existing reservation path.
 - Realtime connection failures retain a safe public boundary stage and keep
   manual text available.
+- Browser microphone failures now retain only an allowlisted recovery category
+  for permission blocked, input missing, input unavailable, or track attachment
+  failure. The UI provides the matching correction while the healthy Realtime
+  channel remains connected; raw DOMException and device details stay private.
 - Managed Realtime failures carry only five allowlisted safe reasons and an
   optional integer provider status; provider bodies, headers, IDs, SDP, and
   credentials remain outside public responses.
@@ -73,7 +77,7 @@ judge credentials, provider payloads, SDP, and private source content.
   warning.
 - Repository and generated-output secret scan passed without printing secret
   values.
-- Security matrix passed `337/337`.
+- Security matrix passed `343/343`.
 - Cloudflare test pool passed `149/149`.
 - The focused browser RED/GREEN scenario passed `1/1`, proving no-key private
   and shared `Connect → Connected → Disconnect`, optional tab-local judge BYOK,
@@ -95,14 +99,16 @@ judge credentials, provider payloads, SDP, and private source content.
   `200`, private and shared client-secret issuance `201`, both direct OpenAI
   WebRTC calls `201`, Disconnect, and key clear `200`.
 - Before deployment, the complete Flagship browser surface passed `30/30`, the
-  evidence capture passed `4/4`, current unit/integration passed `913/913`, the
-  real Wrangler release suite passed `4/4`, and typecheck, lint, format, build,
-  and secret scan passed.
+  evidence capture passed `4/4`, current unit/integration passed `919/919`, and
+  the focused Realtime browser regression set passed `4/4`; typecheck, lint,
+  format, build, secret scan, and media-manifest verification also passed.
 
-Version 29 is the 100%-served canonical production Worker. Root, health,
+Version 30 is the 100%-served canonical production Worker. Root, health,
 readiness, authentication boundary, provider-free Flagship smoke, active route
-flags, judge identity, and Secret-name bindings are verified. The owner then
-confirmed from the canonical Production UI that the allowlisted judge, without
-personal BYOK, connected both Private agent and Shared room agent successfully.
-This closes the hosted Realtime evidence without placing the private judge
-password in local files or the repository.
+flags, judge identity, and Secret-name bindings are verified. On version 29 the
+owner confirmed from the canonical Production UI that the allowlisted judge,
+without personal BYOK, connected both Private agent and Shared room agent
+successfully. Version 30 changes only browser media-failure classification and
+recovery copy; a real-browser microphone retry remains the owner-hosted
+acceptance without placing the private judge password in local files or the
+repository.

@@ -1605,3 +1605,12 @@ judge-enabled follow-up are recorded in the section below.
   synthetic `NotAllowedError` becomes the site-permission recovery message
   while Private agent remains `Connected`. Synthetic visual evidence is saved
   under `docs/media/screenshots/realtime-recovery/`.
+- Commit `8056d69b55d3ac5ad6664a115e83fc9ce7a13604` was pushed to `main` and
+  deployed through the guarded Production workflow. Security matrix `343/343`,
+  Cloudflare `149/149`, forward migrations, strict deploy, remote
+  root/health/readiness/auth, and provider-free Flagship smoke passed. Worker
+  version 30 is served at 100%; its binding audit confirms both judge routes
+  enabled, `JUDGE_USER_ID=judge`, both expected Secret names, and production
+  D1/R2/DO resources. A real-browser microphone retry remains the owner-hosted
+  acceptance because browser permission and device state cannot be inferred
+  from synthetic coverage.
