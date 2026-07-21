@@ -51,14 +51,14 @@ function billing(
 describe("judge structured AI limits", () => {
   it("defines one product-wide rolling usage ceiling and all operation descriptors", () => {
     expect(JUDGE_GLOBAL_USAGE_LIMITS).toEqual({
-      accountRequestsPerWindow: 10,
+      accountRequestsPerWindow: 100,
       concurrentReservations: 1,
       costMicroUsdPerWindow: 25_000_000,
-      generationsPerWindow: 8,
-      ipRequestsPerWindow: 10,
-      meetingRequestsPerWindow: 10,
-      realtimeSecondsPerWindow: 30,
-      tokensPerWindow: 2_171_200,
+      generationsPerWindow: 64,
+      ipRequestsPerWindow: 100,
+      meetingRequestsPerWindow: 100,
+      realtimeSecondsPerWindow: 600,
+      tokensPerWindow: 17_369_600,
     });
     expect(PRIVATE_DISCLOSURE_OPERATION).toBe("private_evidence_disclosure");
     expect(PRIVATE_DISCLOSURE_MODEL).toBe("gpt-5.6");

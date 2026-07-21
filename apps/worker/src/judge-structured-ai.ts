@@ -18,8 +18,11 @@ const MICRO_USD_PER_USD = 1_000_000;
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 const LONG_CONTEXT_INPUT_TOKEN_THRESHOLD = 272_000;
 const PRIVATE_DISCLOSURE_RESERVED_COST_MICRO_USD = 5_500_000;
-const JUDGE_STRUCTURED_AI_MAX_GENERATIONS_PER_WINDOW = 8;
-const JUDGE_STRUCTURED_AI_MAX_TOKENS_PER_WINDOW = 2_171_200;
+// Keep the USD 25 rolling ceiling unchanged, but leave enough request,
+// generation, token, and realtime headroom for a submission-day judge to
+// replay the flagship and for the team to run verification passes.
+const JUDGE_STRUCTURED_AI_MAX_GENERATIONS_PER_WINDOW = 64;
+const JUDGE_STRUCTURED_AI_MAX_TOKENS_PER_WINDOW = 17_369_600;
 const JUDGE_STRUCTURED_AI_INPUT_MAX_BYTES = 64 * 1024;
 const JUDGE_STRUCTURED_AI_CLAIM_LEASE_SECONDS = 120;
 const JUDGE_STRUCTURED_AI_RETENTION_SECONDS = 25 * 60 * 60;
@@ -60,13 +63,13 @@ const GPT_5_6_TOKEN_RATES = {
 } as const satisfies Readonly<Record<string, TokenRates>>;
 
 export const JUDGE_GLOBAL_USAGE_LIMITS: JudgeGlobalUsageLimits = {
-  accountRequestsPerWindow: 10,
+  accountRequestsPerWindow: 100,
   concurrentReservations: 1,
   costMicroUsdPerWindow: JUDGE_USAGE_PRODUCT_CEILING_MICRO_USD,
   generationsPerWindow: JUDGE_STRUCTURED_AI_MAX_GENERATIONS_PER_WINDOW,
-  ipRequestsPerWindow: 10,
-  meetingRequestsPerWindow: 10,
-  realtimeSecondsPerWindow: 30,
+  ipRequestsPerWindow: 100,
+  meetingRequestsPerWindow: 100,
+  realtimeSecondsPerWindow: 600,
   tokensPerWindow: JUDGE_STRUCTURED_AI_MAX_TOKENS_PER_WINDOW,
 };
 

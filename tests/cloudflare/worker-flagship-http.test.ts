@@ -2510,7 +2510,7 @@ describe("Cloudflare Worker judge structured-AI gate", () => {
     },
     {
       costMicroUsd: 0,
-      generationCount: 8,
+      generationCount: 64,
       label: "generations",
       limit: "generation",
       tokenCount: 0,
