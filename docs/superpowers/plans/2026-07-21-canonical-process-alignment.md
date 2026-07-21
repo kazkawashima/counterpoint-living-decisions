@@ -141,7 +141,7 @@ git diff --check
 
 Expected: every command exits successfully without printing a secret.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 Commit only the plan and aligned repository documents. Preserve the untracked
 owner files under `.vscode/` and `docs/reviews/`, then push `main` to `origin`.
